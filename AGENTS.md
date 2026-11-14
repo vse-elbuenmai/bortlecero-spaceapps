@@ -10,12 +10,28 @@ imágenes de SPHEREx de ese trozo de cielo como un parpadeo, para notar lo que s
 brillo. Objetos de prueba: Estrella de Barnard, Epsilon Indi B, WISE 0855−0714, RW Aurigae y
 R Draconis.
 
-## Estado (sáb 14 nov 2026, arranque)
+## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
 
-- Repo recién creado: sólo este contrato y las dos bitácoras de `docs/`.
-- **Stack, arquitectura y alcance: sin decidir.** Los decide el equipo. Cuando se decidan, se
-  escriben aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que
-  los introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
+- **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
+  - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
+  - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
+- **Comandos del Pipeline de Ingesta (`uv`):**
+  ```bash
+  # 1. Crear entorno e instalar dependencias
+  uv venv --python 3.14 .venv
+  uv sync --extra dev
+
+  # 2. Correr pruebas automatizadas y linter
+  uv run pytest
+  uv run ruff check src/ tests/
+
+  # 3. Listar o descargar/procesar objetos de prueba de IRSA
+  uv run spherex-ingest list-benchmarks
+  uv run spherex-ingest ingest --target epsilon_indi_b --max-frames 12
+
+  # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
+  uv run spherex-ingest serve --host 0.0.0.0 --port 8000
+  ```
 - Prioridad acordada: **una demo desplegada que funcione antes que más funciones.**
 
 ## Reloj (hora de Guadalajara)
