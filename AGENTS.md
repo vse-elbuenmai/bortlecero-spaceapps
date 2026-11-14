@@ -10,20 +10,33 @@ imágenes de SPHEREx de ese trozo de cielo como un parpadeo, para notar lo que s
 brillo. Objetos de prueba: Estrella de Barnard, Epsilon Indi B, WISE 0855−0714, RW Aurigae y
 R Draconis.
 
-## Estado (sáb 14 nov 2026, arranque)
+## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
 
-- Repo recién creado: este contrato, las dos bitácoras de `docs/` y `DESIGN.md`.
-- **`mockup/`** (rama `claude/mockup-barnard`): un mockup del visor con tres fotos reales de Barnard
-  y su script de preparación. Sirve para ver la idea con datos; **no fija el stack ni la arquitectura**.
-  Cómo correrlo: [mockup/README.md](mockup/README.md).
-- **Esfera del cielo** (rama `claude/esfera-viaje`, `mockup/sky.js`): prototipo de la idea de
-  Miguel. El cielo gira (Aladin Lite 3.8.2 con mapas de IRSA), el buscador de RA/Dec viaja a las
-  coordenadas y al llegar a Barnard se abre el panel. Igual que el resto del mockup, no fija nada.
-  Lo que se probó de Aladin (capas del cubo de SPHEREx, falso color, recortes por WCS) está en
-  [mockup/README.md](mockup/README.md).
-- **Stack, arquitectura y alcance: sin decidir.** Los decide el equipo. Cuando se decidan, se
-  escriben aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que
-  los introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
+- **`mockup/`** (rama `claude/mockup-barnard` y `claude/esfera-viaje`): visor estático con fotos reales de Barnard y prototipo de la esfera del cielo (`mockup/sky.js` con Aladin Lite 3.8.2 e IRSA). Cómo correrlo: [mockup/README.md](mockup/README.md).
+- **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
+  - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
+  - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
+- **Comandos con Astral `uv`:**
+  ```bash
+  # 1. Crear entorno e instalar dependencias
+  uv venv --python 3.14 .venv
+  uv sync --extra dev
+
+  # 2. Correr pruebas automatizadas y linter
+  uv run pytest
+  uv run ruff check src/ tests/
+
+  # 3. Listar o descargar/procesar objetos de prueba de IRSA
+  uv run spherex-ingest list-benchmarks
+  uv run spherex-ingest ingest --target epsilon_indi_b --max-frames 12
+
+  # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
+  uv run spherex-ingest serve --host 0.0.0.0 --port 8000
+
+  # 5. Correr script de preparación y servidor de mockup
+  uv run python mockup/prepare_barnard.py
+  uv run python -m http.server 8765 --directory mockup
+  ```
 - Prioridad acordada: **una demo desplegada que funcione antes que más funciones.**
 
 ## Reloj (hora de Guadalajara)
@@ -153,6 +166,10 @@ vivo antes de apoyarte en él.
   (Gaia DR3, SIMBAD). Si Barnard no se mueve lo que dice Gaia, hay un error.
 - **El estado externo se verifica en vivo** (enunciado, reglas, IRSA, versiones de librerías), no
   desde notas.
+- **Wiki del equipo (público):** [bortlecero-spherex-wiki](https://github.com/vse-elbuenmai/bortlecero-spherex-wiki):
+  la misión, los datos, los cinco objetos, las trampas, las citas y un glosario, con fuente y fecha en
+  cada dato. Es la primera parada para dudas de SPHEREx. No decide la solución, y lo que caduca se
+  verifica en vivo. En la entrega se cita la fuente original, no el wiki.
 - **Material de consulta, local y privado, en la laptop de Miguel:**
   `D:\dev\lab\bortlecero-preparacion-space-apps\` (su `CLAUDE.md`, `SPHEREX.md` y `biblioteca/`: las
   citas listas para pegar están en `biblioteca/00-arranque-sabado.md` §6 y

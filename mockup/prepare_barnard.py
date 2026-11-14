@@ -14,9 +14,9 @@ What it does, step by step:
    where it actually is (centroid on the original, un-reprojected pixels).
 7. Writes grayscale PNGs, a flags overlay per frame and frames.json for the web mockup.
 
-Run from the repository root (Windows: .venv\\Scripts\\python, Linux: .venv/bin/python):
+Run from the repository root with Astral uv:
 
-    python mockup/prepare_barnard.py
+    uv run python mockup/prepare_barnard.py
 
 Downloads go to .cache/spherex (git-ignored). Outputs go to mockup/data/barnard/.
 """
