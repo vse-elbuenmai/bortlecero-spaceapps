@@ -49,3 +49,5 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [FastAPI (`fastapi`)](https://fastapi.tiangolo.com/), [Uvicorn (`uvicorn`)](https://www.uvicorn.org/), & [Pydantic (`pydantic`)](https://docs.pydantic.dev/) | MIT / BSD-3-Clause | Typed domain models, DTO serialization, and CORS-enabled REST API for frontend consumption | 2026-11-14 |
 | [HTTPX (`httpx`)](https://www.python-httpx.org/) & [Pillow (`pillow`)](https://python-pillow.org/) | BSD-3-Clause / MIT-CMU | HTTP client for IRSA/SIMBAD requests and arcsinh-stretched PNG frame rendering | 2026-11-14 |
 | [Pytest (`pytest`)](https://docs.pytest.org/) & [Ruff (`ruff`)](https://docs.astral.sh/ruff/) | MIT | Automated unit/integration testing and static analysis | 2026-11-14 |
+| [GitHub Actions (`actions/checkout`, `actions/setup-python`)](https://github.com/actions) | MIT | Standard continuous integration workflow execution actions | 2026-11-14 |
+| [Astral `setup-uv` Action](https://github.com/astral-sh/setup-uv) | Apache-2.0 / MIT | GitHub Action to set up Astral `uv` binary and dependency cache in CI runners | 2026-11-14 |
