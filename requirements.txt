@@ -1,0 +1,8 @@
+# Only what the project's Python code actually imports (versions tested on 2026-11-14).
+astropy>=8.0.2
+astroquery>=0.4.11
+numpy>=2.5
+matplotlib>=3.11
+photutils>=3.1.1
+reproject>=0.21.0
+scipy>=1.18  # needed by photutils' centroid_2dg (model fitting)

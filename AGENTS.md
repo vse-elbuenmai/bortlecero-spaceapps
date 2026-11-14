@@ -12,7 +12,10 @@ R Draconis.
 
 ## Estado (sáb 14 nov 2026, arranque)
 
-- Repo recién creado: sólo este contrato y las dos bitácoras de `docs/`.
+- Repo recién creado: este contrato, las dos bitácoras de `docs/` y `DESIGN.md`.
+- **`mockup/`** (rama `claude/mockup-barnard`): un mockup del visor con tres fotos reales de Barnard
+  y su script de preparación. Sirve para ver la idea con datos; **no fija el stack ni la arquitectura**.
+  Cómo correrlo: [mockup/README.md](mockup/README.md).
 - **Stack, arquitectura y alcance: sin decidir.** Los decide el equipo. Cuando se decidan, se
   escriben aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que
   los introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.

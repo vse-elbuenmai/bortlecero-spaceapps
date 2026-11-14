@@ -1,0 +1,11 @@
+# Downloads from IRSA (FITS cutouts) never go into git.
+.cache/
+*.fits
+*.part
+
+# Python
+__pycache__/
+.venv/
+
+# Local tooling
+.playwright-mcp/
