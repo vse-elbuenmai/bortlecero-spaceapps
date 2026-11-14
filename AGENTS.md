@@ -66,13 +66,17 @@ Romperlas puede costar la nominación o el premio. Detalle y enlaces oficiales e
    defecto de Space Apps).
 7. **Código propio anterior:** no copiar de los sitios de Bortle Cero mientras el GO Team no conteste
    la pregunta [#1924](https://github.com/nasa/spaceapps/discussions/1924). Si Miguel decide
-   reutilizar algo, que sea poco y vaya citado como trabajo previo.
+   reutilizar algo, que sea poco y vaya citado como trabajo previo. **Decidido el 14 nov:** se
+   reutilizan los valores y reglas del design system Noir Cósmico v2, adaptados en
+   [DESIGN.md](DESIGN.md) y citados en `docs/SOURCES.md`. El código de esos sitios sigue sin copiarse.
 8. **No abrir ni copiar repos de otros equipos** del reto (hay varios «spherex-blink» en GitHub,
    algunos empezados antes del hackatón).
 9. **Todo lo que ve el público va en inglés:** interfaz, README, página del proyecto, slides. Nada
    que muestre a menores de 18 años.
 10. **Demo:** video de 30 s como máximo (subtítulos en inglés si se habla español) o hasta 7 slides.
     Pasarse del límite deja al proyecto fuera del juicio global.
+11. **Diseño:** toda interfaz sigue [DESIGN.md](DESIGN.md). Lo que no esté ahí se decide en equipo y
+    se añade ahí en el mismo commit.
 
 El jurado puntúa de 1 a 5: Impact, Creativity, Validity, Relevance y Presentation.
 
@@ -116,9 +120,10 @@ vivo antes de apoyarte en él.
   `D:\dev\lab\.venvs\astro` (Python 3.14 con uv; astropy, pyvo, astroquery, reproject, photutils,
   matplotlib, s3fs, ipyaladin). Prueba:
   `D:\dev\lab\.venvs\astro\Scripts\python -c "import astropy; print(astropy.__version__)"`.
-- Para repetirlo en otra máquina:
+- Para repetirlo en otra máquina (los mismos comandos en PowerShell y en bash; en Linux el
+  intérprete queda en `.venv/bin/python`, en Windows en `.venv\Scripts\python`):
 
-  ```powershell
+  ```sh
   uv python install 3.14
   uv venv .venv --python 3.14 --managed-python
   uv pip install --python .venv -r requirements.txt
@@ -135,14 +140,23 @@ vivo antes de apoyarte en él.
 - **Idioma:** con Miguel, español y lenguaje simple. Es desarrollador web y astrofotógrafo, no
   físico ni programador de Python: tiene que entender lo que se construye para defenderlo ante el
   jurado. Explica la ciencia con analogías de desarrollo web o de astrofotografía.
-- **Ramas:** `main` siempre funciona y está pusheado; nadie commitea directo a `main`. Se trabaja en
-  `claude/<tema>`, `codex/<tema>` o `wip/<tema>` y se fusiona con `--no-ff`.
+- **Ramas:** `main` siempre funciona y está pusheado; nadie commitea directo a `main`. Cada persona
+  trabaja en su rama (`<nombre>/<tema>`; los agentes en `claude/<tema>`, `codex/<tema>` o
+  `wip/<tema>`) y entra a `main` por pull request, fusionando con `--no-ff`.
+- **Windows y Linux:** el equipo usa los dos. Todo comando que se documente aquí tiene que correr en
+  ambos (o venir en sus dos versiones); en el código, rutas relativas con `/` o `pathlib`, nunca
+  rutas absolutas de una máquina. `.gitattributes` guarda el texto con finales LF; no cambies
+  `core.autocrlf` para saltártelo.
 - **Relevo entre Claude Code y Codex:** por git, con el protocolo de `~/.agent-shared/relevo.md`.
   `RELEVO.md` se crea en la raíz en el primer relevo; si existe, léelo al entrar.
 - **Validez científica:** lo que la herramienta muestre se comprueba contra una medida conocida
   (Gaia DR3, SIMBAD). Si Barnard no se mueve lo que dice Gaia, hay un error.
 - **El estado externo se verifica en vivo** (enunciado, reglas, IRSA, versiones de librerías), no
   desde notas.
+- **Wiki del equipo (público):** [bortlecero-spherex-wiki](https://github.com/vse-elbuenmai/bortlecero-spherex-wiki):
+  la misión, los datos, los cinco objetos, las trampas, las citas y un glosario, con fuente y fecha en
+  cada dato. Es la primera parada para dudas de SPHEREx. No decide la solución, y lo que caduca se
+  verifica en vivo. En la entrega se cita la fuente original, no el wiki.
 - **Material de consulta, local y privado, en la laptop de Miguel:**
   `D:\dev\lab\bortlecero-preparacion-space-apps\` (su `CLAUDE.md`, `SPHEREX.md` y `biblioteca/`: las
   citas listas para pegar están en `biblioteca/00-arranque-sabado.md` §6 y
