@@ -34,6 +34,7 @@ htmlcov/
 *.fts
 *.fits.gz
 *.parquet
+*.part
 .cache/
 data/raw/
 data/cache/
@@ -49,6 +50,5 @@ notes/
 *.swp
 .env
 
-# Interrupted downloads and local browser tooling
-*.part
+# Local tooling
 .playwright-mcp/

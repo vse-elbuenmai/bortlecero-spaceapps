@@ -12,10 +12,11 @@ R Draconis.
 
 ## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
 
+- **`mockup/`** (rama `claude/mockup-barnard` y `claude/esfera-viaje`): visor estático con fotos reales de Barnard y prototipo de la esfera del cielo (`mockup/sky.js` con Aladin Lite 3.8.2 e IRSA). Cómo correrlo: [mockup/README.md](mockup/README.md).
 - **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
   - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
   - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
-- **Comandos del Pipeline de Ingesta (`uv`):**
+- **Comandos con Astral `uv`:**
   ```bash
   # 1. Crear entorno e instalar dependencias
   uv venv --python 3.14 .venv
@@ -31,15 +32,11 @@ R Draconis.
 
   # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
   uv run spherex-ingest serve --host 0.0.0.0 --port 8000
+
+  # 5. Correr script de preparación y servidor de mockup
+  uv run python mockup/prepare_barnard.py
+  uv run python -m http.server 8765 --directory mockup
   ```
-- **`mockup/`:** un mockup del visor con tres fotos reales de Barnard y su script de preparación.
-  Sirve para ver la idea con datos; **no fija la arquitectura** y todavía no usa la pipeline de
-  ingesta. Cómo correrlo: [mockup/README.md](mockup/README.md).
-- **Esfera del cielo** (rama `claude/esfera-viaje`, `mockup/sky.js`): prototipo de la idea de
-  Miguel. El cielo gira (Aladin Lite 3.8.2 con mapas de IRSA), el buscador de RA/Dec viaja a las
-  coordenadas y al llegar a Barnard se abre el panel. Igual que el resto del mockup, no fija nada.
-  Lo que se probó de Aladin (capas del cubo de SPHEREx, falso color, recortes por WCS) está en
-  [mockup/README.md](mockup/README.md).
 - **Frontend y despliegue: sin decidir.** Los decide el equipo. Cuando se decidan, se escriben
   aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que los
   introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
@@ -149,7 +146,6 @@ vivo antes de apoyarte en él.
   ```
 
   `requirements.txt` lo genera `uv` desde `pyproject.toml` (`uv pip compile`): no se edita a mano.
-  El script del mockup (`mockup/prepare_barnard.py`) usa además matplotlib, que no está ahí.
 - **Datos pesados fuera de git:** ningún FITS ni descarga de IRSA se commitea. En la laptop de Miguel
   hay archivos de estudio en `D:\dev\lab\datos-spherex\`.
 - Node, git, `gh` y Vercel CLI están instalados; `gh` y Vercel tienen sesión como `vse-elbuenmai`.
