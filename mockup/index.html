@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="mockup.css">
 </head>
 <body>
-  <a class="skip" href="#viewer">Skip to viewer</a>
+  <a class="skip" href="#search-form">Skip to search</a>
 
   <header class="site-header">
     <div class="container header-row">
@@ -18,7 +18,7 @@
         <span class="brand-project">Project name TBD</span>
       </div>
       <nav aria-label="Main">
-        <a href="#viewer" aria-current="page">Viewer</a>
+        <a href="#sky" aria-current="page">Viewer</a>
         <a href="#how">How it works</a>
         <a href="#sources">Sources</a>
       </nav>
@@ -27,13 +27,23 @@
 
   <div class="mock-banner" role="note">
     <div class="container">
-      <strong>Mockup.</strong> Real SPHEREx data for Barnard's Star, prepared offline. Search and the
-      other test objects are placeholders.
+      <strong>Mockup.</strong> The sky map is live. Only Barnard's Star has prepared SPHEREx frames;
+      any other position shows the map and nothing to blink.
     </div>
   </div>
 
-  <main class="container">
-    <section class="search" aria-labelledby="search-title">
+  <main id="main" class="container">
+    <section id="sky" class="sky" aria-labelledby="search-title">
+      <div class="sky-stage">
+        <div id="sky-view" class="sky-view"
+             aria-label="Sky map. Drag to turn the sky, scroll or pinch to zoom."></div>
+        <p id="sky-loading" class="sky-loading" role="status">Loading the sky map…</p>
+        <div class="hud hud-tl" aria-hidden="true"><span id="sky-coords"></span></div>
+        <button id="spin-toggle" class="icon-btn sky-spin" type="button"
+                aria-label="Pause rotation" aria-pressed="true">❚❚</button>
+      </div>
+      <p id="sky-credit" class="sky-caption"></p>
+
       <h1 id="search-title" class="eyebrow">Look at any patch of sky</h1>
       <form id="search-form" class="search-row" novalidate>
         <div class="field">
@@ -48,19 +58,26 @@
                  placeholder="+4.7394 or +04°44′22″" aria-describedby="dec-err">
           <p id="dec-err" class="field-error" hidden></p>
         </div>
-        <button class="btn btn-primary" type="submit">Show the sky</button>
+        <button class="btn btn-primary" type="submit">Go there</button>
       </form>
       <div class="chips" role="group" aria-label="Test objects">
-        <button class="chip is-active" type="button" data-object="barnard" aria-pressed="true">Barnard's Star</button>
+        <button class="chip" type="button" data-object="barnard" aria-pressed="false">Barnard's Star</button>
         <button class="chip" type="button" data-object="epsindib" aria-pressed="false">Epsilon Indi B</button>
         <button class="chip" type="button" data-object="wise0855" aria-pressed="false">WISE 0855−0714</button>
         <button class="chip" type="button" data-object="rwaur" aria-pressed="false">RW Aurigae</button>
         <button class="chip" type="button" data-object="rdra" aria-pressed="false">R Draconis</button>
       </div>
+      <div class="chips" role="group" aria-label="Sky layer">
+        <span class="chips-label">Sky layer</span>
+        <button class="chip is-active" type="button" data-layer="visible" aria-pressed="true">Visible light</button>
+        <button class="chip" type="button" data-layer="spherex" aria-pressed="false">SPHEREx 4.77 µm</button>
+        <button class="chip" type="button" data-layer="colour" aria-pressed="false">SPHEREx false colour</button>
+      </div>
       <p id="search-msg" class="search-msg" role="status" hidden></p>
+      <button id="back-to-sky" class="btn btn-secondary" type="button" hidden>← Back to the whole sky</button>
     </section>
 
-    <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer">
+    <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
       <div class="viewer-main">
         <div id="stage" class="stage" tabindex="0"
              aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
@@ -142,7 +159,7 @@
       </aside>
     </section>
 
-    <section id="how" class="how" aria-labelledby="how-title">
+    <section id="how" class="how" aria-labelledby="how-title" hidden>
       <h2 id="how-title" class="h2">How this frame was made</h2>
       <ol>
         <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover the star (DR1 + QR3).</li>
@@ -160,10 +177,13 @@
     <div class="container">
       <p id="credit">Data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
         SPHEREx DR1: doi:10.26131/IRSA678. Astrometry: ESA Gaia DR3.</p>
+      <p>Sky map: Aladin Lite (CDS, Strasbourg Observatory) with the SPHEREx DR1 all-sky cube and
+        the DSS2 colour survey (STScI/NASA, coloured by CDS), both served by IRSA.</p>
       <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0 · Mockup.</p>
     </div>
   </footer>
 
   <script src="mockup.js"></script>
+  <script type="module" src="sky.js"></script>
 </body>
 </html>

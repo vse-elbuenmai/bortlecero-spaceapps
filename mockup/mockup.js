@@ -204,28 +204,17 @@
     if (keys[e.key] && !(e.target.type === "range")) { e.preventDefault(); keys[e.key](); }
   });
 
-  // Placeholders for the parts the team has not built yet.
-  document.querySelectorAll(".chip").forEach((chip) => chip.addEventListener("click", () => {
-    const msg = $("search-msg");
-    if (chip.dataset.object === "barnard") { msg.hidden = true; return; }
-    msg.hidden = false;
-    msg.textContent = `${chip.textContent} is not prepared in this mockup yet. Showing Barnard's Star.`;
-  }));
-  $("search-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const dec = $("dec"), err = $("dec-err"), v = parseFloat(dec.value);
-    const bad = dec.value.trim() !== "" && (Number.isNaN(v) || v < -90 || v > 90);
-    dec.setAttribute("aria-invalid", String(bad));
-    err.hidden = !bad;
-    err.textContent = bad ? "⚠ Dec must be between −90° and +90°" : "";
-    if (!bad) {
-      const msg = $("search-msg");
-      msg.hidden = false;
-      msg.textContent = "Live search is not wired up in this mockup. Showing Barnard's Star.";
-    }
+  // The search and the trip across the sky live in sky.js. It opens this viewer on arrival
+  // (the section is hidden until then) and closes it when the person goes back to the sky.
+  document.addEventListener("viewer:open", () => {
+    if (!state.meta) return;
+    show(0);
+    layout();
+    if (!reduceMotion) setPlaying(true); // with reduced motion it waits for the person
   });
+  document.addEventListener("viewer:close", () => setPlaying(false));
 
-  window.addEventListener("resize", () => state.meta && layout());
+  window.addEventListener("resize", () => state.meta && !$("viewer").hidden && layout());
 
   // ---------- start ----------
   fetch(DATA_DIR + "frames.json")
@@ -237,9 +226,9 @@
       buildTimeline();
       summary();
       show(0);
-      layout();
       $("loading").hidden = true;
-      if (!reduceMotion) setPlaying(true); // with reduced motion it waits for the person
+      // If the viewer was opened before the frames arrived, start it now.
+      if (!$("viewer").hidden) document.dispatchEvent(new CustomEvent("viewer:open"));
     })
     .catch(() => {
       $("loading").querySelector("p").textContent =

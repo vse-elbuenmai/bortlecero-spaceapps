@@ -16,6 +16,11 @@ R Draconis.
 - **`mockup/`** (rama `claude/mockup-barnard`): un mockup del visor con tres fotos reales de Barnard
   y su script de preparación. Sirve para ver la idea con datos; **no fija el stack ni la arquitectura**.
   Cómo correrlo: [mockup/README.md](mockup/README.md).
+- **Esfera del cielo** (rama `claude/esfera-viaje`, `mockup/sky.js`): prototipo de la idea de
+  Miguel. El cielo gira (Aladin Lite 3.8.2 con mapas de IRSA), el buscador de RA/Dec viaja a las
+  coordenadas y al llegar a Barnard se abre el panel. Igual que el resto del mockup, no fija nada.
+  Lo que se probó de Aladin (capas del cubo de SPHEREx, falso color, recortes por WCS) está en
+  [mockup/README.md](mockup/README.md).
 - **Stack, arquitectura y alcance: sin decidir.** Los decide el equipo. Cuando se decidan, se
   escriben aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que
   los introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
@@ -98,6 +103,14 @@ vivo antes de apoyarte en él.
   6. **WISE 0855 no está donde dice el enunciado** (coordenadas de ~2010; hoy ≈ 133.760, −7.2422,
      unos 20 px al oeste), sólo se detecta por encima de 3.9 µm (bandas 5 y 6) y tiene una fuente
      fija igual de brillante a 29″ de la coordenada del enunciado.
+- **Aladin Lite 3.8.2 y SPHEREx** (probado el 14 nov; detalle en `mockup/README.md`):
+  1. El cubo `spherex_allsky_cube` es un **promedio**: sirve de fondo, no para parpadear.
+  2. Elegir una capa del cubo funciona (`setFrequency`); mezclar tres en RGB funciona sólo con dos
+     rodeos atados a esta versión. Antes de cambiar de versión hay que volver a probarlos.
+  3. Aladin **coloca mal el recorte tal como lo entrega IRSA** (WCS TAN-SIP): sin error y en otro
+     punto del cielo. Con el WCS reescrito como TAN simple lo coloca bien y endereza el giro de 180°.
+  4. La 3.8.2 se declara GPL-3 en su `package.json`; el equipo tiene que confirmar que encaja con
+     Apache 2.0 antes de la entrega.
 - **Pasadas por objeto:** Barnard 3, Epsilon Indi B 4, WISE 0855 3 (sólo en DR1), RW Aurigae 3,
   R Draconis casi continuo (campo profundo).
 

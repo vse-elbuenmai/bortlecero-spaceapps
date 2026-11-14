@@ -338,6 +338,26 @@ borde `--bc-acento` y `translateY(-3px)`.
 - Enlaces a «Sources», «AI usage», la licencia (Apache 2.0) y el repositorio.
 - «Built by team Bortle Cero for the NASA Space Apps Challenge 2026».
 
+### 7.11 Esfera del cielo (prototipo, pendiente de que el equipo lo confirme)
+
+La portada del visor: el cielo girando, el buscador que viaja a las coordenadas y, al llegar, el
+panel del §7.1. Sale de la prueba de `mockup/sky.js`; lo que sigue es lo que esa prueba aplica.
+
+- **Lienzo:** cuadrado y centrado en reposo (la proyección ortográfica llega a 180° de ancho, y en
+  un cuadrado se ve el globo entero), fondo `--bc-abismo`, radio 0. Al llegar pasa a una franja de
+  220 px de alto a todo el ancho y el panel aparece debajo.
+- **Sin controles propios de Aladin** (capas, proyección, rejilla, pantalla completa): los controles
+  son los del sistema. El logo de Aladin se queda, es su crédito.
+- **Giro en reposo:** 2° por segundo. Lleva botón de pausa de 44 × 44 (WCAG 2.2.2) y se detiene en
+  cuanto la persona toca el cielo. Con `prefers-reduced-motion` no gira y el viaje es un salto.
+- **Viaje:** girar (2.5 s) y luego acercar (2.5 s). Desde un acercamiento, primero se aleja.
+- **Pie del lienzo, siempre visible:** qué mapa se está viendo y de qué fechas, en `--bc-fs-sm` /
+  `--bc-muted`. El mapa de la esfera es un promedio y las fotos del panel tienen fecha: el texto lo
+  dice.
+- **Capas del cielo:** chips del §7.5, uno activo. El falso color es la única imagen a color del
+  sistema (excepción al §2.6) y su leyenda dice qué longitud de onda va en cada canal.
+- **Enlace de salto:** «Skip to search», porque el visor no existe hasta que se llega.
+
 ---
 
 ## 8. Accesibilidad

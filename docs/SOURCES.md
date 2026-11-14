@@ -20,6 +20,8 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | SPHEREx **QR3** Spectral Images, NASA/IPAC IRSA (collection `spherex_qr3`). DOI still to be looked up. | One cutout of Barnard's Star (2026-08-19, detector 6) in the mockup | 2026-11-14 |
 | IRSA services: SIA image search and the SPHEREx cutout service (`?center=…&size=…`) | Finding and downloading the images in `mockup/prepare_barnard.py` | 2026-11-14 |
 | [IRSA tutorials for SPHEREx](https://caltech-ipac.github.io/irsa-tutorials/) (`spherex_intro`, `spherex_cutouts`), Caltech/IPAC, BSD-3-Clause | The query, cutout URL and wavelength-at-a-pixel recipe (`WCS(..., key="W")`) used in `mockup/prepare_barnard.py`. Recipe followed, no notebook copied as-is. | 2026-11-14 |
+| SPHEREx DR1 all-sky data cube for visualization (HiPS, `ivo://IPAC/P/SPHEREx/DR1/cube`), SPHEREx Science Data Center, served by IRSA at `irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube` | The SPHEREx layers of the sky sphere prototype (`mockup/sky.js`): frames 95, 55 and 10 | 2026-11-14 |
+| IRSA's landing page for that HiPS cube (its page script, based on the CDS HiPSGen landing-page template) | The recipe to select one frame of a cube in Aladin Lite with `setFrequency`. Recipe followed, code written anew. | 2026-11-14 |
 
 Before submission, add IRSA's official acknowledgement text (from the SPHEREx and IRSA pages) here
 and in the page footer.
@@ -29,6 +31,8 @@ and in the page footer.
 | Source | Used for | Added |
 |---|---|---|
 | [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3) (ESA), source 4472832130942575872, live query of the [ESA Gaia archive](https://gea.esac.esa.int/archive/). Gaia Collaboration, Vallenari et al. 2023, A&A 674, A1. | Position, proper motion, parallax and radial velocity of Barnard's Star, propagated to each image date to predict where it should be | 2026-11-14 |
+| DSS2 colour survey as a HiPS (`ivo://CDS/P/DSS2/color`), copy served by IRSA. Digitized Sky Survey, STScI/NASA, coloured and HEALPixed by CDS; Lasker et al. 1996, ASPC 101, 88. | Visible-light background of the sky sphere prototype. Its full acknowledgement text (in the HiPS `properties` file) goes in the footer before submission. | 2026-11-14 |
+| [SIMBAD](https://simbad.harvard.edu/simbad/) (CDS; Wenger et al. 2000, A&AS 143, 9), queried through the mirror at Harvard on 2026-11-14 | Epoch-2000 positions of Epsilon Indi B, WISE 0855−0714, RW Aurigae and R Draconis in `mockup/sky.js` | 2026-11-14 |
 
 ## Prior work by the team
 
@@ -48,3 +52,4 @@ and in the page footer.
 | [photutils](https://github.com/astropy/photutils) 3.1 | BSD-3-Clause | Measuring the star's centroid (`centroid_2dg`) | 2026-11-14 |
 | [NumPy](https://numpy.org/), [SciPy](https://scipy.org/) | BSD-3-Clause | Array math; SciPy is used by the centroid fit | 2026-11-14 |
 | [Matplotlib](https://matplotlib.org/) | Matplotlib License (BSD-compatible) | Writing the grayscale and flag PNGs | 2026-11-14 |
+| [Aladin Lite](https://github.com/cds-astro/aladin-lite) 3.8.2 (CDS, Strasbourg Observatory; Boch & Fernique 2014, ASPC 485, 277; Baumann et al. 2022, ASPC 532, 7), loaded unmodified from [jsDelivr](https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js) | GPL-3 according to the `package.json` of 3.8.2 (the package ships both `COPYING` and `COPYING.LESSER`; 3.9.2-beta declares LGPL-3.0-or-later). The team has to confirm this fits an Apache 2.0 project before submission. | The sky sphere, the trip to the coordinates and the sky layers in `mockup/sky.js` | 2026-11-14 |
