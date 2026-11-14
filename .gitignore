@@ -1,11 +1,54 @@
-# Downloads from IRSA (FITS cutouts) never go into git.
-.cache/
-*.fits
-*.part
-
-# Python
-__pycache__/
+# Python & uv
 .venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Local tooling
+# Testing & linting
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Heavy astronomical data & local caches (per AGENTS.md: never commit FITS or IRSA downloads)
+*.fits
+*.fit
+*.fts
+*.fits.gz
+*.parquet
+.cache/
+data/raw/
+data/cache/
+output/
+
+# Local study notes / PDFs
+notes/
+
+# OS & IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.env
+
+# Interrupted downloads and local browser tooling
+*.part
 .playwright-mcp/

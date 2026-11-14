@@ -24,8 +24,13 @@ python -m http.server 8765 --directory mockup
 # open http://127.0.0.1:8765/
 ```
 
-Use the project's Python (`.venv/bin/python` on Linux, `.venv\Scripts\python` on Windows, or the
-shared `D:\dev\lab\.venvs\astro` on Miguel's laptop). Any static server works for step 2.
+Any static server works for step 2.
+
+**Step 1 does not run in the project's environment.** `prepare_barnard.py` imports matplotlib, which
+is not a dependency of the `spherex-ingest` package (`pyproject.toml`). The script stays as it was
+written for the mockup; the PNGs and `frames.json` it produced are committed, and the team's
+ingestion pipeline (`src/spherex_ingest/`) is what the final product uses. To run it anyway, use an
+environment that also has matplotlib (`uv run --with matplotlib python mockup/prepare_barnard.py`).
 
 ## What the data shows (run of 2026-11-14)
 

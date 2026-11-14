@@ -1,0 +1,39 @@
+name: "CI / test (pull_request)"
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: "Pytest (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Astral uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies and package
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
+
+      - name: Run automated test suite with coverage
+        run: uv run pytest --cov=spherex_ingest --cov-report=term-missing

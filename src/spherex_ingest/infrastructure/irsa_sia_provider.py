@@ -1,0 +1,348 @@
+"""IRSA SIAv2 & On-The-Fly Cutout provider for SPHEREx Level 2b FITS exposures.
+
+Queries NASA/IPAC Infrared Science Archive (IRSA) Simple Image Access v2 (`pyvo.dal.SIA2Service`)
+in `spherex_dr1`, `spherex_qr3`, `spherex_dr1_deep`, and `spherex_qr3_deep` collections
+(explicitly blocking deprecated `spherex_qr2` per AGENTS.md), downloads server-side spatial
+cutouts, caches FITS files locally, and parses them via `SPHERExMEFParser`.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import logging
+import re
+import time
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pyvo
+from astropy.io import fits
+from astropy.table import Table
+
+from spherex_ingest.domain.models import RawCutoutFrame, TargetSpec
+from spherex_ingest.infrastructure.mef_parser import SPHERExMEFParser
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
+
+
+class IRSASiaCutoutProvider:
+    """Fetches SPHEREx Level 2b cutouts from IRSA SIAv2 with local disk caching and retry."""
+
+    def __init__(
+        self,
+        sia_url: str = DEFAULT_IRSA_SIA_URL,
+        cache_dir: Path = Path(".cache/fits"),
+        parser: SPHERExMEFParser | None = None,
+        timeout_sec: float = 45.0,
+        max_retries: int = 3,
+    ) -> None:
+        self.sia_url = sia_url
+        self.cache_dir = Path(cache_dir)
+        self.parser = parser or SPHERExMEFParser()
+        self.timeout_sec = timeout_sec
+        self.max_retries = max_retries
+
+    @staticmethod
+    def validate_collections(collections: tuple[str, ...] | list[str]) -> None:
+        """Ensure deprecated QR2 collections are never queried (per AGENTS.md)."""
+        for coll in collections:
+            if "qr2" in coll.lower():
+                raise ValueError(
+                    f"Collection '{coll}' is forbidden: SPHEREx QR2 is superseded by DR1 "
+                    "and must never be queried alongside DR1/QR3."
+                )
+
+    def fetch_cutouts(
+        self,
+        target: TargetSpec,
+        max_frames_per_collection: int | None = None,
+    ) -> list[RawCutoutFrame]:
+        """Discover and retrieve raw SPHEREx Level 2b cutouts covering the target coordinates."""
+        self.validate_collections(target.collections)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Propagate catalog coordinates to mid-SPHEREx survey (MJD 61000 ~ Nov 2025)
+        # so high-proper-motion stars (e.g., Barnard's Star) are centered in the cutout.
+        from spherex_ingest.processors.kinematics import KinematicsAndPhotometryAnalyzer
+
+        query_ra_deg, query_dec_deg = KinematicsAndPhotometryAnalyzer().propagate_position(
+            target, mjd=61000.0
+        )
+
+        sia_service = pyvo.dal.SIA2Service(self.sia_url, check_baseurl=False)
+        seen_filenames: set[str] = set()
+        frames: list[RawCutoutFrame] = []
+
+        with httpx.Client(timeout=self.timeout_sec, follow_redirects=True) as client:
+            for collection in target.collections:
+                logger.info(
+                    "Querying IRSA SIAv2 collection='%s' at RA=%.6f, Dec=%.6f",
+                    collection,
+                    query_ra_deg,
+                    query_dec_deg,
+                )
+                try:
+                    candidates = self._query_collection(
+                        sia_service=sia_service,
+                        collection=collection,
+                        ra_deg=query_ra_deg,
+                        dec_deg=query_dec_deg,
+                        seen_filenames=seen_filenames,
+                        max_frames=max_frames_per_collection,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "SIAv2 query failed for collection '%s' after retries: %s",
+                        collection,
+                        exc,
+                    )
+                    continue
+
+                for cand in candidates:
+                    cutout_url = self.build_cutout_url(
+                        base_access_url=cand["access_url"],
+                        ra_deg=query_ra_deg,
+                        dec_deg=query_dec_deg,
+                        size_arcsec=target.cutout_size_arcsec,
+                    )
+                    try:
+                        frame = self._download_and_parse(
+                            client=client,
+                            cutout_url=cutout_url,
+                            base_filename=cand["filename"],
+                            collection=collection,
+                            target_ra_deg=query_ra_deg,
+                            target_dec_deg=query_dec_deg,
+                        )
+                        frames.append(frame)
+                    except Exception as exc:
+                        logger.warning(
+                            "Skipping failed cutout '%s' from %s: %s",
+                            cand["filename"],
+                            collection,
+                            exc,
+                        )
+
+        frames.sort(key=lambda f: (f.mjd_avg, f.detector_band))
+        return frames
+
+    def _execute_sia_table_with_retry(
+        self,
+        sia_service: pyvo.dal.SIA2Service,
+        collection: str,
+        ra_deg: float,
+        dec_deg: float,
+    ) -> Table:
+        """Execute SIAv2 search with local VOTable caching and exponential backoff retries."""
+        cache_file = (
+            self.cache_dir
+            / f"sia_{collection}_{ra_deg:.4f}_{dec_deg:+.4f}.vot".replace("+", "p").replace(
+                "-", "m"
+            )
+        )
+        if cache_file.is_file() and cache_file.stat().st_size > 0:
+            try:
+                from astropy.io.votable import parse_single_table
+
+                return parse_single_table(io.BytesIO(cache_file.read_bytes())).to_table(
+                    use_names_over_ids=True
+                )
+            except Exception:
+                pass
+
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                pos_param = f"CIRCLE {ra_deg:.4f} {dec_deg:.4f} 0.01"
+                resp = httpx.get(
+                    self.sia_url,
+                    params={"POS": pos_param, "COLLECTION": collection},
+                    timeout=self.timeout_sec,
+                    follow_redirects=True,
+                )
+                resp.raise_for_status()
+                from astropy.io.votable import parse_single_table
+
+                vot_table = parse_single_table(io.BytesIO(resp.content))
+                table = vot_table.to_table(use_names_over_ids=True)
+                try:
+                    cache_file.write_bytes(resp.content)
+                except Exception:
+                    pass
+                return table
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    delay = 1.5 * attempt
+                    logger.warning(
+                        "SIAv2 attempt %d/%d for '%s' failed (%s); retrying in %.1fs...",
+                        attempt,
+                        self.max_retries,
+                        collection,
+                        exc,
+                        delay,
+                    )
+                    time.sleep(delay)
+
+        assert last_exc is not None
+        raise last_exc
+
+    def _query_collection(
+        self,
+        sia_service: pyvo.dal.SIA2Service,
+        collection: str,
+        ra_deg: float,
+        dec_deg: float,
+        seen_filenames: set[str],
+        max_frames: int | None,
+    ) -> list[dict[str, Any]]:
+        """Query a single SIAv2 collection, filter science FITS, deduplicate, and select epochs."""
+        table = self._execute_sia_table_with_retry(
+            sia_service=sia_service,
+            collection=collection,
+            ra_deg=ra_deg,
+            dec_deg=dec_deg,
+        )
+        if len(table) == 0:
+            return []
+
+        col_names = set(table.colnames)
+        rows: list[dict[str, Any]] = []
+
+        for row in table:
+            if "dataproduct_subtype" in col_names:
+                subtype = str(row["dataproduct_subtype"]).strip().lower()
+                if subtype and subtype != "science":
+                    continue
+
+            access_url = str(row["access_url"]).strip()
+            if not access_url or ".fits" not in access_url.lower():
+                continue
+
+            base_url = access_url.split("?")[0]
+            filename = base_url.rsplit("/", 1)[-1]
+            if filename in seen_filenames:
+                continue
+
+            t_min = (
+                float(row["t_min"])
+                if "t_min" in col_names and row["t_min"] is not None
+                else 0.0
+            )
+            band = self._infer_band_from_row_or_filename(row, col_names, filename)
+
+            rows.append(
+                {
+                    "access_url": access_url,
+                    "filename": filename,
+                    "t_min": t_min,
+                    "band": band,
+                }
+            )
+
+        rows.sort(key=lambda r: (r["t_min"], r["band"], r["filename"]))
+
+        if max_frames is not None and len(rows) > max_frames:
+            rows = self._select_balanced_subset(rows, max_frames)
+
+        for r in rows:
+            seen_filenames.add(r["filename"])
+
+        return rows
+
+    @staticmethod
+    def _infer_band_from_row_or_filename(
+        row: Any,
+        col_names: set[str],
+        filename: str,
+    ) -> int:
+        """Infer SPHEREx detector band (1..6) from SIA row metadata or filename pattern."""
+        match = re.search(r"[_-]D([1-6])[_.-]", filename, flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        if "energy_bandpassname" in col_names and row["energy_bandpassname"] is not None:
+            bp = str(row["energy_bandpassname"])
+            digits = re.findall(r"[1-6]", bp)
+            if digits:
+                return int(digits[-1])
+        return 1
+
+    @staticmethod
+    def _select_balanced_subset(
+        rows: list[dict[str, Any]],
+        max_frames: int,
+    ) -> list[dict[str, Any]]:
+        """Select a temporally spread subset across early and late epochs when capped."""
+        if len(rows) <= max_frames:
+            return rows
+        indices = [
+            int(round(i * (len(rows) - 1) / max(1, max_frames - 1))) for i in range(max_frames)
+        ]
+        seen_idx: set[int] = set()
+        selected: list[dict[str, Any]] = []
+        for idx in indices:
+            if idx not in seen_idx:
+                seen_idx.add(idx)
+                selected.append(rows[idx])
+        return selected
+
+    @staticmethod
+    def build_cutout_url(
+        base_access_url: str,
+        ra_deg: float,
+        dec_deg: float,
+        size_arcsec: float,
+    ) -> str:
+        """Append IRSA cutout query parameters to an access_url."""
+        separator = "&" if "?" in base_access_url else "?"
+        return (
+            f"{base_access_url}{separator}"
+            f"center={ra_deg:.6f},{dec_deg:.6f}d&size={size_arcsec:.1f}arcsec"
+        )
+
+    def _download_and_parse(
+        self,
+        client: httpx.Client,
+        cutout_url: str,
+        base_filename: str,
+        collection: str,
+        target_ra_deg: float,
+        target_dec_deg: float,
+    ) -> RawCutoutFrame:
+        """Download cutout FITS (or load from local cache) and parse into RawCutoutFrame."""
+        url_hash = hashlib.sha256(cutout_url.encode("utf-8")).hexdigest()[:12]
+        stem = base_filename.replace(".fits", "")
+        cache_path = self.cache_dir / f"{stem}_{url_hash}.fits"
+
+        if cache_path.exists() and cache_path.stat().st_size > 0:
+            raw_bytes = cache_path.read_bytes()
+        else:
+            raw_bytes = b""
+            last_exc: Exception | None = None
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    response = client.get(cutout_url)
+                    response.raise_for_status()
+                    raw_bytes = response.content
+                    cache_path.write_bytes(raw_bytes)
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < self.max_retries:
+                        time.sleep(1.0 * attempt)
+            if not raw_bytes and last_exc is not None:
+                raise last_exc
+
+        with fits.open(io.BytesIO(raw_bytes), memmap=False) as hdul:
+            return self.parser.parse_hdulist(
+                hdul=hdul,
+                target_ra_deg=target_ra_deg,
+                target_dec_deg=target_dec_deg,
+                collection=collection,
+                source_url=cutout_url,
+                frame_id=stem,
+            )

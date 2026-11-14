@@ -10,27 +10,46 @@ imágenes de SPHEREx de ese trozo de cielo como un parpadeo, para notar lo que s
 brillo. Objetos de prueba: Estrella de Barnard, Epsilon Indi B, WISE 0855−0714, RW Aurigae y
 R Draconis.
 
-## Estado (sáb 14 nov 2026, arranque)
+## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
 
-- Repo recién creado: este contrato, las dos bitácoras de `docs/` y `DESIGN.md`.
-- **`mockup/`** (rama `claude/mockup-barnard`): un mockup del visor con tres fotos reales de Barnard
-  y su script de preparación. Sirve para ver la idea con datos; **no fija el stack ni la arquitectura**.
-  Cómo correrlo: [mockup/README.md](mockup/README.md).
+- **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
+  - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
+  - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
+- **Comandos del Pipeline de Ingesta (`uv`):**
+  ```bash
+  # 1. Crear entorno e instalar dependencias
+  uv venv --python 3.14 .venv
+  uv sync --extra dev
+
+  # 2. Correr pruebas automatizadas y linter
+  uv run pytest
+  uv run ruff check src/ tests/
+
+  # 3. Listar o descargar/procesar objetos de prueba de IRSA
+  uv run spherex-ingest list-benchmarks
+  uv run spherex-ingest ingest --target epsilon_indi_b --max-frames 12
+
+  # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
+  uv run spherex-ingest serve --host 0.0.0.0 --port 8000
+  ```
+- **`mockup/`:** un mockup del visor con tres fotos reales de Barnard y su script de preparación.
+  Sirve para ver la idea con datos; **no fija la arquitectura** y todavía no usa la pipeline de
+  ingesta. Cómo correrlo: [mockup/README.md](mockup/README.md).
 - **Esfera del cielo** (rama `claude/esfera-viaje`, `mockup/sky.js`): prototipo de la idea de
   Miguel. El cielo gira (Aladin Lite 3.8.2 con mapas de IRSA), el buscador de RA/Dec viaja a las
   coordenadas y al llegar a Barnard se abre el panel. Igual que el resto del mockup, no fija nada.
   Lo que se probó de Aladin (capas del cubo de SPHEREx, falso color, recortes por WCS) está en
   [mockup/README.md](mockup/README.md).
-- **Stack, arquitectura y alcance: sin decidir.** Los decide el equipo. Cuando se decidan, se
-  escriben aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que
-  los introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
+- **Frontend y despliegue: sin decidir.** Los decide el equipo. Cuando se decidan, se escriben
+  aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que los
+  introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
 - Prioridad acordada: **una demo desplegada que funcione antes que más funciones.**
 
 ## Reloj (hora de Guadalajara)
 
 | Cuándo | Qué |
 |---|---|
-| Sáb 14, ~14:00 | se congela el alcance: después sólo se termina lo empezado (Miguel lo confirma) |
+| Sáb 14, 20:00 | se congela el alcance: después sólo se termina lo empezado (Miguel lo movió de las 14:00 por los retrasos de la mañana) |
 | Sáb 14 y dom 15, 20:00 | cierra la sede; se sigue desde fuera |
 | Dom 15, ~21:00 | objetivo para enviar la entrega, con 3–4 horas reservadas para armarla |
 | Dom 15, 23:59 | límite en la plataforma; cuenta la última versión enviada |
@@ -129,8 +148,8 @@ vivo antes de apoyarte en él.
   uv pip install --python .venv -r requirements.txt
   ```
 
-  `requirements.txt` todavía no existe: se crea con el primer código de Python y lista **sólo lo que
-  el proyecto usa de verdad**.
+  `requirements.txt` lo genera `uv` desde `pyproject.toml` (`uv pip compile`): no se edita a mano.
+  El script del mockup (`mockup/prepare_barnard.py`) usa además matplotlib, que no está ahí.
 - **Datos pesados fuera de git:** ningún FITS ni descarga de IRSA se commitea. En la laptop de Miguel
   hay archivos de estudio en `D:\dev\lab\datos-spherex\`.
 - Node, git, `gh` y Vercel CLI están instalados; `gh` y Vercel tienen sesión como `vse-elbuenmai`.
@@ -153,6 +172,10 @@ vivo antes de apoyarte en él.
   (Gaia DR3, SIMBAD). Si Barnard no se mueve lo que dice Gaia, hay un error.
 - **El estado externo se verifica en vivo** (enunciado, reglas, IRSA, versiones de librerías), no
   desde notas.
+- **Wiki del equipo (público):** [bortlecero-spherex-wiki](https://github.com/vse-elbuenmai/bortlecero-spherex-wiki):
+  la misión, los datos, los cinco objetos, las trampas, las citas y un glosario, con fuente y fecha en
+  cada dato. Es la primera parada para dudas de SPHEREx. No decide la solución, y lo que caduca se
+  verifica en vivo. En la entrega se cita la fuente original, no el wiki.
 - **Material de consulta, local y privado, en la laptop de Miguel:**
   `D:\dev\lab\bortlecero-preparacion-space-apps\` (su `CLAUDE.md`, `SPHEREX.md` y `biblioteca/`: las
   citas listas para pegar están en `biblioteca/00-arranque-sabado.md` §6 y
