@@ -127,6 +127,10 @@ vivo antes de apoyarte en él.
   (Gaia DR3, SIMBAD). Si Barnard no se mueve lo que dice Gaia, hay un error.
 - **El estado externo se verifica en vivo** (enunciado, reglas, IRSA, versiones de librerías), no
   desde notas.
+- **Wiki del equipo (público):** [bortlecero-spherex-wiki](https://github.com/vse-elbuenmai/bortlecero-spherex-wiki):
+  la misión, los datos, los cinco objetos, las trampas, las citas y un glosario, con fuente y fecha en
+  cada dato. Es la primera parada para dudas de SPHEREx. No decide la solución, y lo que caduca se
+  verifica en vivo. En la entrega se cita la fuente original, no el wiki.
 - **Material de consulta, local y privado, en la laptop de Miguel:**
   `D:\dev\lab\bortlecero-preparacion-space-apps\` (su `CLAUDE.md`, `SPHEREX.md` y `biblioteca/`: las
   citas listas para pegar están en `biblioteca/00-arranque-sabado.md` §6 y
