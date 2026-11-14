@@ -50,13 +50,17 @@ Romperlas puede costar la nominación o el premio. Detalle y enlaces oficiales e
    defecto de Space Apps).
 7. **Código propio anterior:** no copiar de los sitios de Bortle Cero mientras el GO Team no conteste
    la pregunta [#1924](https://github.com/nasa/spaceapps/discussions/1924). Si Miguel decide
-   reutilizar algo, que sea poco y vaya citado como trabajo previo.
+   reutilizar algo, que sea poco y vaya citado como trabajo previo. **Decidido el 14 nov:** se
+   reutilizan los valores y reglas del design system Noir Cósmico v2, adaptados en
+   [DESIGN.md](DESIGN.md) y citados en `docs/SOURCES.md`. El código de esos sitios sigue sin copiarse.
 8. **No abrir ni copiar repos de otros equipos** del reto (hay varios «spherex-blink» en GitHub,
    algunos empezados antes del hackatón).
 9. **Todo lo que ve el público va en inglés:** interfaz, README, página del proyecto, slides. Nada
    que muestre a menores de 18 años.
 10. **Demo:** video de 30 s como máximo (subtítulos en inglés si se habla español) o hasta 7 slides.
     Pasarse del límite deja al proyecto fuera del juicio global.
+11. **Diseño:** toda interfaz sigue [DESIGN.md](DESIGN.md). Lo que no esté ahí se decide en equipo y
+    se añade ahí en el mismo commit.
 
 El jurado puntúa de 1 a 5: Impact, Creativity, Validity, Relevance y Presentation.
 

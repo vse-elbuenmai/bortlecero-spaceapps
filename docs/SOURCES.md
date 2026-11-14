@@ -25,7 +25,10 @@ release used.
 | Source | Used for | Added |
 |---|---|---|
 | Team study notes written before the hackathon (5–13 November 2026) by Miguel Castro with AI assistance (Claude). Private; study only, no project code. | The summary of the challenge, rules and data facts in `AGENTS.md` | 2026-11-14 |
+| «Noir Cósmico» v2 (2 October 2026), the design system Miguel Castro wrote for the Bortle Cero websites (e.g. [puenteestelar.bortlecero.com](https://puenteestelar.bortlecero.com/)) before the hackathon and unrelated to Space Apps. | Color palette, type scale, spacing, radii, motion and accessibility rules adapted in `DESIGN.md`. Values and rules only; no code copied from those sites. | 2026-11-14 |
 
 ## Software and libraries
 
-None yet.
+| Source | License | Used for | Added |
+|---|---|---|---|
+| [Space Grotesk](https://github.com/floriankarsten/space-grotesk), by Florian Karsten | SIL Open Font License 1.1 | Typeface of the interface, chosen in `DESIGN.md` (self-hosted; how it is installed is added here when it is) | 2026-11-14 |
