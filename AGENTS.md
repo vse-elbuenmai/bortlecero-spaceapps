@@ -12,7 +12,12 @@ R Draconis.
 
 ## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
 
-- **`mockup/`** (rama `claude/mockup-barnard` y `claude/esfera-viaje`): visor estático con fotos reales de Barnard y prototipo de la esfera del cielo (`mockup/sky.js` con Aladin Lite 3.8.2 e IRSA). Cómo correrlo: [mockup/README.md](mockup/README.md).
+- **`mockup/`** (rama `claude/esfera-viaje`): prototipo de la interfaz, sin compilación. El cielo
+  entero a pantalla completa visto desde dentro (mapas propios hechos con `prepare_sky.py`: NASA SVS
+  para la luz visible y el cubo de SPHEREx de IRSA), un buscador por nombre o RA/Dec que viaja a la
+  posición, y el visor de parpadeo en un diálogo, con tres fotos reales de Barnard. Todavía no usa
+  la pipeline de ingesta. La versión anterior con Aladin Lite queda como plan B (`aladin.html`).
+  Cómo correrlo y qué se comprobó: [mockup/README.md](mockup/README.md).
 - **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
   - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
   - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).

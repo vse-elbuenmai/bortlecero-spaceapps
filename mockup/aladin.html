@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blink Viewer Mockup (Aladin Lite version)</title>
+  <meta name="description" content="Mockup of the team's SPHEREx blink viewer with real Barnard's Star data.">
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <a class="skip" href="#search-form">Skip to search</a>
+
+  <header class="site-header">
+    <div class="container header-row">
+      <div class="brand">
+        <span class="brand-name">BORTLE CERO</span>
+        <span class="brand-sep" aria-hidden="true"></span>
+        <span class="brand-project">Project name TBD</span>
+      </div>
+      <nav aria-label="Main">
+        <a href="#sky" aria-current="page">Viewer</a>
+        <a href="#how">How it works</a>
+        <a href="#sources">Sources</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="mock-banner" role="note">
+    <div class="container">
+      <strong>Mockup.</strong> The sky map is live. Only Barnard's Star has prepared SPHEREx frames;
+      any other position shows the map and nothing to blink.
+    </div>
+  </div>
+
+  <main id="main" class="container">
+    <section id="sky" class="sky" aria-labelledby="search-title">
+      <div class="sky-stage">
+        <div id="sky-view" class="sky-view"
+             aria-label="Sky map. Drag to turn the sky, scroll or pinch to zoom."></div>
+        <p id="sky-loading" class="sky-loading" role="status">Loading the sky map…</p>
+        <div class="hud hud-tl" aria-hidden="true"><span id="sky-coords"></span></div>
+        <button id="spin-toggle" class="icon-btn sky-spin" type="button"
+                aria-label="Pause rotation" aria-pressed="true">❚❚</button>
+      </div>
+      <p id="sky-credit" class="sky-caption"></p>
+
+      <h1 id="search-title" class="eyebrow">Look at any patch of sky</h1>
+      <form id="search-form" class="search-row" novalidate>
+        <div class="field">
+          <label for="ra">RA</label>
+          <input id="ra" name="ra" inputmode="decimal" autocomplete="off"
+                 placeholder="269.4485 or 17h57m48.5s" aria-describedby="ra-err">
+          <p id="ra-err" class="field-error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="dec">Dec</label>
+          <input id="dec" name="dec" inputmode="decimal" autocomplete="off"
+                 placeholder="+4.7394 or +04°44′22″" aria-describedby="dec-err">
+          <p id="dec-err" class="field-error" hidden></p>
+        </div>
+        <button class="btn btn-primary" type="submit">Go there</button>
+      </form>
+      <div class="chips" role="group" aria-label="Test objects">
+        <button class="chip" type="button" data-object="barnard" aria-pressed="false">Barnard's Star</button>
+        <button class="chip" type="button" data-object="epsindib" aria-pressed="false">Epsilon Indi B</button>
+        <button class="chip" type="button" data-object="wise0855" aria-pressed="false">WISE 0855−0714</button>
+        <button class="chip" type="button" data-object="rwaur" aria-pressed="false">RW Aurigae</button>
+        <button class="chip" type="button" data-object="rdra" aria-pressed="false">R Draconis</button>
+      </div>
+      <div class="chips" role="group" aria-label="Sky layer">
+        <span class="chips-label">Sky layer</span>
+        <button class="chip is-active" type="button" data-layer="visible" aria-pressed="true">Visible light</button>
+        <button class="chip" type="button" data-layer="spherex" aria-pressed="false">SPHEREx 4.77 µm</button>
+        <button class="chip" type="button" data-layer="colour" aria-pressed="false">SPHEREx false colour</button>
+      </div>
+      <p id="search-msg" class="search-msg" role="status" hidden></p>
+      <button id="back-to-sky" class="btn btn-secondary" type="button" hidden>← Back to the whole sky</button>
+    </section>
+
+    <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
+      <div class="viewer-main">
+        <div id="stage" class="stage" tabindex="0"
+             aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
+          <div id="plate" class="plate">
+            <img id="frame-img" alt="" draggable="false">
+            <img id="flags-img" class="flags" alt="" draggable="false" hidden>
+            <svg id="overlay" class="overlay" aria-hidden="true"></svg>
+          </div>
+          <div class="hud hud-tl" aria-hidden="true"><span>N ↑</span><span>E ←</span></div>
+          <div class="hud hud-br" aria-hidden="true">
+            <span id="scalebar" class="scalebar"></span><span id="scalelabel"></span>
+          </div>
+          <div class="hud hud-tr" aria-hidden="true"><span id="hud-date"></span></div>
+          <div id="loading" class="loading" role="status">
+            <div class="progress"><span></span></div>
+            <p>Loading frames…</p>
+          </div>
+        </div>
+
+        <div class="controls" role="group" aria-label="Playback">
+          <button id="prev" class="icon-btn" type="button" aria-label="Previous frame">◀</button>
+          <button id="play" class="icon-btn" type="button" aria-label="Play" aria-pressed="false">▶</button>
+          <button id="next" class="icon-btn" type="button" aria-label="Next frame">▶❘</button>
+          <label class="speed">
+            <span>Speed</span>
+            <input id="speed" type="range" min="0.5" max="3" step="0.5" value="1">
+            <output id="speed-out" for="speed">1 fps</output>
+          </label>
+          <span class="controls-gap"></span>
+          <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out">−</button>
+          <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
+          <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in">+</button>
+          <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom">⟲</button>
+        </div>
+
+        <div class="timeline-wrap"><div class="timeline" role="group" aria-label="Dates">
+          <div class="timeline-track"></div>
+          <div id="timeline-dots"></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel" aria-label="Frame details">
+        <div class="panel-block">
+          <p class="eyebrow">Object</p>
+          <h2 id="obj-name" class="obj-name">Barnard's Star</h2>
+          <p id="obj-coords" class="mono"></p>
+        </div>
+
+        <div class="panel-block" id="frame-meta" aria-live="off">
+          <p class="eyebrow" id="frame-count">Frame</p>
+          <dl class="meta">
+            <div><dt>Date</dt><dd id="m-date"></dd></div>
+            <div><dt>Wavelength</dt><dd id="m-wave"></dd></div>
+            <div><dt>Detector</dt><dd id="m-det"></dd></div>
+            <div><dt>Release</dt><dd id="m-rel"></dd></div>
+            <div><dt>Position angle</dt><dd id="m-pa"></dd></div>
+            <div><dt>Measured vs Gaia</dt><dd id="m-off"></dd></div>
+          </dl>
+          <ul id="badges" class="badges"></ul>
+        </div>
+
+        <div class="panel-block result">
+          <p class="eyebrow">What moved</p>
+          <p id="summary"></p>
+        </div>
+
+        <div class="panel-block">
+          <p class="eyebrow">Legend</p>
+          <ul class="legend">
+            <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" class="mk-pred-halo"/><circle cx="12" cy="12" r="7" class="mk-pred"/></svg>Predicted (Gaia DR3)</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas-halo"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas"/></svg>Measured centroid</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18L21 6" class="mk-traj"/><circle cx="3" cy="18" r="2" class="mk-dot"/><circle cx="21" cy="6" r="2" class="mk-dot"/></svg>Path between dates</li>
+            <li>
+              <label class="toggle"><input id="flags-toggle" type="checkbox"> <span class="swatch-flag" aria-hidden="true"></span>Flagged pixels</label>
+            </li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+
+    <section id="how" class="how" aria-labelledby="how-title" hidden>
+      <h2 id="how-title" class="h2">How this frame was made</h2>
+      <ol>
+        <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover the star (DR1 + QR3).</li>
+        <li>Kept one image per visit, all seeing the star at nearly the same wavelength.</li>
+        <li>Removed the zodiacal light model and put every image on one grid with north up.
+          Two visits saw the sky rotated 180°; this undoes it.</li>
+        <li>Applied the same brightness stretch (asinh) to every frame, so blinking stays fair.</li>
+        <li>Moved Gaia DR3's position to each date (proper motion + parallax) and compared it
+          with the measured center of the star.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer id="sources" class="site-footer">
+    <div class="container">
+      <p id="credit">Data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
+        SPHEREx DR1: doi:10.26131/IRSA678. Astrometry: ESA Gaia DR3.</p>
+      <p>Sky map: Aladin Lite (CDS, Strasbourg Observatory) with the SPHEREx DR1 all-sky cube and
+        the DSS2 colour survey (STScI/NASA, coloured by CDS), both served by IRSA.</p>
+      <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0 · Mockup.</p>
+    </div>
+  </footer>
+
+  <script src="mockup.js"></script>
+  <script type="module" src="sky-aladin.js"></script>
+</body>
+</html>

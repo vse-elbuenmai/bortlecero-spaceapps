@@ -4,62 +4,82 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blink Viewer Mockup</title>
-  <meta name="description" content="Mockup of the team's SPHEREx blink viewer with real Barnard's Star data.">
+  <meta name="description" content="Mockup: the whole sky seen from inside, a search that travels to any position, and a SPHEREx blink viewer for Barnard's Star.">
   <link rel="stylesheet" href="mockup.css">
+  <link rel="stylesheet" href="sky.css">
 </head>
-<body>
+<body class="sky-app">
   <a class="skip" href="#search-form">Skip to search</a>
 
-  <header class="site-header">
-    <div class="container header-row">
+  <canvas id="sky-canvas" class="sky-canvas" tabindex="0"
+          aria-label="The whole sky seen from inside. Drag to look around, scroll or pinch to zoom. Arrow keys turn the view, plus and minus zoom."></canvas>
+  <p id="sky-fallback" class="sky-fallback" role="status">Loading the sky…</p>
+
+  <div id="reticle" class="reticle" hidden aria-hidden="true">
+    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" class="reticle-halo"/><circle cx="32" cy="32" r="22" class="reticle-ring"/></svg>
+    <span id="reticle-label" class="reticle-label"></span>
+  </div>
+
+  <header class="site-header sky-header">
+    <div class="header-row">
       <div class="brand">
         <span class="brand-name">BORTLE CERO</span>
         <span class="brand-sep" aria-hidden="true"></span>
         <span class="brand-project">Project name TBD</span>
       </div>
-      <nav aria-label="Main">
-        <a href="#sky" aria-current="page">Viewer</a>
-        <a href="#how">How it works</a>
-        <a href="#sources">Sources</a>
-      </nav>
+      <div class="header-actions">
+        <span class="tag-mock">Mockup</span>
+        <button id="credits-open" class="link-btn" type="button">Credits</button>
+      </div>
     </div>
   </header>
 
-  <div class="mock-banner" role="note">
-    <div class="container">
-      <strong>Mockup.</strong> The sky map is live. Only Barnard's Star has prepared SPHEREx frames;
-      any other position shows the map and nothing to blink.
+  <section class="sky-layers" aria-label="Sky layer">
+    <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
+    <div class="chips" role="group" aria-label="Sky layer">
+      <button class="chip is-active" type="button" data-layer="visible" aria-pressed="true">Visible light</button>
+      <button class="chip" type="button" data-layer="spherex" aria-pressed="false">SPHEREx 4.77 µm</button>
+      <button class="chip" type="button" data-layer="colour" aria-pressed="false">SPHEREx false colour</button>
     </div>
+    <p id="sky-credit" class="sky-caption"></p>
+  </section>
+
+  <div class="sky-tools" role="group" aria-label="Sky controls">
+    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in">+</button>
+    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out">−</button>
+    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" aria-pressed="true">❚❚</button>
+    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky">⟲</button>
   </div>
 
-  <main id="main" class="container">
-    <section id="sky" class="sky" aria-labelledby="search-title">
-      <div class="sky-stage">
-        <div id="sky-view" class="sky-view"
-             aria-label="Sky map. Drag to turn the sky, scroll or pinch to zoom."></div>
-        <p id="sky-loading" class="sky-loading" role="status">Loading the sky map…</p>
-        <div class="hud hud-tl" aria-hidden="true"><span id="sky-coords"></span></div>
-        <button id="spin-toggle" class="icon-btn sky-spin" type="button"
-                aria-label="Pause rotation" aria-pressed="true">❚❚</button>
-      </div>
-      <p id="sky-credit" class="sky-caption"></p>
-
-      <h1 id="search-title" class="eyebrow">Look at any patch of sky</h1>
-      <form id="search-form" class="search-row" novalidate>
+  <section id="search" class="journey glass" aria-labelledby="search-title">
+    <div class="journey-head">
+      <p class="eyebrow">01 / Your patch of sky</p>
+      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="search-body">Hide</button>
+    </div>
+    <div id="search-body">
+      <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
+      <form id="search-form" class="journey-form" novalidate>
+        <div class="field field-name">
+          <label for="name">Object name</label>
+          <input id="name" name="name" autocomplete="off" spellcheck="false"
+                 placeholder="Barnard's Star, Vega, M31" aria-describedby="name-err">
+        </div>
+        <span class="journey-or" aria-hidden="true">or</span>
         <div class="field">
           <label for="ra">RA</label>
           <input id="ra" name="ra" inputmode="decimal" autocomplete="off"
                  placeholder="269.4485 or 17h57m48.5s" aria-describedby="ra-err">
-          <p id="ra-err" class="field-error" hidden></p>
         </div>
         <div class="field">
           <label for="dec">Dec</label>
           <input id="dec" name="dec" inputmode="decimal" autocomplete="off"
                  placeholder="+4.7394 or +04°44′22″" aria-describedby="dec-err">
-          <p id="dec-err" class="field-error" hidden></p>
         </div>
-        <button class="btn btn-primary" type="submit">Go there</button>
+        <button class="btn btn-primary journey-go" type="submit">Go there</button>
       </form>
+      <p id="name-err" class="field-error" hidden></p>
+      <p id="ra-err" class="field-error" hidden></p>
+      <p id="dec-err" class="field-error" hidden></p>
       <div class="chips" role="group" aria-label="Test objects">
         <button class="chip" type="button" data-object="barnard" aria-pressed="false">Barnard's Star</button>
         <button class="chip" type="button" data-object="epsindib" aria-pressed="false">Epsilon Indi B</button>
@@ -67,15 +87,26 @@
         <button class="chip" type="button" data-object="rwaur" aria-pressed="false">RW Aurigae</button>
         <button class="chip" type="button" data-object="rdra" aria-pressed="false">R Draconis</button>
       </div>
-      <div class="chips" role="group" aria-label="Sky layer">
-        <span class="chips-label">Sky layer</span>
-        <button class="chip is-active" type="button" data-layer="visible" aria-pressed="true">Visible light</button>
-        <button class="chip" type="button" data-layer="spherex" aria-pressed="false">SPHEREx 4.77 µm</button>
-        <button class="chip" type="button" data-layer="colour" aria-pressed="false">SPHEREx false colour</button>
-      </div>
       <p id="search-msg" class="search-msg" role="status" hidden></p>
-      <button id="back-to-sky" class="btn btn-secondary" type="button" hidden>← Back to the whole sky</button>
-    </section>
+    </div>
+  </section>
+
+  <dialog id="viewer-modal" class="modal" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">SPHEREx frames</p>
+        <h2 id="modal-title" class="modal-title"></h2>
+        <p id="modal-coords" class="mono"></p>
+      </div>
+      <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky">✕</button>
+    </div>
+
+    <div id="modal-empty" class="modal-empty" hidden>
+      <p><strong>No SPHEREx frames are prepared for this position yet.</strong></p>
+      <p>This mockup only carries frames for Barnard's Star. The real tool will ask the team's
+        ingestion service for the frames of any position.</p>
+      <button id="open-barnard" class="btn btn-secondary" type="button">Go to Barnard's Star</button>
+    </div>
 
     <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
       <div class="viewer-main">
@@ -159,8 +190,8 @@
       </aside>
     </section>
 
-    <section id="how" class="how" aria-labelledby="how-title" hidden>
-      <h2 id="how-title" class="h2">How this frame was made</h2>
+    <details class="modal-how">
+      <summary>How these frames were made</summary>
       <ol>
         <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover the star (DR1 + QR3).</li>
         <li>Kept one image per visit, all seeing the star at nearly the same wavelength.</li>
@@ -170,18 +201,25 @@
         <li>Moved Gaia DR3's position to each date (proper motion + parallax) and compared it
           with the measured center of the star.</li>
       </ol>
-    </section>
-  </main>
+    </details>
+  </dialog>
 
-  <footer id="sources" class="site-footer">
-    <div class="container">
-      <p id="credit">Data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
-        SPHEREx DR1: doi:10.26131/IRSA678. Astrometry: ESA Gaia DR3.</p>
-      <p>Sky map: Aladin Lite (CDS, Strasbourg Observatory) with the SPHEREx DR1 all-sky cube and
-        the DSS2 colour survey (STScI/NASA, coloured by CDS), both served by IRSA.</p>
+  <dialog id="credits" class="modal modal-small" aria-labelledby="credits-title">
+    <div class="modal-head">
+      <h2 id="credits-title" class="modal-title">Credits</h2>
+      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits">✕</button>
+    </div>
+    <div class="credits-body">
+      <p>SPHEREx data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
+        SPHEREx DR1: doi:10.26131/IRSA678. The sky layers "SPHEREx 4.77 µm" and "SPHEREx false
+        colour" come from IRSA's SPHEREx DR1 all-sky data cube, an average of 24 April 2025 to
+        14 May 2026.</p>
+      <p>Visible sky: NASA/Goddard Space Flight Center Scientific Visualization Studio, "Deep Star
+        Maps 2020". Gaia DR2: ESA/Gaia/DPAC.</p>
+      <p>Astrometry: ESA Gaia DR3. Object names: SIMBAD (CDS), through its mirror at Harvard.</p>
       <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0 · Mockup.</p>
     </div>
-  </footer>
+  </dialog>
 
   <script src="mockup.js"></script>
   <script type="module" src="sky.js"></script>

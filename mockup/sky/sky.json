@@ -1,0 +1,45 @@
+{
+  "generated": "2026-11-14",
+  "projection": "plate carree; RA = 180 - 360*x/width, Dec = 90 - 180*y/height",
+  "widths": [
+    4096,
+    2048
+  ],
+  "files": {
+    "visible_4096.webp": 2425524,
+    "visible_2048.webp": 477536,
+    "spherex-477_4096.webp": 1629592,
+    "spherex-477_2048.webp": 291952,
+    "spherex-rgb_4096.webp": 3003404,
+    "spherex-rgb_2048.webp": 597968
+  },
+  "layers": {
+    "visible": {
+      "source": "NASA SVS Deep Star Maps 2020 (starmap_2020_4k.exr)",
+      "note": "Drawn from the Hipparcos-2, Tycho-2 and Gaia DR2 star catalogues. Not a photograph.",
+      "credit": "NASA/Goddard Space Flight Center Scientific Visualization Studio. Gaia DR2: ESA/Gaia/DPAC."
+    },
+    "spherex-477": {
+      "source": "SPHEREx DR1 all-sky data cube (IRSA HiPS), frame 95",
+      "wavelength_um": 4.773,
+      "average_of": [
+        "2025-04-24",
+        "2026-05-14"
+      ],
+      "credit": "NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA)."
+    },
+    "spherex-rgb": {
+      "source": "SPHEREx DR1 all-sky data cube (IRSA HiPS), frames 95, 55 and 10",
+      "wavelengths_um": {
+        "red": 4.773,
+        "green": 2.719,
+        "blue": 0.955
+      },
+      "average_of": [
+        "2025-04-24",
+        "2026-05-14"
+      ],
+      "credit": "NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA)."
+    }
+  }
+}
