@@ -104,9 +104,10 @@ vivo antes de apoyarte en él.
   `D:\dev\lab\.venvs\astro` (Python 3.14 con uv; astropy, pyvo, astroquery, reproject, photutils,
   matplotlib, s3fs, ipyaladin). Prueba:
   `D:\dev\lab\.venvs\astro\Scripts\python -c "import astropy; print(astropy.__version__)"`.
-- Para repetirlo en otra máquina:
+- Para repetirlo en otra máquina (los mismos comandos en PowerShell y en bash; en Linux el
+  intérprete queda en `.venv/bin/python`, en Windows en `.venv\Scripts\python`):
 
-  ```powershell
+  ```sh
   uv python install 3.14
   uv venv .venv --python 3.14 --managed-python
   uv pip install --python .venv -r requirements.txt
@@ -123,8 +124,13 @@ vivo antes de apoyarte en él.
 - **Idioma:** con Miguel, español y lenguaje simple. Es desarrollador web y astrofotógrafo, no
   físico ni programador de Python: tiene que entender lo que se construye para defenderlo ante el
   jurado. Explica la ciencia con analogías de desarrollo web o de astrofotografía.
-- **Ramas:** `main` siempre funciona y está pusheado; nadie commitea directo a `main`. Se trabaja en
-  `claude/<tema>`, `codex/<tema>` o `wip/<tema>` y se fusiona con `--no-ff`.
+- **Ramas:** `main` siempre funciona y está pusheado; nadie commitea directo a `main`. Cada persona
+  trabaja en su rama (`<nombre>/<tema>`; los agentes en `claude/<tema>`, `codex/<tema>` o
+  `wip/<tema>`) y entra a `main` por pull request, fusionando con `--no-ff`.
+- **Windows y Linux:** el equipo usa los dos. Todo comando que se documente aquí tiene que correr en
+  ambos (o venir en sus dos versiones); en el código, rutas relativas con `/` o `pathlib`, nunca
+  rutas absolutas de una máquina. `.gitattributes` guarda el texto con finales LF; no cambies
+  `core.autocrlf` para saltártelo.
 - **Relevo entre Claude Code y Codex:** por git, con el protocolo de `~/.agent-shared/relevo.md`.
   `RELEVO.md` se crea en la raíz en el primer relevo; si existe, léelo al entrar.
 - **Validez científica:** lo que la herramienta muestre se comprueba contra una medida conocida

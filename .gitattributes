@@ -1,0 +1,23 @@
+# The team works on Windows and Linux. Store and check out text files with LF
+# so diffs don't fill up with line-ending changes. Windows-only scripts keep CRLF.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: never touch them.
+*.fits binary
+*.fit binary
+*.fz binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp4 binary
+*.webm binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
