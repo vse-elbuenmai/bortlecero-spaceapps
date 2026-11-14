@@ -1,0 +1,100 @@
+# Bortle Cero — Planet X and SPHEREx Blink Comparator
+
+**Team Bortle Cero** (Guadalajara Local Event) submission repository for the **NASA Space Apps Challenge 2026** challenge: [**Planet X and SPHEREx**](https://www.spaceappschallenge.org/2026/challenges/planet-x-and-spherex/).
+
+---
+
+## Overview
+
+NASA's **SPHEREx** (*Spectro-Photometer for the History of the Universe, Epoch of Reionization, and Ices Explorer*) maps the entire sky every six months across 102 near-infrared spectral channels ($0.75\text{–}5.0\,\mu\text{m}$) at $6.15''/\text{pixel}$ resolution. By comparing multi-epoch SPHEREx observations of the same patch of sky, astronomers and citizen scientists can spot high-proper-motion objects (nearby brown dwarfs, solar system bodies, or a hypothetical Planet X) and variable stars.
+
+However, **naively blinking raw SPHEREx cutouts fails** due to six physical and instrumental characteristics of the observatory (documented in [Bock et al. 2026](https://doi.org/10.3847/1538-4357/ae2be2), [Akeson et al. 2026](https://doi.org/10.3847/1538-4365/ae8843), and [Crill et al. 2025](https://doi.org/10.3847/1538-4365/ae04cc)):
+
+1. **$180^\circ$ Spacecraft Roll Flip (`SPS_EPA`):** Between survey passes, the telescope views the same sky region rotated by $180^\circ$ with up to $0.5\%$ optical distortion. Without reprojecting onto a unified North-up celestial grid, stars jump wildly across the frame.
+2. **Linear Variable Filter (LVF) Wavelength Gradient:** Every detector pixel samples a different wavelength $\lambda(x, y)$. A source's apparent brightness changes between exposures simply because it fell on different spectral bandpasses unless frames are tagged via the `WCS-WAVE` lookup table and grouped by spectral band (Bands 1–6).
+3. **Unsubtracted Zodiacal Light Foreground (`ZODI`):** SPHEREx Level 2b `IMAGE` extensions include the zodiacal dust foreground (which varies by up to $3\times$ over the year). The `ZODI` extension must be subtracted (`IMAGE - ZODI`) before comparing epochs.
+4. **Saturated Cores & Bitmask `FLAGS`:** Bright benchmark targets such as **Barnard's Star** and **R Draconis** saturate the H2RG detector core (producing `NaN` values and setting the `OVERFLOW` bit in `FLAGS`), while ~1.1% of pixels suffer cosmic-ray transients. Our pipeline decodes the 32-bit `FLAGS` bitmask, masks transient artifacts, and reconstructs saturated stellar cores for visual blinking while preserving explicit saturation masks and raw science matrices.
+5. **Sub-Pixel Proper Motion & Parallax:** Even the fastest star in the sky (**Barnard's Star**, $10.39''/\text{yr}$) moves only $\approx 0.84\text{ pixels}$ per 6-month survey pass, with a trigonometric parallax ellipse of $0.55''$ ($1.09''$ peak-to-peak). Our pipeline propagates Gaia DR3 astrometry ($\mu_{\alpha^*}, \mu_\delta, \varpi$) to the exact `MJD-AVG` of each exposure using `astropy.coordinates.SkyCoord.apply_space_motion` and measures sub-pixel centroids.
+6. **WISE J085510.83−071442.5 Epoch Shift & Extreme Cold SED:** The challenge prompt coordinates for WISE 0855−0714 are from its ~2010 discovery epoch; by 2025–2026 it has moved ~20 SPHEREx pixels West to $\text{RA}\approx 133.760^\circ, \text{Dec}\approx -7.2422^\circ$, and at $T_{\text{eff}} \approx 250\text{ K}$ it is detectable only at $\lambda > 3.9\,\mu\text{m}$ (SPHEREx Bands 5 and 6).
+
+---
+
+## SOLID Data Ingestion Pipeline Architecture
+
+The `spherex_ingest` package (`src/spherex_ingest/`) is built in Python 3.12+ (managed with **Astral `uv`**) following **SOLID** principles inspired by the Vera C. Rubin Observatory / SPHEREx Science Data Center `PipelineTask` architecture:
+
+- **`domain/`**: Immutable Pydantic DTOs (`TargetSpec`, `BlinkBundleDTO`, `FrameMetadataDTO`, `DifferenceMapDTO`), in-memory dataclasses (`RawCutoutFrame`, `ProcessedBlinkFrame`), `SPHERExFlagBits`, and `typing.Protocol` interfaces (`CutoutProviderProtocol`, `AstrometricCatalogProtocol`, `FrameProcessorProtocol`, `BundleExporterProtocol`).
+- **`infrastructure/`**:
+  - `IRSASiaCutoutProvider`: Queries NASA/IPAC IRSA SIAv2 (`https://irsa.ipac.caltech.edu/SIA`) across `spherex_dr1`, `spherex_qr3`, `spherex_dr1_deep`, and `spherex_qr3_deep` (explicitly rejecting `qr2`), fetches cutouts via the IRSA SPHEREx Cutout Service, and caches FITS files locally.
+  - `SPHERExMEFParser`: Parses all 6 extensions (`IMAGE`, `FLAGS`, `VARIANCE`, `ZODI`, `EPSF`, `WCS-WAVE`), normalizes SIP header keywords, and evaluates exact pixel wavelengths $\lambda$ and bandwidths $\Delta\lambda$ via `WCS(..., key='W')`.
+  - `HarvardSimbadCatalogProvider`: Resolves target names and Gaia DR3 proper motions/parallaxes via the Harvard/CfA SIMBAD TAP mirror (`simbad.harvard.edu`).
+- **`processors/`**:
+  - `ZodiAndFlagCleaner`: Subtracts `ZODI`, filters `FLAGS` bitmasks, and repairs saturated core `NaN` pixels for visual rendering.
+  - `NorthUpCommonReprojector`: Reprojects all multi-epoch cutouts onto a common North-up, East-left `TAN` WCS grid via `reproject_interp`.
+  - `KinematicsAndPhotometryAnalyzer`: Propagates Gaia DR3 astrometry to each frame's `MJD-AVG`, computes sub-pixel center-of-mass centroids (`photutils`), and measures circular aperture flux in $\mu\text{Jy}$.
+- **`exporters/`**:
+  - `FrontendBundleExporter`: Generates per-band normalized arcsinh PNGs (base64 + files), same-band epoch difference maps ($\Delta I = I_{t_2} - I_{t_1}$), scientific warnings, and the unified `BlinkBundleDTO` JSON.
+- **`api.py` & `cli.py`**: FastAPI CORS-enabled REST server and CLI for pre-generating static benchmark bundles or querying arbitrary sky coordinates live.
+
+---
+
+## Quickstart (with Astral `uv`)
+
+### 1. Install Environment and Dependencies
+
+```bash
+uv venv --python 3.14 .venv
+uv sync --extra dev
+```
+
+### 2. List Official NASA Space Apps Benchmark Targets
+
+```bash
+uv run spherex-ingest list-benchmarks
+```
+
+| Target ID | Name | Category | RA (deg) | Dec (deg) | Epoch | Key SPHEREx Behavior |
+|---|---|---|---|---|---|---|
+| `barnards_star` | Barnard's Star | High Proper Motion | `269.452077` | `+4.693365` | J2016.0 | Moves $10.39''/\text{yr}$ ($\approx 0.84\text{ px}$/pass); saturated core (`OVERFLOW` flag) |
+| `epsilon_indi_b` | Epsilon Indi B | Brown Dwarf | `331.076454` | `-56.793818` | J2016.0 | Clean unsaturated T1+T6 binary brown dwarf ($4.72''/\text{yr}$), 4 passes |
+| `wise_0855_0714` | WISE J085510.83−071442.5 | Brown Dwarf (Y) | `133.760000` | `-7.242200` | J2025.5 | Coldest brown dwarf (~250 K); ~20 px West of 2010 pos; Bands 5 & 6 only |
+| `rw_aurigae` | RW Aurigae | Variable Star | `76.956522` | `+30.401407` | J2016.0 | T Tauri variable; compare strictly within same spectral band |
+| `r_draconis` | R Draconis | Variable Star | `248.171951` | `+66.754053` | J2016.0 | Mira variable in North Ecliptic Pole Deep Field (`dr1_deep`, `qr3_deep`) |
+
+### 3. Ingest Real SPHEREx Data from NASA/IRSA
+
+```bash
+# Ingest a single benchmark target and export JSON + PNG bundle to output/
+uv run spherex-ingest ingest --target epsilon_indi_b --max-frames 12
+
+# Ingest all 5 benchmark targets
+uv run spherex-ingest ingest --all-benchmarks --max-frames 12
+
+# Ingest any custom RA/Dec coordinate on the sky
+uv run spherex-ingest ingest --ra 331.068 --dec -56.789 --name "Custom Field"
+```
+
+### 4. Start the FastAPI Backend Server (CORS Proxy + Live Pipeline)
+
+```bash
+uv run spherex-ingest serve --host 0.0.0.0 --port 8000
+```
+
+Interactive OpenAPI documentation is available at `http://localhost:8000/docs`:
+- `GET /api/v1/health` — Service health check.
+- `GET /api/v1/benchmarks` — List the 5 benchmark targets and metadata.
+- `GET /api/v1/blink/{target_id}` — Retrieve the complete `BlinkBundleDTO` for a benchmark target.
+- `GET /api/v1/blink?ra={deg}&dec={deg}&size_arcsec=180` — Live ingestion and reprojection for any sky position or object name (`?query=...`).
+
+### 5. Run Automated Tests & Linter
+
+```bash
+uv run pytest
+uv run ruff check src/ tests/
+```
+
+---
+
+## License & Citations
+
+Released under the **Apache License 2.0**. See [docs/SOURCES.md](docs/SOURCES.md) for full scientific citations, NASA/IRSA acknowledgements, and software attributions, and [docs/AI-USAGE.md](docs/AI-USAGE.md) for the transparent AI usage log.
