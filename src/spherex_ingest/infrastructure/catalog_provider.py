@@ -10,7 +10,9 @@ from __future__ import annotations
 import logging
 import re
 
+import astropy.units as u
 import httpx
+from astropy.coordinates import SkyCoord
 
 from spherex_ingest.domain.models import TargetSpec
 from spherex_ingest.domain.targets import get_benchmark_target
@@ -75,8 +77,53 @@ class HarvardSimbadCatalogProvider:
                 cutout_size_arcsec=cutout_size_arcsec,
             )
 
-        # 3. Query Harvard SIMBAD TAP mirror
+        # 3. Check sexagesimal coordinate string (e.g. 17h57m48.5s +04d41m36s, 17:57:48.5 +04:41:36)
+        sexagesimal_target = self._try_parse_sexagesimal(query_str, cutout_size_arcsec)
+        if sexagesimal_target is not None:
+            return sexagesimal_target
+
+        # 4. Query Harvard SIMBAD TAP mirror
         return self._query_harvard_simbad(query_str, cutout_size_arcsec)
+
+    @staticmethod
+    def _try_parse_sexagesimal(
+        query_str: str,
+        cutout_size_arcsec: float,
+    ) -> TargetSpec | None:
+        """Attempt to parse sexagesimal celestial coordinates using astropy SkyCoord."""
+        cleaned = query_str.replace(",", " ").strip()
+        if not re.search(r"\d", cleaned):
+            return None
+
+        # First attempt: RA in hours (standard sexagesimal format, e.g. 17h57m48.5s or 17:57:48.5)
+        try:
+            coord = SkyCoord(cleaned, unit=(u.hourangle, u.deg), frame="icrs")
+            ra_deg = float(coord.ra.deg)
+            dec_deg = float(coord.dec.deg)
+        except Exception:
+            # Second attempt: RA in degrees
+            try:
+                coord = SkyCoord(cleaned, unit=(u.deg, u.deg), frame="icrs")
+                ra_deg = float(coord.ra.deg)
+                dec_deg = float(coord.dec.deg)
+            except Exception:
+                return None
+
+        slug = (
+            f"coord_{ra_deg:.4f}_{dec_deg:+.4f}"
+            .replace(".", "p")
+            .replace("+", "pos")
+            .replace("-", "neg")
+        )
+        return TargetSpec(
+            target_id=slug,
+            name=f"ICRS ({ra_deg:.5f}, {dec_deg:+.5f})",
+            category="custom",
+            ra_deg=ra_deg,
+            dec_deg=dec_deg,
+            ref_epoch_jyear=2000.0,
+            cutout_size_arcsec=cutout_size_arcsec,
+        )
 
     def _query_harvard_simbad(
         self,

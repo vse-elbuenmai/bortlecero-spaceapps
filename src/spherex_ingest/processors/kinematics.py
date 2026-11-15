@@ -133,7 +133,14 @@ class KinematicsAndPhotometryAnalyzer:
 
         sat_stamp = reprojected.saturation_mask[y0:y1, x0:x1]
         clean_stamp = reprojected.reprojected_image_mjy_sr[y0:y1, x0:x1]
-        is_saturated_core = bool(np.any(sat_stamp) or np.any(~np.isfinite(clean_stamp)))
+
+        # Only flag core saturation if saturation/NaN falls within stellar core radius (<1.5 px)
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        dist_to_pred = np.hypot(xx - pred_x, yy - pred_y)
+        core_region = dist_to_pred < 1.5
+        is_saturated_core = bool(
+            np.any(sat_stamp[core_region]) or np.any(~np.isfinite(clean_stamp[core_region]))
+        )
 
         working_img = (
             reprojected.repaired_image_mjy_sr
@@ -144,13 +151,21 @@ class KinematicsAndPhotometryAnalyzer:
         var_stamp = np.array(reprojected.reprojected_variance[y0:y1, x0:x1], dtype=np.float64)
 
         finite_all = np.isfinite(working_img) & (~reprojected.bad_pixel_mask)
+        var_finite = reprojected.reprojected_variance[
+            np.isfinite(reprojected.reprojected_variance)
+            & (reprojected.reprojected_variance > 0.0)
+        ]
+        var_sigma = (
+            float(np.sqrt(np.nanmedian(var_finite))) if var_finite.size > 0 else 0.0
+        )
+
         if np.any(finite_all):
             bg_med = float(np.nanmedian(working_img[finite_all]))
             bg_mad = float(np.nanmedian(np.abs(working_img[finite_all] - bg_med)))
-            noise_sigma = max(1.4826 * bg_mad, 1e-4)
+            noise_sigma = max(1.4826 * bg_mad, var_sigma, 0.1)
         else:
             bg_med = 0.0
-            noise_sigma = 1.0
+            noise_sigma = max(var_sigma, 1.0)
 
         stamp_sub = np.nan_to_num(stamp - bg_med, nan=0.0)
         stamp_positive = np.clip(stamp_sub, a_min=0.0, a_max=None)
@@ -222,11 +237,18 @@ class KinematicsAndPhotometryAnalyzer:
             raw_sum = float(phot_table["aperture_sum"][0])
             raw_err = float(phot_table["aperture_sum_err"][0])
 
+            # Enforce noise floor to prevent division-by-zero or unrealistic SNR spikes
+            npix = float(getattr(ap, "area", np.pi * (self._aperture_radius_px**2)))
+            noise_floor_err = float(noise_sigma * np.sqrt(max(1.0, npix)))
+            if not np.isfinite(raw_err) or raw_err < noise_floor_err:
+                raw_err = noise_floor_err
+
             if np.isfinite(raw_sum):
                 aperture_flux_ujy = raw_sum * scale_factor
                 if np.isfinite(raw_err) and raw_err > 0.0:
                     aperture_flux_err_ujy = raw_err * scale_factor
-                    snr_val = float(raw_sum / raw_err) if raw_err > 0.0 else None
+                    raw_snr = float(raw_sum / raw_err)
+                    snr_val = float(min(max(raw_snr, -99999.0), 99999.0))
 
         return KinematicsPhotometryResult(
             predicted_ra_deg=pred_ra,

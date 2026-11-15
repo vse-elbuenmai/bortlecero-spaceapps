@@ -58,7 +58,9 @@ class ZodiAndFlagCleaner:
         nan_core_adjacent = (~finite_mask) & dilated_halo
 
         if has_saturation:
-            saturation_mask = overflow_flagged | nan_core_adjacent | dilated_halo
+            saturation_mask = (
+                overflow_flagged | nan_core_adjacent | dilated_halo
+            ) & (~is_transient)
         else:
             saturation_mask = overflow_flagged | nan_core_adjacent
 

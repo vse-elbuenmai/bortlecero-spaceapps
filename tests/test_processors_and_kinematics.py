@@ -405,3 +405,148 @@ def test_kinematics_centroid_rejection_on_empty_and_distant_fields(
     assert meas_distant.measured_ra_deg is None
     assert meas_distant.measured_dec_deg is None
     assert meas_distant.centroid_offset_arcsec is None
+
+
+def test_cleaner_masks_transients_from_saturation_mask_near_saturated_core(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+) -> None:
+    """Verify reviewer_m3_2: transient pixels near a saturated core are excluded from sat mask."""
+    # Saturated core frame (core at 16, 16)
+    raw = raw_cutout_factory(
+        frame_id="sat_transient_test",
+        saturate_core=True,
+    )
+    # Inject a TRANSIENT pixel at (16, 17) - immediately adjacent to the core
+    flags = np.array(raw.flags_bitmask, copy=True)
+    flags[16, 17] = int(SPHERExFlagBits.TRANSIENT)
+    raw_mod = dataclasses.replace(raw, flags_bitmask=flags)
+
+    cleaner = ZodiAndFlagCleaner()
+    res = cleaner.clean(raw_mod)
+
+    # The adjacent transient must NOT be in saturation_mask because ~is_transient masks it out
+    assert not res.saturation_mask[16, 17], (
+        "Transient adjacent to core was incorrectly marked as saturated"
+    )
+    # The transient must be captured in bad_pixel_mask for interpolation
+    assert res.bad_pixel_mask[16, 17], (
+        "Transient adjacent to core was not included in bad_pixel_mask"
+    )
+
+
+def test_core_saturation_only_flagged_within_stellar_core_radius(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+) -> None:
+    """Verify Finding 11: saturation at distance >= 1.5 px does NOT flag is_saturated_core."""
+    eps_indi = BENCHMARK_TARGETS["epsilon_indi_b"]
+    cleaner = ZodiAndFlagCleaner(subtract_residual_bg=True)
+    analyzer = KinematicsAndPhotometryAnalyzer()
+    reprojector = NorthUpCommonReprojector()
+
+    mjd_obs = 60800.0
+    pred_ra, pred_dec = analyzer.propagate_position(eps_indi, mjd_obs)
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        cutout_size_arcsec=180.0,
+    )
+
+    # 1. Target with saturation flag at pixel distance = 2.5 px from star center (not inside core)
+    raw_edge_sat = raw_cutout_factory(
+        frame_id="edge_sat_frame",
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        star_ra_deg=pred_ra,
+        star_dec_deg=pred_dec,
+        mjd_avg=mjd_obs,
+        peak_flux_mjy_sr=200.0,
+        saturate_core=False,
+    )
+    reproj_edge = reprojector.reproject_frame(
+        cleaned=cleaner.clean(raw_edge_sat),
+        input_wcs=raw_edge_sat.spatial_wcs,
+        variance_mjy2_sr2=raw_edge_sat.variance_mjy2_sr2,
+        zodi_mjy_sr=raw_edge_sat.zodi_mjy_sr,
+        common_wcs=common_wcs,
+        shape_out=shape_out,
+    )
+
+    # Inject saturation mask at (16, 19) in reprojected frame (~3 px from core at 16, 16)
+    sat_mask_edge = np.array(reproj_edge.saturation_mask, copy=True)
+    sat_mask_edge[16, 19] = True
+    reproj_edge_mod = dataclasses.replace(reproj_edge, saturation_mask=sat_mask_edge)
+
+    meas_edge = analyzer.measure_centroid_and_photometry(
+        target=eps_indi,
+        mjd=mjd_obs,
+        reprojected=reproj_edge_mod,
+        common_wcs=common_wcs,
+    )
+    assert not meas_edge.is_saturated_core, "Saturation at 3 px falsely flagged is_saturated_core"
+
+    # 2. Inject saturation at center pixel (16, 16) -> must flag is_saturated_core=True
+    sat_mask_core = np.array(reproj_edge.saturation_mask, copy=True)
+    sat_mask_core[16, 16] = True
+    reproj_core_mod = dataclasses.replace(reproj_edge, saturation_mask=sat_mask_core)
+
+    meas_core = analyzer.measure_centroid_and_photometry(
+        target=eps_indi,
+        mjd=mjd_obs,
+        reprojected=reproj_core_mod,
+        common_wcs=common_wcs,
+    )
+    assert meas_core.is_saturated_core, "Core saturation at center pixel was not flagged"
+
+
+def test_kinematics_noise_floor_bounds_snr_and_prevents_zero_division(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+) -> None:
+    """Verify Finding 11: noise floor prevents SNR division-by-zero or explosion to >100,000."""
+    eps_indi = BENCHMARK_TARGETS["epsilon_indi_b"]
+    cleaner = ZodiAndFlagCleaner(subtract_residual_bg=True)
+    analyzer = KinematicsAndPhotometryAnalyzer()
+    reprojector = NorthUpCommonReprojector()
+
+    mjd_obs = 60800.0
+    pred_ra, pred_dec = analyzer.propagate_position(eps_indi, mjd_obs)
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        cutout_size_arcsec=180.0,
+    )
+
+    raw = raw_cutout_factory(
+        frame_id="noise_floor_test",
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        star_ra_deg=pred_ra,
+        star_dec_deg=pred_dec,
+        mjd_avg=mjd_obs,
+        peak_flux_mjy_sr=100.0,
+        saturate_core=False,
+    )
+    reproj = reprojector.reproject_frame(
+        cleaned=cleaner.clean(raw),
+        input_wcs=raw.spatial_wcs,
+        variance_mjy2_sr2=raw.variance_mjy2_sr2,
+        zodi_mjy_sr=raw.zodi_mjy_sr,
+        common_wcs=common_wcs,
+        shape_out=shape_out,
+    )
+
+    # Set all reprojected variance to zero to simulate extreme/missing error map
+    zero_var = np.zeros_like(reproj.reprojected_variance)
+    reproj_zero_var = dataclasses.replace(reproj, reprojected_variance=zero_var)
+
+    meas = analyzer.measure_centroid_and_photometry(
+        target=eps_indi,
+        mjd=mjd_obs,
+        reprojected=reproj_zero_var,
+        common_wcs=common_wcs,
+    )
+    assert meas.aperture_flux_err_ujy is not None
+    assert meas.aperture_flux_err_ujy > 0.0
+    assert meas.snr is not None
+    # SNR should be reasonable (finite, positive, < 10,000)
+    assert 0.0 < meas.snr < 10000.0
+

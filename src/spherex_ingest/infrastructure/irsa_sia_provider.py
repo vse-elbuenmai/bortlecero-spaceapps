@@ -21,7 +21,7 @@ import pyvo
 from astropy.io import fits
 from astropy.table import Table
 
-from spherex_ingest.domain.models import RawCutoutFrame, TargetSpec
+from spherex_ingest.domain.models import DroppedFrameDTO, RawCutoutFrame, TargetSpec
 from spherex_ingest.infrastructure.mef_parser import SPHERExMEFParser
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ class IRSASiaCutoutProvider:
         self.parser = parser or SPHERExMEFParser()
         self.timeout_sec = timeout_sec
         self.max_retries = max_retries
+        self.dropped_frames: list[DroppedFrameDTO] = []
 
     @staticmethod
     def validate_collections(collections: tuple[str, ...] | list[str]) -> None:
@@ -64,6 +65,7 @@ class IRSASiaCutoutProvider:
         """Discover and retrieve raw SPHEREx Level 2b cutouts covering the target coordinates."""
         self.validate_collections(target.collections)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.dropped_frames = []
 
         # Propagate catalog coordinates to mid-SPHEREx survey (MJD 61000 ~ Nov 2025)
         # so high-proper-motion stars (e.g., Barnard's Star) are centered in the cutout.
@@ -72,6 +74,12 @@ class IRSASiaCutoutProvider:
         query_ra_deg, query_dec_deg = KinematicsAndPhotometryAnalyzer().propagate_position(
             target, mjd=61000.0
         )
+
+        priority_bands = getattr(target, "priority_bands", ())
+        if not priority_bands and (
+            "wise_0855" in target.target_id.lower() or "0855" in target.name
+        ):
+            priority_bands = (5, 6)
 
         sia_service = pyvo.dal.SIA2Service(self.sia_url, check_baseurl=False)
         seen_filenames: set[str] = set()
@@ -93,12 +101,20 @@ class IRSASiaCutoutProvider:
                         dec_deg=query_dec_deg,
                         seen_filenames=seen_filenames,
                         max_frames=max_frames_per_collection,
+                        priority_bands=priority_bands,
                     )
                 except Exception as exc:
                     logger.warning(
                         "SIAv2 query failed for collection '%s' after retries: %s",
                         collection,
                         exc,
+                    )
+                    self.dropped_frames.append(
+                        DroppedFrameDTO(
+                            frame_id=f"{collection}_query",
+                            reason="collection_query_error",
+                            error_detail=str(exc),
+                        )
                     )
                     continue
 
@@ -125,6 +141,15 @@ class IRSASiaCutoutProvider:
                             cand["filename"],
                             collection,
                             exc,
+                        )
+                        self.dropped_frames.append(
+                            DroppedFrameDTO(
+                                frame_id=cand.get("filename", "unknown"),
+                                reason="cutout_download_error",
+                                attempted_band=cand.get("band"),
+                                obs_date=str(cand.get("t_min")) if cand.get("t_min") else None,
+                                error_detail=str(exc),
+                            )
                         )
 
         frames.sort(key=lambda f: (f.mjd_avg, f.detector_band))
@@ -199,6 +224,7 @@ class IRSASiaCutoutProvider:
         dec_deg: float,
         seen_filenames: set[str],
         max_frames: int | None,
+        priority_bands: tuple[int, ...] = (),
     ) -> list[dict[str, Any]]:
         """Query a single SIAv2 collection, filter science FITS, deduplicate, and select epochs."""
         table = self._execute_sia_table_with_retry(
@@ -247,7 +273,9 @@ class IRSASiaCutoutProvider:
         rows.sort(key=lambda r: (r["t_min"], r["band"], r["filename"]))
 
         if max_frames is not None and len(rows) > max_frames:
-            rows = self._select_balanced_subset(rows, max_frames)
+            rows = self._select_balanced_subset(
+                rows, max_frames, priority_bands=priority_bands
+            )
 
         for r in rows:
             seen_filenames.add(r["filename"])
@@ -271,14 +299,29 @@ class IRSASiaCutoutProvider:
                 return int(digits[-1])
         return 1
 
-    @staticmethod
+    @classmethod
     def _select_balanced_subset(
+        cls,
         rows: list[dict[str, Any]],
         max_frames: int,
+        priority_bands: tuple[int, ...] = (),
     ) -> list[dict[str, Any]]:
         """Select a temporally spread subset across early and late epochs when capped."""
         if len(rows) <= max_frames:
             return rows
+
+        if priority_bands:
+            p_rows = [r for r in rows if r.get("band") in priority_bands]
+            other_rows = [r for r in rows if r.get("band") not in priority_bands]
+            if len(p_rows) >= max_frames:
+                return cls._select_balanced_subset(p_rows, max_frames)
+            if p_rows:
+                rem = max_frames - len(p_rows)
+                other_subset = cls._select_balanced_subset(other_rows, rem)
+                combined = p_rows + other_subset
+                combined.sort(key=lambda r: (r["t_min"], r["band"], r["filename"]))
+                return combined
+
         indices = [
             int(round(i * (len(rows) - 1) / max(1, max_frames - 1))) for i in range(max_frames)
         ]

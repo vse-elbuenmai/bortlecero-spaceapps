@@ -105,11 +105,13 @@ class SPHERExBlinkIngestionService:
             target=target,
         )
 
+        dropped_cutouts = getattr(self.cutout_provider, "dropped_frames", [])
         bundle = self.bundle_exporter.build_bundle(
             target=target,
             processed_frames=processed_frames,
             common_wcs=common_wcs,
             grid_shape=grid_shape,
+            dropped_frames=dropped_cutouts,
         )
 
         if output_dir is not None:

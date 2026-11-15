@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from spherex_ingest.domain.models import SPHERExFlagBits, TargetSpec
+from spherex_ingest.domain.models import DroppedFrameDTO, SPHERExFlagBits, TargetSpec
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS, get_benchmark_target
 
 
@@ -170,5 +170,56 @@ def test_rw_aurigae_gaia_dr3_astrometry() -> None:
     assert rw_aur.pm_dec_mas_yr == pytest.approx(-27.398, abs=1e-3)
     assert rw_aur.parallax_mas == pytest.approx(6.406, abs=1e-3)
     assert rw_aur.radial_velocity_km_s == pytest.approx(-20.94, abs=0.1)
+
+
+def test_strict_benchmark_target_lookup_rejects_ambiguous_and_substrings() -> None:
+    """Verify Finding 10: strict matching and complete rejection of loose substrings."""
+    # Aliases that must resolve accurately
+    assert get_benchmark_target("barnard") == BENCHMARK_TARGETS["barnards_star"]
+    assert get_benchmark_target("barnards") == BENCHMARK_TARGETS["barnards_star"]
+    assert get_benchmark_target("gj 699") == BENCHMARK_TARGETS["barnards_star"]
+    assert get_benchmark_target("eps ind b") == BENCHMARK_TARGETS["epsilon_indi_b"]
+    assert get_benchmark_target("eps_ind") == BENCHMARK_TARGETS["epsilon_indi_b"]
+    assert get_benchmark_target("wise 0855") == BENCHMARK_TARGETS["wise_0855_0714"]
+    assert get_benchmark_target("wise0855") == BENCHMARK_TARGETS["wise_0855_0714"]
+    assert get_benchmark_target("rw aur") == BENCHMARK_TARGETS["rw_aurigae"]
+    assert get_benchmark_target("r dra") == BENCHMARK_TARGETS["r_draconis"]
+
+    # Ambiguous terms and loose substrings that MUST return None (Finding 10)
+    for query in ("a", "s", "0", "star", "stars", "dwarf", "variable", "b", "1", "", "   "):
+        assert (
+            get_benchmark_target(query) is None
+        ), f"Query '{query}' unexpectedly returned a target"
+
+
+def test_dropped_frame_dto_creation_and_serialization() -> None:
+    """Verify Finding 9: DroppedFrameDTO holds cutout error and low-coverage metadata."""
+    dropped = DroppedFrameDTO(
+        frame_id="spx_l2b_cutout_503.fits",
+        reason="cutout_download_error",
+        attempted_band=5,
+        obs_date="2025-04-12T12:00:00",
+        error_detail="503 Service Unavailable: IRSA cutout service overloaded",
+    )
+    assert dropped.frame_id == "spx_l2b_cutout_503.fits"
+    assert dropped.attempted_band == 5
+    assert "503" in (dropped.error_detail or "")
+
+    # Pydantic dump & round-trip
+    dumped = dropped.model_dump()
+    assert dumped["reason"] == "cutout_download_error"
+    roundtrip = DroppedFrameDTO.model_validate(dumped)
+    assert roundtrip == dropped
+
+
+def test_wise_0855_priority_bands_and_target_spec_defaults() -> None:
+    """Verify Finding 11: WISE 0855 prioritizes bands 5 and 6 (>3.9 um detection)."""
+    wise = BENCHMARK_TARGETS["wise_0855_0714"]
+    assert wise.priority_bands == (5, 6)
+
+    # Other benchmarks default to ()
+    barnard = BENCHMARK_TARGETS["barnards_star"]
+    assert barnard.priority_bands == ()
+
 
 

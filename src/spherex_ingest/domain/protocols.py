@@ -10,6 +10,7 @@ from astropy.wcs import WCS
 
 from spherex_ingest.domain.models import (
     BlinkBundleDTO,
+    DroppedFrameDTO,
     ProcessedBlinkFrame,
     RawCutoutFrame,
     TargetSpec,
@@ -65,6 +66,7 @@ class BundleExporterProtocol(Protocol):
         processed_frames: Sequence[ProcessedBlinkFrame],
         common_wcs: WCS,
         grid_shape: tuple[int, int],
+        dropped_frames: Sequence[DroppedFrameDTO] = (),
     ) -> BlinkBundleDTO:
         """Assemble the complete BlinkBundleDTO including difference maps and warnings."""
         ...

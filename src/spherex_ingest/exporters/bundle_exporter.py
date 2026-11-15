@@ -17,6 +17,7 @@ from spherex_ingest.domain.models import (
     BlinkBundleDTO,
     CommonGridSpecDTO,
     DifferenceMapDTO,
+    DroppedFrameDTO,
     FrameMetadataDTO,
     ProcessedBlinkFrame,
     TargetSpec,
@@ -43,17 +44,45 @@ class FrontendBundleExporter:
         processed_frames: Sequence[ProcessedBlinkFrame],
         common_wcs: WCS,
         grid_shape: tuple[int, int],
+        dropped_frames: Sequence[DroppedFrameDTO] = (),
     ) -> BlinkBundleDTO:
         """Assemble the complete BlinkBundleDTO including difference maps and warnings."""
         sorted_frames = sorted(
             processed_frames, key=lambda f: (f.mjd_avg, f.detector_band, f.frame_id)
         )
-        band_scales = self._compute_band_display_scales(sorted_frames)
+        all_dropped: list[DroppedFrameDTO] = list(dropped_frames)
+
+        # Filter out frames with low valid pixel fraction (< 0.40)
+        retained_frames: list[ProcessedBlinkFrame] = []
+        for frame in sorted_frames:
+            total_px = max(1, frame.reprojected_image_mjy_sr.size)
+            valid_px = int(
+                np.count_nonzero(
+                    np.isfinite(frame.reprojected_image_mjy_sr)
+                    & (~frame.bad_pixel_mask)
+                    & frame.footprint_mask
+                )
+            )
+            valid_frac = round(float(valid_px) / float(total_px), 4)
+            if valid_frac < 0.40:
+                all_dropped.append(
+                    DroppedFrameDTO(
+                        frame_id=frame.frame_id,
+                        reason="low_valid_pixel_fraction",
+                        attempted_band=frame.detector_band,
+                        obs_date=frame.obs_time_iso,
+                        error_detail=f"valid_pixel_fraction={valid_frac:.4f} < 0.40 threshold",
+                    )
+                )
+            else:
+                retained_frames.append(frame)
+
+        band_scales = self._compute_band_display_scales(retained_frames)
 
         frames_chronological: list[FrameMetadataDTO] = []
         frames_by_band_dict: dict[str, list[FrameMetadataDTO]] = defaultdict(list)
 
-        for frame in sorted_frames:
+        for frame in retained_frames:
             vmin, vmax, softening = band_scales.get(frame.detector_band, (0.0, 10.0, 1.0))
             display_arr = (
                 frame.repaired_image_mjy_sr
@@ -75,11 +104,14 @@ class FrontendBundleExporter:
             frames_chronological.append(dto)
             frames_by_band_dict[str(frame.detector_band)].append(dto)
 
-        difference_maps = self._build_difference_maps(sorted_frames)
+        difference_maps = self._build_difference_maps(retained_frames)
         warnings = self._generate_scientific_warnings(
-            target, sorted_frames, difference_maps=difference_maps
+            target,
+            retained_frames,
+            difference_maps=difference_maps,
+            dropped_frames=all_dropped,
         )
-        available_bands = sorted({f.detector_band for f in sorted_frames})
+        available_bands = sorted({f.detector_band for f in retained_frames})
 
         ny, nx = grid_shape
         pixel_scale_arcsec = float(abs(common_wcs.wcs.cdelt[1]) * 3600.0)
@@ -104,6 +136,7 @@ class FrontendBundleExporter:
             frames_chronological=frames_chronological,
             frames_by_band=dict(frames_by_band_dict),
             difference_maps=difference_maps,
+            dropped_frames=all_dropped,
             scientific_warnings=warnings,
             citations=list(DEFAULT_CITATIONS),
         )
@@ -396,11 +429,17 @@ class FrontendBundleExporter:
         target: TargetSpec,
         frames: Sequence[ProcessedBlinkFrame],
         difference_maps: Sequence[DifferenceMapDTO] = (),
+        dropped_frames: Sequence[DroppedFrameDTO] = (),
     ) -> list[str]:
         """Generate context-aware scientific warnings for the frontend UI."""
         warnings: list[str] = []
         if not frames:
             warnings.append("No SPHEREx cutouts matched the requested coordinates and collections.")
+            if dropped_frames:
+                warnings.append(
+                    f"{len(dropped_frames)} candidate frame(s) were dropped or excluded during "
+                    "processing."
+                )
             return warnings
 
         epa_values = [f.sps_epa_deg for f in frames]
@@ -427,12 +466,20 @@ class FrontendBundleExporter:
                 "distribution (SED) variation across the Linear Variable Filter."
             )
 
-        sat_frames = [f for f in frames if f.is_saturated_core or np.any(f.saturation_mask)]
+        sat_frames = [f for f in frames if f.is_saturated_core]
         if sat_frames:
             warnings.append(
                 f"Detector core saturation (OVERFLOW / NaN core) detected in {len(sat_frames)}/"
                 f"{len(frames)} frames. Visual cores are reconstructed from the 98th-percentile "
                 "PSF halo; astrometric centroids use halo center-of-mass."
+            )
+
+        if dropped_frames:
+            reasons = ", ".join(sorted({d.reason for d in dropped_frames}))
+            warnings.append(
+                f"{len(dropped_frames)} frame(s) were dropped or excluded during processing "
+                f"({reasons}: {', '.join(d.frame_id for d in dropped_frames[:3])}"
+                f"{'...' if len(dropped_frames) > 3 else ''})."
             )
 
         if "wise_0855" in target.target_id.lower() or "0855" in target.name:

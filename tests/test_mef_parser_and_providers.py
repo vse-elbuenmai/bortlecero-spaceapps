@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from spherex_ingest.domain.models import SPHERExFlagBits
+from spherex_ingest.domain.models import SPHERExFlagBits, TargetSpec
 from spherex_ingest.infrastructure.catalog_provider import HarvardSimbadCatalogProvider
 from spherex_ingest.infrastructure.irsa_sia_provider import IRSASiaCutoutProvider
 from spherex_ingest.infrastructure.mef_parser import SPHERExMEFParser
@@ -104,3 +104,117 @@ def test_harvard_simbad_provider_resolves_benchmarks_and_coord_strings() -> None
 
     with pytest.raises(ValueError, match="empty"):
         provider.resolve_target("   ")
+
+
+def test_harvard_simbad_provider_resolves_sexagesimal_coordinates() -> None:
+    """Verify Finding 11: sexagesimal string resolution using SkyCoord."""
+    provider = HarvardSimbadCatalogProvider()
+
+    formats = [
+        "17h57m48.5s +04d41m36s",
+        "17:57:48.5 +04:41:36",
+        "17 57 48.5 +04 41 36",
+        "17:57:48.5, +04:41:36",
+        "17h57m48.5s, +04d41m36s",
+    ]
+    for coord_str in formats:
+        spec = provider.resolve_target(coord_str, cutout_size_arcsec=180.0)
+        assert spec.category == "custom"
+        assert spec.ra_deg == pytest.approx(269.45208, abs=0.001)
+        assert spec.dec_deg == pytest.approx(4.69333, abs=0.001)
+        assert spec.cutout_size_arcsec == 180.0
+
+    # Negative declination
+    spec_neg = provider.resolve_target("22:04:18.3 -56:47:38")
+    assert spec_neg.category == "custom"
+    assert spec_neg.ra_deg == pytest.approx(331.07625, abs=0.005)
+    assert spec_neg.dec_deg == pytest.approx(-56.79389, abs=0.005)
+
+
+def test_irsa_sia_provider_priority_bands_subset_selection() -> None:
+    """Verify Finding 11: priority bands (bands 5 & 6) are selected when capped."""
+    rows = [
+        {"filename": "f_d1_1.fits", "t_min": 60700.0, "band": 1},
+        {"filename": "f_d2_1.fits", "t_min": 60700.0, "band": 2},
+        {"filename": "f_d3_1.fits", "t_min": 60700.0, "band": 3},
+        {"filename": "f_d4_1.fits", "t_min": 60700.0, "band": 4},
+        {"filename": "f_d5_1.fits", "t_min": 60700.0, "band": 5},
+        {"filename": "f_d6_1.fits", "t_min": 60700.0, "band": 6},
+        {"filename": "f_d5_2.fits", "t_min": 60900.0, "band": 5},
+        {"filename": "f_d6_2.fits", "t_min": 60900.0, "band": 6},
+    ]
+
+    # Select 4 frames prioritizing bands 5 and 6
+    selected = IRSASiaCutoutProvider._select_balanced_subset(
+        rows, max_frames=4, priority_bands=(5, 6)
+    )
+    assert len(selected) == 4
+    # All 4 selected should be from bands 5 and 6
+    assert all(r["band"] in (5, 6) for r in selected)
+
+    # Select 6 frames prioritizing bands 5 and 6 (there are 4 in 5/6, so 2 come from other bands)
+    selected_6 = IRSASiaCutoutProvider._select_balanced_subset(
+        rows, max_frames=6, priority_bands=(5, 6)
+    )
+    assert len(selected_6) == 6
+    p_count = sum(1 for r in selected_6 if r["band"] in (5, 6))
+    assert p_count == 4
+
+
+def test_irsa_sia_provider_tracks_dropped_cutouts_on_download_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify Finding 9: failed cutouts are logged in provider.dropped_frames."""
+    provider = IRSASiaCutoutProvider(cache_dir=tmp_path / "cache")
+    target = TargetSpec(
+        target_id="test_target",
+        name="Test Target",
+        ra_deg=269.452,
+        dec_deg=4.693,
+        collections=("spherex_dr1",),
+    )
+
+    # Mock SIA query returning 2 candidates
+    fake_candidates = [
+        {
+            "filename": "cand1.fits",
+            "access_url": "https://example.com/cand1.fits",
+            "t_min": 60800.0,
+            "band": 2,
+        },
+        {
+            "filename": "cand2.fits",
+            "access_url": "https://example.com/cand2.fits",
+            "t_min": 60801.0,
+            "band": 3,
+        },
+    ]
+    monkeypatch.setattr(
+        provider,
+        "_query_collection",
+        lambda *args, **kwargs: fake_candidates,
+    )
+
+    # Make _download_and_parse raise a 503 error on cand1, and return a fake frame on cand2
+    from unittest.mock import MagicMock
+    fake_frame = MagicMock()
+    fake_frame.mjd_avg = 60801.0
+    fake_frame.detector_band = 3
+
+    def mock_download(client, cutout_url, base_filename, collection, target_ra_deg, target_dec_deg):
+        if "cand1" in base_filename:
+            raise RuntimeError("503 Service Unavailable")
+        return fake_frame
+
+    monkeypatch.setattr(provider, "_download_and_parse", mock_download)
+
+    frames = provider.fetch_cutouts(target)
+    assert len(frames) == 1
+    assert len(provider.dropped_frames) == 1
+    dropped = provider.dropped_frames[0]
+    assert dropped.frame_id == "cand1.fits"
+    assert dropped.reason == "cutout_download_error"
+    assert dropped.attempted_band == 2
+    assert "503" in (dropped.error_detail or "")
+
