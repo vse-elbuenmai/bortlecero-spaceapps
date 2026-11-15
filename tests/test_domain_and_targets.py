@@ -84,3 +84,12 @@ def test_target_spec_validation() -> None:
 
     with pytest.raises( ValueError ):
         TargetSpec(target_id="bad_dec", name="Bad Dec", ra_deg=10.0, dec_deg=-95.0)
+
+
+def test_barnards_star_gaia_dr3_epoch_2016_coordinates() -> None:
+    """Verify Barnard's Star uses verified Gaia DR3 epoch J2016.0 coordinates."""
+    barnard = BENCHMARK_TARGETS["barnards_star"]
+    assert barnard.ra_deg == pytest.approx(269.44850253, abs=1e-6)
+    assert barnard.dec_deg == pytest.approx(4.73942005, abs=1e-6)
+    assert barnard.ref_epoch_jyear == 2016.0
+

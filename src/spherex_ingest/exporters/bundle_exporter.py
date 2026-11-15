@@ -178,8 +178,9 @@ class FrontendBundleExporter:
         softening: float,
         saturation_mask: np.ndarray | None = None,
     ) -> str:
-        """Render a 2D array into an 8-bit RGB PNG (base64 data URI) using arcsinh stretch."""
-        arr = np.nan_to_num(image_mjy_sr, nan=vmin)
+        """Render a 2D array into an 8-bit RGB PNG using North-up arcsinh stretch."""
+        flipped_img = np.flipud(image_mjy_sr)
+        arr = np.nan_to_num(flipped_img, nan=vmin)
         clipped = np.clip(arr - vmin, 0.0, max(vmax - vmin, 1e-6))
         denom = float(np.arcsinh((vmax - vmin) / softening))
         if denom <= 0.0:
@@ -192,10 +193,11 @@ class FrontendBundleExporter:
         b = np.clip((0.12 + 0.88 * np.power(norm, 1.45)) * 255.0, 0, 255).astype(np.uint8)
 
         if saturation_mask is not None and np.any(saturation_mask):
+            flipped_sat = np.flipud(saturation_mask)
             # Subtle cyan-white highlight on repaired saturated core pixels
-            r = np.where(saturation_mask, np.maximum(r, 235), r)
-            g = np.where(saturation_mask, np.maximum(g, 250), g)
-            b = np.where(saturation_mask, 255, b)
+            r = np.where(flipped_sat, np.maximum(r, 235), r)
+            g = np.where(flipped_sat, np.maximum(g, 250), g)
+            b = np.where(flipped_sat, 255, b)
 
         rgb = np.stack([r, g, b], axis=-1)
         pil_img = Image.fromarray(rgb, mode="RGB")
@@ -212,15 +214,16 @@ class FrontendBundleExporter:
         return f"data:image/png;base64,{encoded}"
 
     def _render_diverging_png_base64(self, diff_mjy_sr: np.ndarray) -> str:
-        """Render a bipolar difference image (blue = neg, black = 0, orange/white = pos)."""
-        finite = diff_mjy_sr[np.isfinite(diff_mjy_sr)]
+        """Render a North-up bipolar difference image (blue = neg, orange/white = pos)."""
+        flipped_diff = np.flipud(diff_mjy_sr)
+        finite = flipped_diff[np.isfinite(flipped_diff)]
         if finite.size > 0:
             lim = float(np.percentile(np.abs(finite), 99.0))
         else:
             lim = 1.0
         lim = max(lim, 1e-4)
 
-        norm = np.clip(np.nan_to_num(diff_mjy_sr, nan=0.0) / lim, -1.0, 1.0)
+        norm = np.clip(np.nan_to_num(flipped_diff, nan=0.0) / lim, -1.0, 1.0)
         pos = np.clip(norm, 0.0, 1.0)
         neg = np.clip(-norm, 0.0, 1.0)
 
@@ -312,6 +315,14 @@ class FrontendBundleExporter:
             else frame.reprojected_image_mjy_sr
         )
 
+        ny = frame.reprojected_image_mjy_sr.shape[0]
+        pred_y_display = (ny - 1) - frame.predicted_pixel_y
+        meas_y_display = (
+            (ny - 1) - frame.measured_centroid_y
+            if frame.measured_centroid_y is not None
+            else None
+        )
+
         return FrameMetadataDTO(
             frame_id=frame.frame_id,
             collection=frame.collection,
@@ -324,9 +335,9 @@ class FrontendBundleExporter:
             predicted_ra_deg=frame.predicted_ra_deg,
             predicted_dec_deg=frame.predicted_dec_deg,
             predicted_pixel_x=frame.predicted_pixel_x,
-            predicted_pixel_y=frame.predicted_pixel_y,
+            predicted_pixel_y=round(pred_y_display, 3),
             measured_centroid_x=frame.measured_centroid_x,
-            measured_centroid_y=frame.measured_centroid_y,
+            measured_centroid_y=round(meas_y_display, 3) if meas_y_display is not None else None,
             measured_ra_deg=frame.measured_ra_deg,
             measured_dec_deg=frame.measured_dec_deg,
             centroid_offset_arcsec=frame.centroid_offset_arcsec,
@@ -338,17 +349,18 @@ class FrontendBundleExporter:
             bad_artifact_pixel_count=bad_count,
             valid_pixel_fraction=round(float(valid_px) / float(total_px), 4),
             matrix_mjy_sr=self._matrix_to_nullable_list(display_arr),
-            saturation_mask=frame.saturation_mask.astype(bool).tolist(),
-            bad_pixel_mask=frame.bad_pixel_mask.astype(bool).tolist(),
+            saturation_mask=np.flipud(frame.saturation_mask).astype(bool).tolist(),
+            bad_pixel_mask=np.flipud(frame.bad_pixel_mask).astype(bool).tolist(),
             png_base64=png_b64,
             source_url=frame.source_url,
         )
 
     @staticmethod
     def _matrix_to_nullable_list(arr: np.ndarray) -> list[list[float | None]]:
-        """Serialize a 2D numpy array to nested lists with None for NaN/Inf values."""
+        """Serialize a 2D numpy array to nested lists (North-up, None for NaN/Inf)."""
+        flipped = np.flipud(arr)
         rows: list[list[float | None]] = []
-        for row in arr:
+        for row in flipped:
             rows.append([round(float(val), 5) if np.isfinite(val) else None for val in row])
         return rows
 
