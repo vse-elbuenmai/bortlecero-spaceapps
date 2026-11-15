@@ -63,11 +63,12 @@ class HealthResponseDTO(BaseModel):
         default=True,
         description="Whether wildcard CORS headers are enabled for browser clients",
     )
-    cds_mirror_active: bool = Field(
-        default=True,
-        description=(
-            "Whether Harvard CFA Sesame/VizieR mirrors are used to bypass CDS Strasbourg outage"
-        ),
+    revision: str | None = Field(
+        default=None,
+        description="Cloud Run revision identifier when available",
+    )
+    legacy_sync_enabled: bool = Field(
+        description="Whether legacy v1 synchronous ingestion is enabled",
     )
     live_queries_enabled: bool = Field(
         default_factory=is_live_queries_enabled,
@@ -100,6 +101,17 @@ def get_public_limits() -> PublicLimits:
 def get_admission_controller() -> AdmissionControllerProtocol:
     """Return the singleton admission controller for public live ingestion."""
     return InMemoryAdmissionController(limits=get_public_limits())
+
+
+def legacy_sync_enabled() -> bool:
+    """Use local live ingestion by default and honor the deployed capability flag."""
+    return os.environ.get("SPHEREX_LEGACY_SYNC_ENABLED", "true").lower() == "true"
+
+
+def require_legacy_sync() -> None:
+    """Reject live reads before requesting any upstream observations."""
+    if not legacy_sync_enabled():
+        raise HTTPException(status_code=503, detail="Live SPHEREx ingestion is disabled.")
 
 
 ServiceDep = Annotated[SPHERExBlinkIngestionService, Depends(get_default_service)]
@@ -257,8 +269,11 @@ def _run_bounded_live_ingestion(
     summary="Health check and service metadata",
 )
 def health_check() -> HealthResponseDTO:
-    """Verify service readiness, version, and CORS/mirror configuration."""
-    return HealthResponseDTO()
+    """Report process liveness and deployment metadata without polling upstream services."""
+    return HealthResponseDTO(
+        revision=os.environ.get("K_REVISION"),
+        legacy_sync_enabled=legacy_sync_enabled(),
+    )
 
 
 @app.get(
@@ -328,25 +343,23 @@ def get_benchmark_blink_bundle(
             ),
         )
 
-    if force_refresh and not _is_maintenance_authorized(x_maintenance_token):
-        raise _error_http_exception(
-            status_code=403,
-            code="refresh_forbidden",
-            message="Public force_refresh is disabled.",
-        )
-
     precomputed_path = output_dir / target.target_id / "bundle.json"
     if not force_refresh and precomputed_path.is_file():
         try:
             return BlinkBundleDTO.model_validate_json(
                 precomputed_path.read_text(encoding="utf-8")
             )
-        except Exception as exc:
-            logger.warning(
-                "Failed to load precomputed bundle at %s, falling back to live pipeline: %s",
-                precomputed_path,
-                exc,
-            )
+        except (OSError, ValueError):
+            logger.warning("Failed to load precomputed bundle at %s", precomputed_path)
+
+    require_legacy_sync()
+
+    if force_refresh and not _is_maintenance_authorized(x_maintenance_token):
+        raise _error_http_exception(
+            status_code=403,
+            code="refresh_forbidden",
+            message="Public force_refresh is disabled.",
+        )
 
     return _run_bounded_live_ingestion(
         service=service,
@@ -413,6 +426,7 @@ def query_custom_blink_bundle(
     ] = 12,
 ) -> BlinkBundleDTO:
     """Execute the bounded SPHEREx ingestion pipeline for custom coordinates or an object name."""
+    require_legacy_sync()
     if ra is not None and dec is not None:
         slug = f"coord_{ra:.5f}_{dec:+.5f}".replace("+", "p").replace("-", "m").replace(".", "d")
         target_input: TargetSpec | str = TargetSpec(

@@ -429,7 +429,6 @@ class IRSASiaCutoutProvider:
                     source_url=cutout_url,
                     frame_id=stem,
                 )
-
         try:
             return parse_cutout(cache_path.read_bytes())
         except FileNotFoundError:
@@ -457,6 +456,5 @@ class IRSASiaCutoutProvider:
             else:
                 self._publish_cache_entry(cache_path, data)
                 return frame
-
         assert last_exc is not None
         raise last_exc

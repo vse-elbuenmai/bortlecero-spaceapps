@@ -1,0 +1,22 @@
+name: CI / Cloud Run container
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the production image
+        run: docker build --platform linux/amd64 --tag spherex-ingest:smoke .
+      - name: Test production entrypoint without network access
+        run: python3 scripts/smoke_cloud_run.py spherex-ingest:smoke
