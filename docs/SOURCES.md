@@ -91,3 +91,11 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 |---|---|---|
 | [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification, HTTP probes, and bounded scratch volume | 2026-11-15 |
 | [Astral uv Docker guide](https://docs.astral.sh/uv/guides/integration/docker/) | Multi-stage container build with locked runtime dependencies | 2026-11-15 |
+
+## Public ingestion operations
+
+- [Cloud Tasks queue limits and retries](https://docs.cloud.google.com/tasks/docs/configuring-queues).
+- [Google Cloud Free Tier and trial limits](https://docs.cloud.google.com/free/docs/free-cloud-features).
+- [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
+- [Google Cloud Tasks HTTP Target & OIDC Authentication](https://cloud.google.com/tasks/docs/creating-http-target-tasks#oidc) — referenced for the `CloudTasksJobDispatcher` and `OIDCWorkerAuthVerifier` contract.
+- [Google Cloud Firestore Transactions](https://cloud.google.com/firestore/docs/manage-data/transactions) — referenced for the `FirestoreJobStore` atomic deduplication, admission, and lease-claim contract.
