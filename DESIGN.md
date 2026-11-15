@@ -248,7 +248,13 @@ El sistema se apoya en superficies, no en sombras. Sólo hay tres:
 | Reproducir / pausa | Botón de icono de 44 × 44, `aria-pressed`; el icono y la etiqueta cambian |
 | Velocidad | `<input type="range">` de 0.5 a **3 fotos por segundo** (§8), con valor en texto y `tabular-nums` |
 | Zoom | Botones ⊕ ⊖ y «reset» (⟲); también rueda o pellizco sobre el lienzo |
-| Línea de fechas | Un punto por foto, separados en proporción al tiempo real; el activo en `--bc-estrella` y más grande; cada punto es un botón con la fecha en su `aria-label` |
+| Banda | Desplegable (§7.12) con «All bands» y una opción por banda, cada una con su número de fotos |
+| Línea de fechas | Un punto por foto, separados en proporción al tiempo real, con un mínimo de 14 px entre vecinos para que las fotos de días seguidos no se amontonen; el activo en `--bc-estrella` y más grande; cada punto es un botón con la fecha en su `aria-label`. Debajo sólo van tres fechas: la primera, la última y la de la foto activa, bajo su punto; una fecha de extremo se oculta si la activa le cae encima |
+
+En una serie densa los puntos quedan a menos de 44 px. Ahí cada punto recibe como zona de toque el
+espacio hasta la mitad de la distancia a sus vecinos, y los botones de anterior y siguiente son la
+vía de 44 × 44 para llegar a cualquier foto. Si ni los 14 px caben (muchas fotos en una pantalla
+estrecha), los puntos se reparten por igual y la marca baja de 10 a 6 px.
 
 **Teclado** (sólo con el foco dentro del visor, para no robar teclas a la página): `Space`
 reproducir o pausar, `←` / `→` foto anterior o siguiente, `+` / `−` zoom, `0` restablecer.
@@ -283,8 +289,10 @@ al 25 %. Siempre con texto; el icono va con `aria-hidden="true"`.
   del sistema. Fuente `--bc-font-mono`.
 - Error en línea bajo el campo, en `--bc-error`, con icono y texto («Dec must be between −90° and
   +90°»), enlazado con `aria-describedby`. El campo no cambia sólo de color.
-- **Atajos a los cinco objetos de prueba** como chips de 44 px de alto: Barnard's Star, Epsilon Indi B,
-  WISE 0855−0714, RW Aurigae, R Draconis.
+- **Los cinco objetos de prueba** van en un desplegable (§7.12) junto a los campos: Barnard's Star,
+  Epsilon Indi B, WISE 0855−0714, RW Aurigae, R Draconis. Elegir uno rellena RA y Dec con su posición
+  de hoy; escribir una posición quita la elección. No hay búsqueda por nombre libre (decidido el
+  15 nov): cualquier otro sitio se pide con RA y Dec.
 
 ### 7.6 Estados de carga, vacío y error
 
@@ -353,13 +361,17 @@ Sale de la prueba de `mockup/sky.js`.
   `rgba(123, 168, 212, 0.23)`, radio 16 px, `backdrop-filter: blur(14px)` y la sombra de diálogo
   del §5. Sólo para lo que flota sobre el cielo, nunca sobre una foto de SPHEREx.
 - **Buscador:** panel «glass» abajo al centro (880 px como máximo), con etiqueta pequeña, la pregunta
-  como título, una fila con nombre, RA, Dec y el botón principal, y los cinco objetos de prueba como
-  chips. Lleva un botón «Hide» / «Search». Se pliega solo durante el viaje. Nombre y coordenadas son
-  dos formas de decir lo mismo: escribir en uno vacía el otro.
-- **Capas del cielo:** chips arriba a la izquierda, uno activo, con un pie que dice siempre qué mapa
+  como título y una fila con el desplegable de los cinco objetos de prueba, RA, Dec y el botón
+  principal (§7.5). Lleva un botón «Hide» / «Search». Se pliega solo durante el viaje. Nada viaja
+  hasta pulsar el botón principal.
+- **Capas del cielo:** un desplegable (§7.12) arriba a la izquierda, con un pie que dice siempre qué mapa
   se ve, de qué fechas y si es un dibujo o un promedio. El cambio de capa es un fundido de 0.4 s
   (aquí sí, porque no se comparan fechas). El falso color es la única imagen a color del sistema
   (excepción al §2.6) y su pie dice qué longitud de onda va en cada canal.
+- **Lector de coordenadas:** la posición y el campo de la vista, bajo el desplegable de capas. En
+  móvil (≤ 760 px) queda oculto y un botón de icono «i» junto al desplegable lo muestra a petición.
+- **Cabecera en móvil:** por debajo de 520 px sólo caben el nombre del equipo, la etiqueta «Mockup»
+  y «Credits»; el nombre del proyecto se oculta.
 - **Controles:** columna de botones de icono de 44 × 44 a la derecha (acercar, alejar, pausa y
   volver al cielo completo); en móvil, arriba a la derecha.
 - **Giro en reposo:** 1.5° por segundo, con botón de pausa (WCAG 2.2.2). Se detiene al tocar el
@@ -374,6 +386,25 @@ Sale de la prueba de `mockup/sky.js`.
 - **Créditos:** como no hay pie de página, el botón «Credits» de la cabecera abre un diálogo con el
   texto del §7.10.
 - **Enlace de salto:** «Skip to search».
+
+### 7.12 Desplegable
+
+Para elegir una opción entre pocas cuando una fila de chips no cabe: capa del cielo, banda y objeto
+de prueba.
+
+- Es el `<select>` nativo, para que el teléfono abra su propio selector y el teclado funcione sin
+  código. Se le quita la apariencia del sistema y se viste como un input (§7.5): alto mínimo 48 px,
+  radio 4 px, fondo `--bc-noche`, borde `--bc-border` (`--bc-acento` en hover), texto `--bc-blanco`
+  de 15 px y peso 500.
+- **Flecha:** un ángulo de 8 px en `--bc-estrella`, a 16 px del borde derecho y centrado en vertical.
+  El texto deja 44 px libres a la derecha para no meterse debajo, y se corta con puntos suspensivos.
+- **Etiqueta:** encima, como la de un campo (§7.5), o a la izquierda en la misma línea cuando el
+  desplegable va solo en su fila (banda). Si la opción ya dice qué es («Visible light»), la etiqueta
+  va sólo en `aria-label`.
+- **No actúa solo cuando mueve la vista:** elegir un objeto no viaja hasta pulsar el botón principal,
+  para que recorrer la lista con el teclado no dispare cinco viajes. Capa y banda sí cambian al
+  elegir, porque sólo cambian lo que se ve en el sitio.
+- Sobre el cielo lleva el fondo de superficie flotante, `rgba(8, 12, 20, 0.78)`.
 
 ---
 

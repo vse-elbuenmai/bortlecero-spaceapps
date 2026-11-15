@@ -85,7 +85,7 @@ def test_mockup_html_has_required_modal_elements() -> None:
     content = html_path.read_text(encoding="utf-8")
 
     # Required control IDs
-    assert 'id="band-chips"' in content, "Missing #band-chips container in index.html"
+    assert 'id="band-select"' in content, "Missing #band-select in index.html"
     assert 'id="diff-toggle"' in content, "Missing #diff-toggle button in index.html"
     assert 'id="panel-warnings"' in content, "Missing #panel-warnings in index.html"
     assert 'id="warnings-list"' in content, "Missing #warnings-list in index.html"
@@ -124,7 +124,7 @@ def test_mockup_js_implementation_contracts() -> None:
     assert re.search(r"p\.y\s*\+\s*0\.5", js_code) is not None
 
     # 5. Band selection and difference map toggle functions
-    assert "buildBandChips" in js_code
+    assert "buildBandOptions" in js_code
     assert "selectBand" in js_code
     assert "diffMode" in js_code
     assert "setDiffMode" in js_code

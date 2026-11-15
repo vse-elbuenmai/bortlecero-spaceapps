@@ -8,7 +8,7 @@ structure are still for the team to decide (see `AGENTS.md`).
   per visit at nearly the same wavelength, re-aligns them north-up, stretches them and writes
   `data/barnard/` (PNGs + `frames.json`). Each step is explained at the top of the file.
 - `index.html`, `sky.css`, `sky.js` — the **sky view**: the whole sky on screen, seen from inside,
-  a search panel (object name, or RA and Dec) that travels to the position, and the blink viewer in
+  a search panel (one of the five test objects, or RA and Dec) that travels to the position, and the blink viewer in
   a dialog on arrival. Plain HTML/CSS/JS and one WebGL 2 shader; no libraries, no build step.
 - `prepare_sky.py` — builds the three all-sky maps the sky view paints (`sky/*.webp`, `sky/sky.json`).
 - `mockup.css`, `mockup.js` — the blink viewer, following `DESIGN.md` §7.
@@ -48,7 +48,7 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
 
 - **Own sky maps, no map server.** Each layer is one image of the whole sky (a panorama, 4096 × 2048,
   with a 2048 × 1024 copy shown while it loads), painted on the inside of a sphere by one shader.
-  Once the page has loaded it needs the network only to look up object names.
+  Once the page has loaded the sky view needs no network.
 - **Three layers.** "Visible light" is NASA SVS's Deep Star Maps 2020: a drawing from the Gaia,
   Hipparcos and Tycho catalogues, not a photograph. "SPHEREx 4.77 µm" is frame 95 of IRSA's SPHEREx
   DR1 all-sky cube. "SPHEREx false colour" is frames 95, 55 and 10 as red, green and blue; those three
@@ -58,8 +58,9 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   would show less than half a map pixel: about 60° across on a laptop, never closer than 30°. The
   trip ends there, with a ring on the position; the dialog is where the real pixels are.
 - **Search.** The five test objects come from a list in `sky.js` (Gaia DR3 positions and proper
-  motions, moved to today). Any other name is looked up in SIMBAD through its mirror at Harvard
-  (`vizier.cfa.harvard.edu`, the Sesame service), from the browser.
+  motions, moved to today) and are offered in a select; choosing one fills in RA and Dec. Any other
+  place is asked for by RA and Dec. Free names are no longer looked up (decided on 15 Nov, to keep
+  the phone layout clear).
 - **What opens on arrival.** Barnard's Star opens the blink viewer with the three prepared frames.
   Any other position opens the dialog with a message: this mockup does not talk to the ingestion
   service (`src/spherex_ingest/`) yet.
@@ -111,7 +112,7 @@ to the star. Its three sky layers work with the two workarounds described below.
 
 ## What is fake in the mockup
 
-- Only Barnard's Star has prepared frames. Any other position, typed or from a chip, opens the
+- Only Barnard's Star has prepared frames. Any other position opens the
   dialog with a message.
 - The "within X″ of Gaia" badge threshold (0.5″) is a placeholder for the team to decide.
 - The project name in the header.

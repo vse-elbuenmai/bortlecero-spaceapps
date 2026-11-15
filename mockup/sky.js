@@ -10,7 +10,6 @@ const MAX_FOV = 170;
 const SPIN_DEG_PER_S = 1.5;
 const SHARPNESS = 0.5; // closest zoom: one screen pixel shows no less than half a map pixel
 const PREPARED_RADIUS_DEG = 0.04; // half the side of the prepared Barnard frames
-const SESAME = "https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/S?";
 
 // Test objects: position, epoch and proper motion (mas/yr), moved to today before travelling.
 // Barnard's Star, Epsilon Indi B and R Draconis: Gaia DR3, live query of the ESA archive on
@@ -252,10 +251,7 @@ function caption(key) {
 }
 
 async function setLayer(key) {
-  document.querySelectorAll("[data-layer]").forEach((b) => {
-    b.classList.toggle("is-active", b.dataset.layer === key);
-    b.setAttribute("aria-pressed", String(b.dataset.layer === key));
-  });
+  $("layer-select").value = key;
   $("sky-credit").textContent = caption(key);
   if (!state.gl || key === state.layer) return;
   try {
@@ -269,7 +265,7 @@ async function setLayer(key) {
   state.dirty = true;
 }
 
-// ---------- coordinates and names ----------
+// ---------- coordinates ----------
 // Accepts decimal degrees (269.4485, +4.7394) and sexagesimal (17h57m48.5s, 17:57:48.5,
 // +04°44′22″, +04 44 22). Sexagesimal RA is in hours unless it is marked with ° or d.
 function parseAngle(text, isRa) {
@@ -289,21 +285,6 @@ function today(o) {
   return { key: o.key, name: o.name, simbad: o.simbad, dec, ra: (o.ra + ((o.pmra / 3.6e6) * years) / Math.cos(o.dec * RAD) + 360) % 360 };
 }
 
-async function resolveName(name) {
-  const key = name.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const known = Object.values(OBJECTS).find((o) => o.name.toLowerCase().replace(/[^a-z0-9]/g, "").replace("−", "") === key);
-  if (known) return today(known);
-  const xml = new DOMParser().parseFromString(await (await fetch(SESAME + encodeURIComponent(name))).text(), "text/xml");
-  const num = (tag) => { const el = xml.querySelector(tag); return el ? parseFloat(el.textContent) : NaN; };
-  if (Number.isNaN(num("jradeg"))) return null;
-  const oname = xml.querySelector("oname");
-  return today({
-    name, // what the person typed; SIMBAD's own identifier goes next to it
-    simbad: oname ? oname.textContent.replace(/\s+/g, " ").trim() : "",
-    ra: num("jradeg"), dec: num("jdedeg"), epoch: 2000, pmra: num("pmRA") || 0, pmdec: num("pmDE") || 0,
-  });
-}
-
 function fieldError(id, text) {
   const input = $(id), err = $(id + "-err");
   input.setAttribute("aria-invalid", String(Boolean(text)));
@@ -312,11 +293,9 @@ function fieldError(id, text) {
 }
 const say = (text) => { msg.hidden = !text; msg.textContent = text || ""; };
 
-function markChip(objectKey) {
-  document.querySelectorAll("[data-object]").forEach((c) => {
-    c.classList.toggle("is-active", c.dataset.object === objectKey);
-    c.setAttribute("aria-pressed", String(c.dataset.object === objectKey));
-  });
+// Which test object the search shows as chosen (none for a typed position).
+function setObject(objectKey) {
+  $("object").value = objectKey || "";
 }
 
 // ---------- the trip ----------
@@ -419,7 +398,7 @@ function wholeSky() {
   if (modal.open) modal.close();
   state.target = null;
   state.trip = null;
-  markChip(null);
+  setObject(null);
   say("");
   setSearchOpen(true);
   if (reduceMotion || !state.gl) { setFov(REST_FOV); return; }
@@ -445,45 +424,42 @@ function setSearchOpen(open) {
 
 // ---------- events ----------
 function bindEvents() {
-  $("search-form").addEventListener("submit", async (e) => {
+  $("search-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    ["name", "ra", "dec"].forEach((id) => fieldError(id, ""));
-    const name = $("name").value.trim();
-    if (name) {
-      say(`Looking up “${name}”…`);
-      let found;
-      try { found = await resolveName(name); }
-      catch (err) {
-        say("");
-        return fieldError("name", "The name service (SIMBAD at Harvard) is not responding. Enter RA and Dec instead.");
-      }
-      if (!found) { say(""); return fieldError("name", `No object called “${name}” was found in SIMBAD. Check the spelling or enter RA and Dec.`); }
-      markChip(Object.keys(OBJECTS).find((k) => OBJECTS[k].name === found.name) || null);
-      return travel(found);
-    }
+    ["object", "ra", "dec"].forEach((id) => fieldError(id, ""));
+    const objectKey = $("object").value;
+    if (objectKey) return travel(today(OBJECTS[objectKey]));
     const ra = parseAngle($("ra").value, true), dec = parseAngle($("dec").value, false);
     const raBad = Number.isNaN(ra) || ra < 0 || ra >= 360, decBad = Number.isNaN(dec) || dec < -90 || dec > 90;
-    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("name", "Type an object name, or RA and Dec.");
+    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", "Choose a test object, or enter RA and Dec.");
     fieldError("ra", raBad ? "RA must be between 0° and 360° (or 0h and 24h)" : "");
     fieldError("dec", decBad ? "Dec must be between −90° and +90°" : "");
     if (raBad || decBad) return (raBad ? $("ra") : $("dec")).focus();
     const target = { ra, dec };
     const bench = findPreparedBenchmark(target);
-    markChip(bench ? bench.chipKey : null);
+    setObject(bench ? bench.chipKey : null);
     travel(bench ? { ...target, ...bench } : target);
   });
-  // A name and a pair of coordinates are two ways to say the same thing: typing one clears the other.
-  $("name").addEventListener("input", () => { $("ra").value = $("dec").value = ""; });
-  for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => { $("name").value = ""; });
+  // A test object and a pair of coordinates are two ways to say the same thing: choosing an object
+  // fills in where it is today, and typing a position clears the choice. Nothing travels until
+  // "Go there", so stepping through the list with the keyboard does not move the sky.
+  $("object").addEventListener("change", () => {
+    ["object", "ra", "dec"].forEach((id) => fieldError(id, ""));
+    const object = OBJECTS[$("object").value];
+    if (!object) return;
+    const target = today(object);
+    $("ra").value = target.ra.toFixed(5);
+    $("dec").value = (target.dec >= 0 ? "+" : "−") + Math.abs(target.dec).toFixed(5);
+  });
+  for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => setObject(null));
 
-  document.querySelectorAll("[data-object]").forEach((chip) => chip.addEventListener("click", () => {
-    const target = today(OBJECTS[chip.dataset.object]);
-    ["name", "ra", "dec"].forEach((id) => fieldError(id, ""));
-    $("name").value = target.name;
-    markChip(chip.dataset.object);
-    travel(target);
-  }));
-  document.querySelectorAll("[data-layer]").forEach((b) => b.addEventListener("click", () => setLayer(b.dataset.layer)));
+  $("layer-select").addEventListener("change", (e) => setLayer(e.target.value));
+  // On phones the coordinates of the view stay out of the way until asked for.
+  $("coords-toggle").addEventListener("click", () => {
+    const shown = document.querySelector(".sky-layers").classList.toggle("show-coords");
+    $("coords-toggle").setAttribute("aria-pressed", String(shown));
+    $("coords-toggle").setAttribute("aria-label", shown ? "Hide the coordinates of the view" : "Show the coordinates of the view");
+  });
 
   $("spin-toggle").addEventListener("click", () => setSpinning(!state.spinning));
   $("zoom-sky-in").addEventListener("click", () => setFov(state.fov / 1.25));
@@ -491,7 +467,10 @@ function bindEvents() {
   $("whole-sky").addEventListener("click", wholeSky);
   $("search-toggle").addEventListener("click", () => setSearchOpen($("search-body").hidden));
   $("modal-close").addEventListener("click", () => modal.close());
-  $("open-barnard").addEventListener("click", () => document.querySelector('[data-object="barnard"]').click());
+  $("open-barnard").addEventListener("click", () => {
+    setObject("barnard");
+    travel(today(OBJECTS.barnard));
+  });
   $("credits-open").addEventListener("click", () => $("credits").showModal());
   $("credits-close").addEventListener("click", () => $("credits").close());
   modal.addEventListener("close", () => {
