@@ -9,6 +9,9 @@ const REST_FOV = 120; // degrees across the screen when showing "the whole sky"
 const MAX_FOV = 170;
 const SPIN_DEG_PER_S = 1.5;
 const SHARPNESS = 0.5; // closest zoom: one screen pixel shows no less than half a map pixel
+// Name lookup: SIMBAD through the Sesame service of its mirror at Harvard (the CDS servers are down).
+const SESAME = "https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/S?";
+const LOOKUP_TIMEOUT_MS = 10000;
 
 // Test objects: position, epoch and proper motion (mas/yr), moved to today before travelling.
 // Barnard's Star, Epsilon Indi B and R Draconis: Gaia DR3, live query of the ESA archive on
@@ -268,7 +271,7 @@ async function setLayer(key) {
   state.dirty = true;
 }
 
-// ---------- coordinates ----------
+// ---------- coordinates and names ----------
 // Accepts decimal degrees (269.4485, +4.7394) and sexagesimal (17h57m48.5s, 17:57:48.5,
 // +04°44′22″, +04 44 22). Sexagesimal RA is in hours unless it is marked with ° or d.
 function parseAngle(text, isRa) {
@@ -286,6 +289,26 @@ function today(o) {
   const years = new Date().getUTCFullYear() + (new Date().getUTCMonth() + 0.5) / 12 - o.epoch;
   const dec = o.dec + (o.pmdec / 3.6e6) * years;
   return { key: o.key, name: o.name, simbad: o.simbad, dec, ra: (o.ra + ((o.pmra / 3.6e6) * years) / Math.cos(o.dec * RAD) + 360) % 360 };
+}
+
+// Where an object with this name is today. The five test objects are answered from the list above,
+// with no network. Any other name is asked to SIMBAD, which gives the position for J2000 and the
+// proper motion. Returns null when SIMBAD does not know the name, and throws when it does not answer.
+async function resolveName(name) {
+  const plain = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const known = Object.values(OBJECTS).find((o) => plain(o.name) === plain(name));
+  if (known) return today(known);
+  const reply = await fetch(SESAME + encodeURIComponent(name), { signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) });
+  if (!reply.ok) throw new Error(`The name service answered ${reply.status}`);
+  const xml = new DOMParser().parseFromString(await reply.text(), "text/xml");
+  const num = (tag) => { const el = xml.querySelector(tag); return el ? parseFloat(el.textContent) : NaN; };
+  if (Number.isNaN(num("jradeg")) || Number.isNaN(num("jdedeg"))) return null;
+  const oname = xml.querySelector("oname");
+  return today({
+    name, // what the person typed; SIMBAD's own identifier goes next to it
+    simbad: oname ? oname.textContent.replace(/\s+/g, " ").trim() : "",
+    ra: num("jradeg"), dec: num("jdedeg"), epoch: 2000, pmra: num("pmRA") || 0, pmdec: num("pmDE") || 0,
+  });
 }
 
 function fieldError(id, text) {
@@ -455,14 +478,37 @@ function setSearchOpen(open) {
 
 // ---------- events ----------
 function bindEvents() {
-  $("search-form").addEventListener("submit", (e) => {
+  const fields = ["object", "name", "ra", "dec"];
+  let searches = 0; // so the answer to a slow name lookup cannot override a newer search
+  $("search-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    ["object", "ra", "dec"].forEach((id) => fieldError(id, ""));
+    const search = ++searches;
+    fields.forEach((id) => fieldError(id, ""));
+    const name = $("name").value.trim();
+    if (name) {
+      say(`Looking up “${name}”…`);
+      let found;
+      try {
+        found = await resolveName(name);
+      } catch {
+        if (search !== searches) return;
+        say("");
+        return fieldError("name", "The name service (SIMBAD at Harvard) is not responding. Try again, or enter RA and Dec.");
+      }
+      if (search !== searches) return;
+      if (!found) {
+        say("");
+        return fieldError("name", `The name service (SIMBAD at Harvard) did not find “${name}”. Try another name, or enter RA and Dec.`);
+      }
+      const bench = findPreparedBenchmark(found);
+      setObject(bench ? bench.chipKey : null);
+      return travel(found);
+    }
     const objectKey = $("object").value;
     if (objectKey) return travel(today(OBJECTS[objectKey]));
     const ra = parseAngle($("ra").value, true), dec = parseAngle($("dec").value, false);
     const raBad = Number.isNaN(ra) || ra < 0 || ra >= 360, decBad = Number.isNaN(dec) || dec < -90 || dec > 90;
-    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", "Choose a test object, or enter RA and Dec.");
+    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", "Choose a test object, type an object name, or enter RA and Dec.");
     fieldError("ra", raBad ? "RA must be between 0° and 360° (or 0h and 24h)" : "");
     fieldError("dec", decBad ? "Dec must be between −90° and +90°" : "");
     if (raBad || decBad) return (raBad ? $("ra") : $("dec")).focus();
@@ -471,18 +517,28 @@ function bindEvents() {
     setObject(bench ? bench.chipKey : null);
     travel(bench ? { ...target, ...bench } : target);
   });
-  // A test object and a pair of coordinates are two ways to say the same thing: choosing an object
-  // fills in where it is today, and typing a position clears the choice. Nothing travels until
-  // "Go there", so stepping through the list with the keyboard does not move the sky.
+  // A test object, a name and a pair of coordinates are three ways to say the same thing, and the
+  // last one touched is the one that counts: choosing an object fills in where it is today and
+  // clears the name, typing a name clears the choice and the position, and typing a position
+  // clears the choice and the name. Nothing travels until "Go there", so stepping through the list
+  // with the keyboard does not move the sky.
   $("object").addEventListener("change", () => {
-    ["object", "ra", "dec"].forEach((id) => fieldError(id, ""));
+    fields.forEach((id) => fieldError(id, ""));
     const object = OBJECTS[$("object").value];
     if (!object) return;
     const target = today(object);
+    $("name").value = "";
     $("ra").value = target.ra.toFixed(5);
     $("dec").value = (target.dec >= 0 ? "+" : "−") + Math.abs(target.dec).toFixed(5);
   });
-  for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => setObject(null));
+  $("name").addEventListener("input", () => {
+    setObject(null);
+    $("ra").value = $("dec").value = "";
+  });
+  for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => {
+    setObject(null);
+    $("name").value = "";
+  });
 
   $("layer-select").addEventListener("change", (e) => setLayer(e.target.value));
   $("info-toggle").addEventListener("click", () => setInfo(!document.querySelector(".sky-layers").classList.contains("show-coords")));
@@ -494,6 +550,7 @@ function bindEvents() {
   $("search-toggle").addEventListener("click", () => setSearchOpen($("search-body").hidden));
   $("modal-close").addEventListener("click", () => modal.close());
   $("open-barnard").addEventListener("click", () => {
+    $("name").value = "";
     setObject("barnard");
     travel(today(OBJECTS.barnard));
   });

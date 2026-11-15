@@ -1,14 +1,14 @@
 # SPHEREx blink viewer
 
 The viewer displays prepared SPHEREx bundles for the five challenge benchmarks and lets visitors
-look around the sky by test object or coordinates.
+look around the sky by test object, by name or by coordinates.
 
 - `prepare_barnard.py` — downloads a few SPHEREx cutouts of Barnard's Star from IRSA, picks one
   per visit at nearly the same wavelength, re-aligns them north-up, stretches them and writes
   `data/barnard/` (PNGs + `frames.json`). Each step is explained at the top of the file.
 - `index.html`, `sky.css`, `sky.js` — the **sky view**: the whole sky on screen, seen from inside,
-  a search panel (one of the five test objects, or RA and Dec) that travels to the position, and the blink viewer in
-  a dialog on arrival. Plain HTML/CSS/JS and one WebGL 2 shader; no libraries, no build step.
+  a search panel (one of the five test objects, an object name, or RA and Dec) that travels to the
+  position, and the blink viewer in a dialog on arrival. Plain HTML/CSS/JS and one WebGL 2 shader; no libraries, no build step.
 - `prepare_sky.py` — builds the three all-sky maps the sky view paints (`sky/*.webp`, `sky/sky.json`).
 - `mockup.css`, `mockup.js` — the blink viewer, following `DESIGN.md` §7.
 - `aladin.html`, `sky-aladin.js` — **plan B**: the earlier version of the sky, drawn by Aladin Lite
@@ -99,7 +99,7 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
 
 - **Own sky maps, no map server.** Each layer is one image of the whole sky (a panorama, 4096 × 2048,
   with a 2048 × 1024 copy shown while it loads), painted on the inside of a sphere by one shader.
-  Once the page has loaded the sky view needs no network.
+  Once the page has loaded the sky view needs the network only to look up object names.
 - **Three layers.** "Visible light" is NASA SVS's Deep Star Maps 2020: a drawing from the Gaia,
   Hipparcos and Tycho catalogues, not a photograph. "SPHEREx 4.77 µm" is frame 95 of IRSA's SPHEREx
   DR1 all-sky cube. "SPHEREx false colour" is frames 95, 55 and 10 as red, green and blue; those three
@@ -108,13 +108,18 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
 - **How close it gets.** One map pixel covers 5.3′ of sky, so the view stops where one screen pixel
   would show less than half a map pixel: about 60° across on a laptop, never closer than 30°. The
   trip ends there, with a ring on the position; the dialog is where the real pixels are.
-- **Search.** The five test objects come from a list in `sky.js` (Gaia DR3 positions and proper
-  motions, moved to today) and are offered in a select; choosing one fills in RA and Dec. Any other
-  place is asked for by RA and Dec. Free names are no longer looked up (decided on 15 Nov, to keep
-  the phone layout clear).
-- **What opens on arrival.** Barnard's Star opens the blink viewer with the three prepared frames.
-  Any other position opens the dialog with a message: this mockup does not talk to the ingestion
-  service (`src/spherex_ingest/`) yet.
+- **Search.** Three ways to say where, and the last one touched counts. The five test objects come
+  from a list in `sky.js` (Gaia DR3 positions and proper motions, moved to today) and are offered
+  in a select; choosing one fills in RA and Dec. Any other object can be typed by name: the page
+  asks SIMBAD through its mirror at Harvard (`vizier.cfa.harvard.edu`, the Sesame service), from
+  the browser, and moves the J2000 position it gets to today with the proper motion. The names of
+  the five test objects are answered from the list, with no network. Any place can also be given
+  as RA and Dec. The name lookup was removed on 15 Nov to keep the phone layout clear and came back
+  the same day in a layout that is no taller on a phone. The mirror does not know every catalogue
+  name: on 15 Nov 2026 it found "Vega", "M31" and "Barnard's star", not "GJ 699" or "HIP 87937".
+- **What opens on arrival.** The five test objects open the blink viewer with their prepared
+  bundle. Any other position opens the dialog with a message: the public page shows the five
+  benchmarks only (see "Benchmark hosting" above).
 - `window.skyPrototype` in the browser console gives the view's state.
 
 ### Rebuilding the sky maps

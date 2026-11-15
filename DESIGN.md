@@ -291,16 +291,21 @@ al 25 %. Siempre con texto; el icono va con `aria-hidden="true"`.
 
 ### 7.5 Entrada de coordenadas
 
-- Dos campos (RA y Dec) más un campo de búsqueda por nombre si el equipo lo implementa. Aceptan grados
-  decimales y sexagesimales; el `placeholder` muestra los dos formatos.
+- Dos campos (RA y Dec) más un campo de búsqueda por nombre. RA y Dec aceptan grados decimales y
+  sexagesimales; el `placeholder` muestra los dos formatos.
 - Input: alto mínimo 48 px, radio 4 px, fondo `--bc-noche`, borde `--bc-border`, foco con el contorno
   del sistema. Fuente `--bc-font-mono`.
 - Error en línea bajo el campo, en `--bc-error`, con icono y texto («Dec must be between −90° and
   +90°»), enlazado con `aria-describedby`. El campo no cambia sólo de color.
 - **Los cinco objetos de prueba** van en un desplegable (§7.12) junto a los campos: Barnard's Star,
   Epsilon Indi B, WISE 0855−0714, RW Aurigae, R Draconis. Elegir uno rellena RA y Dec con su posición
-  de hoy; escribir una posición quita la elección. No hay búsqueda por nombre libre (decidido el
-  15 nov): cualquier otro sitio se pide con RA y Dec.
+  de hoy; escribir una posición quita la elección.
+- **Búsqueda por nombre libre** (se quitó el 15 nov y volvió ese mismo día): un campo «Object name»
+  junto al desplegable. El nombre se consulta en SIMBAD al pulsar el botón principal, nunca mientras
+  se escribe. Objeto de prueba, nombre y posición son tres formas de decir lo mismo y vale la última
+  que se tocó: elegir un objeto borra el nombre, escribir un nombre quita la elección y la posición,
+  y escribir una posición quita la elección y el nombre. Si SIMBAD no encuentra el nombre o no
+  responde, el error va bajo el campo y ofrece la salida («…or enter RA and Dec»).
 
 ### 7.6 Estados de carga, vacío y error
 
@@ -369,8 +374,11 @@ Sale de la prueba de `mockup/sky.js`.
   `rgba(123, 168, 212, 0.23)`, radio 16 px, `backdrop-filter: blur(14px)` y la sombra de diálogo
   del §5. Sólo para lo que flota sobre el cielo, nunca sobre una foto de SPHEREx.
 - **Buscador:** panel «glass» abajo al centro (880 px como máximo), con etiqueta pequeña, la pregunta
-  como título y una fila con el desplegable de los cinco objetos de prueba, RA, Dec y el botón
-  principal (§7.5). Lleva un botón «Hide» / «Search». Se pliega solo durante el viaje. Nada viaja
+  como título y dos filas: arriba qué buscar (el desplegable de los cinco objetos de prueba, «or»,
+  y el nombre); abajo dónde (RA y Dec) y el botón principal (§7.5). En pantallas de hasta 900 px
+  son dos columnas, sin el «or», con el botón en su propia fila a todo el ancho; hasta 520 px la
+  columna izquierda es más ancha (1.5 a 1) para que quepa el nombre más largo del desplegable. El
+  panel no crece en móvil por tener el campo de nombre. Lleva un botón «Hide» / «Search». Se pliega solo durante el viaje. Nada viaja
   hasta pulsar el botón principal. Plegado, en móvil es una barra a todo el ancho, como la barra
   inferior de una app; en escritorio se queda del ancho de su contenido.
 - **Capas del cielo:** un desplegable (§7.12) arriba a la izquierda, con un pie que dice siempre qué mapa

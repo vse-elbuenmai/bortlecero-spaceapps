@@ -160,6 +160,10 @@ def test_sky_js_target_router_connection() -> None:
     assert "viewer:load-target" in sky_code
     assert "openModal" in sky_code
 
+    # Free object names are resolved from the browser and have their own field
+    assert "resolveName" in sky_code
+    assert 'id="name"' in Path("mockup/index.html").read_text(encoding="utf-8")
+
 
 def test_fastapi_blink_and_static_bundle_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify the API reads the tracked static bundle without contacting IRSA."""
