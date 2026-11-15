@@ -13,28 +13,23 @@ However, **naively blinking raw SPHEREx cutouts fails** due to six physical and 
 1. **$180^\circ$ Spacecraft Roll Flip (`SPS_EPA`):** Between survey passes, the telescope views the same sky region rotated by $180^\circ$ with up to $0.5\%$ optical distortion. Without reprojecting onto a unified North-up celestial grid, stars jump wildly across the frame.
 2. **Linear Variable Filter (LVF) Wavelength Gradient:** Every detector pixel samples a different wavelength $\lambda(x, y)$. A source's apparent brightness changes between exposures simply because it fell on different spectral bandpasses unless frames are tagged via the `WCS-WAVE` lookup table and grouped by spectral band (Bands 1–6).
 3. **Unsubtracted Zodiacal Light Foreground (`ZODI`):** SPHEREx Level 2b `IMAGE` extensions include the zodiacal dust foreground (which varies by up to $3\times$ over the year). The `ZODI` extension must be subtracted (`IMAGE - ZODI`) before comparing epochs.
-4. **Saturated Cores & Bitmask `FLAGS`:** Bright benchmark targets such as **Barnard's Star** and **R Draconis** saturate the H2RG detector core (producing `NaN` values and setting the `OVERFLOW` bit in `FLAGS`), while ~1.1% of pixels suffer cosmic-ray transients. Our pipeline decodes the 32-bit `FLAGS` bitmask, masks transient artifacts, and reconstructs saturated stellar cores for visual blinking while preserving explicit saturation masks and raw science matrices.
+4. **Saturated Cores & Bitmask `FLAGS`:** Bright benchmark targets such as **Barnard's Star** and **R Draconis** saturate the H2RG detector core (producing `NaN` values and setting the `OVERFLOW` bit in `FLAGS`), while ~1.1% of pixels suffer cosmic-ray transients. Our pipeline decodes the 32-bit `FLAGS` bitmask, masks transient artifacts, and reconstructs saturated stellar cores for visual blinking and exposes saturation masks alongside the display matrices.
 5. **Sub-Pixel Proper Motion & Parallax:** Even the fastest star in the sky (**Barnard's Star**, $10.39''/\text{yr}$) moves only $\approx 0.84\text{ pixels}$ per 6-month survey pass, with a trigonometric parallax ellipse of $0.55''$ ($1.09''$ peak-to-peak). Our pipeline propagates Gaia DR3 astrometry ($\mu_{\alpha^*}, \mu_\delta, \varpi$) to the exact `MJD-AVG` of each exposure using `astropy.coordinates.SkyCoord.apply_space_motion` and measures sub-pixel centroids.
 6. **WISE J085510.83−071442.5 Epoch Shift & Extreme Cold SED:** The challenge prompt coordinates for WISE 0855−0714 are from its ~2010 discovery epoch; by 2025–2026 it has moved ~20 SPHEREx pixels West to $\text{RA}\approx 133.760^\circ, \text{Dec}\approx -7.2422^\circ$, and at $T_{\text{eff}} \approx 250\text{ K}$ it is detectable only at $\lambda > 3.9\,\mu\text{m}$ (SPHEREx Bands 5 and 6).
 
 ---
 
-## SOLID Data Ingestion Pipeline Architecture
+## Data ingestion pipeline
 
-The `spherex_ingest` package (`src/spherex_ingest/`) is built in Python 3.12+ (managed with **Astral `uv`**) following **SOLID** principles inspired by the Vera C. Rubin Observatory / SPHEREx Science Data Center `PipelineTask` architecture:
+The viewer submits a sky position or benchmark ID to the FastAPI job API. For a
+new search, the worker queries IRSA for matching SPHEREx Level 2b exposures and
+downloads only the selected FITS cutouts. It subtracts the zodiacal foreground,
+handles detector artifacts, aligns the images on a common sky grid, and exports a
+blink bundle with PNGs, spectral metadata, quality masks, and difference maps.
 
-- **`domain/`**: Immutable Pydantic DTOs (`TargetSpec`, `BlinkBundleDTO`, `FrameMetadataDTO`, `DifferenceMapDTO`), in-memory dataclasses (`RawCutoutFrame`, `ProcessedBlinkFrame`), `SPHERExFlagBits`, and `typing.Protocol` interfaces (`CutoutProviderProtocol`, `AstrometricCatalogProtocol`, `FrameProcessorProtocol`, `BundleExporterProtocol`).
-- **`infrastructure/`**:
-  - `IRSASiaCutoutProvider`: Queries NASA/IPAC IRSA SIAv2 (`https://irsa.ipac.caltech.edu/SIA`) across `spherex_dr1`, `spherex_qr3`, `spherex_dr1_deep`, and `spherex_qr3_deep` (explicitly rejecting `qr2`), fetches cutouts via the IRSA SPHEREx Cutout Service, and caches FITS files locally.
-  - `SPHERExMEFParser`: Parses all 6 extensions (`IMAGE`, `FLAGS`, `VARIANCE`, `ZODI`, `EPSF`, `WCS-WAVE`), normalizes SIP header keywords, and evaluates exact pixel wavelengths $\lambda$ and bandwidths $\Delta\lambda$ via `WCS(..., key='W')`.
-  - `HarvardSimbadCatalogProvider`: Resolves target names and Gaia DR3 proper motions/parallaxes via the Harvard/CfA SIMBAD TAP mirror (`simbad.harvard.edu`).
-- **`processors/`**:
-  - `ZodiAndFlagCleaner`: Subtracts `ZODI`, filters `FLAGS` bitmasks, and repairs saturated core `NaN` pixels for visual rendering.
-  - `NorthUpCommonReprojector`: Reprojects all multi-epoch cutouts onto a common North-up, East-left `TAN` WCS grid via `reproject_interp`.
-  - `KinematicsAndPhotometryAnalyzer`: Propagates Gaia DR3 astrometry to each frame's `MJD-AVG`, computes sub-pixel center-of-mass centroids (`photutils`), and measures circular aperture flux in $\mu\text{Jy}$.
-- **`exporters/`**:
-  - `FrontendBundleExporter`: Generates per-band normalized arcsinh PNGs (base64 + files), same-band epoch difference maps ($\Delta I = I_{t_2} - I_{t_1}$), scientific warnings, and the unified `BlinkBundleDTO` JSON.
-- **`api.py` & `cli.py`**: FastAPI CORS-enabled REST server and CLI for pre-generating static benchmark bundles or querying arbitrary sky coordinates live.
+The [ingestion guide](docs/GUIA-EQUIPO-INGESTA.md) walks through the full process
+in Spanish, from IRSA discovery and download to image preprocessing and display.
+The [async API guide](docs/ASYNC-INGESTION.md) documents job status and results.
 
 ---
 
@@ -83,8 +78,9 @@ uv run spherex-ingest serve --host 0.0.0.0 --port 8000
 Interactive OpenAPI documentation is available at `http://localhost:8000/docs`:
 - `GET /api/v1/health` — Service health check.
 - `GET /api/v1/benchmarks` — List the 5 benchmark targets and metadata.
-- `GET /api/v1/blink/{target_id}` — Retrieve the complete `BlinkBundleDTO` for a benchmark target.
-- `GET /api/v1/blink?ra={deg}&dec={deg}&size_arcsec=180` — Live ingestion and reprojection for any sky position or object name (`?query=...`).
+- `POST /api/v1/jobs` — Submit a position or object search, or get a cached result.
+- `GET /api/v1/jobs/{job_id}` — Check progress.
+- `GET /api/v1/jobs/{job_id}/result` — Get the completed blink bundle.
 
 ### 5. Run Automated Tests & Linter
 
