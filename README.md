@@ -95,6 +95,10 @@ uv run ruff check src/ tests/
 
 ---
 
+## Cloud Run staging
+
+See the [container and staging guide](docs/CLOUD-RUN.md) for local smoke tests and private deployment.
+
 ## License & Citations
 
 Released under the **Apache License 2.0**. See [docs/SOURCES.md](docs/SOURCES.md) for full scientific citations, NASA/IRSA acknowledgements, and software attributions, and [docs/AI-USAGE.md](docs/AI-USAGE.md) for the transparent AI usage log.

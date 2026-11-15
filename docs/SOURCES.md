@@ -74,3 +74,11 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Firebase Hosting configuration](https://firebase.google.com/docs/hosting/full-config) | Managed Google service | Serving the static benchmark viewer with HTTPS and release cache headers | 2026-11-15 |
 | [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 | Offline Chromium tests for the hosted viewer, benchmark fallback and ingestion statuses | 2026-11-15 |
 | [GitHub Actions Node.js setup](https://github.com/actions/setup-node) | MIT | Provisioning Node.js for browser CI | 2026-11-15 |
+| [Docker Official Image for Python](https://github.com/docker-library/python) | PSF-2.0 for Python | Digest-pinned CPython 3.14 base image for the ingestion service | 2026-11-15 |
+
+## Deployment references
+
+| Source | Used for | Added |
+|---|---|---|
+| [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification, HTTP probes, and bounded scratch volume | 2026-11-15 |
+| [Astral uv Docker guide](https://docs.astral.sh/uv/guides/integration/docker/) | Multi-stage container build with locked runtime dependencies | 2026-11-15 |

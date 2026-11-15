@@ -42,9 +42,9 @@ R Draconis.
   uv run python mockup/prepare_barnard.py
   uv run python -m http.server 8765 --directory mockup
   ```
-- **Frontend y despliegue: sin decidir.** Los decide el equipo. Cuando se decidan, se escriben
-  aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que los
-  introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
+- **Ingestion API deployment:** Cloud Run container and private staging configuration in
+  [docs/CLOUD-RUN.md](docs/CLOUD-RUN.md), with commands to run, test, and deploy. Live
+  ingestion starts disabled. Track the static viewer release separately in issue #16.
 - Prioridad acordada: **una demo desplegada que funcione antes que más funciones.**
 
 ## Reloj (hora de Guadalajara)
