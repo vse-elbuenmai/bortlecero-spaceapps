@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from spherex_ingest.api import app
 from spherex_ingest.domain.models import BlinkBundleDTO
+from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 
 BENCHMARK_IDS = [
     "barnards_star",
@@ -34,7 +35,19 @@ def test_benchmark_bundles_exist_and_validate_dto() -> None:
         bundle = BlinkBundleDTO.model_validate_json(raw_json)
 
         # 1. Target and Grid specification
+        expected_target = BENCHMARK_TARGETS[target_id]
         assert bundle.target.target_id == target_id
+        assert bundle.target.ra_deg == pytest.approx(expected_target.ra_deg, abs=1e-6)
+        assert bundle.target.dec_deg == pytest.approx(expected_target.dec_deg, abs=1e-6)
+        assert bundle.target.pm_ra_cosdec_mas_yr == pytest.approx(
+            expected_target.pm_ra_cosdec_mas_yr, abs=1e-4
+        )
+        assert bundle.target.pm_dec_mas_yr == pytest.approx(
+            expected_target.pm_dec_mas_yr, abs=1e-4
+        )
+        assert bundle.target.parallax_mas == pytest.approx(
+            expected_target.parallax_mas, abs=1e-4
+        )
         assert bundle.grid.width_px > 0
         assert bundle.grid.height_px > 0
         assert "North-up" in bundle.grid.orientation
@@ -53,6 +66,9 @@ def test_benchmark_bundles_exist_and_validate_dto() -> None:
             assert f.png_base64.startswith("data:image/png;base64,")
             assert 0.0 <= f.predicted_pixel_x <= bundle.grid.width_px
             assert 0.0 <= f.predicted_pixel_y <= bundle.grid.height_px
+            if target_id == "barnards_star":
+                assert 10.0 <= f.predicted_pixel_x <= 21.0
+                assert 10.0 <= f.predicted_pixel_y <= 21.0
             if f.measured_centroid_x is not None:
                 assert 0.0 <= f.measured_centroid_x <= bundle.grid.width_px
                 assert f.measured_centroid_y is not None
