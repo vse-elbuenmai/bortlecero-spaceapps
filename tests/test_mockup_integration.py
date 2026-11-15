@@ -58,11 +58,20 @@ def test_benchmark_bundles_exist_and_validate_dto() -> None:
                 assert 0.0 <= f.measured_centroid_y <= bundle.grid.height_px
 
         # 4. Difference maps contract (if multi-epoch in same band)
-        for diff in bundle.difference_maps:
+        raw_dict = json.loads(raw_json)
+        raw_diff_maps = raw_dict.get("difference_maps", [])
+        assert len(bundle.difference_maps) == len(raw_diff_maps)
+        for diff, raw_dm in zip(bundle.difference_maps, raw_diff_maps, strict=False):
             assert diff.png_base64 is not None
             assert diff.png_base64.startswith("data:image/png;base64,")
             assert diff.baseline_days >= 0.0
             assert diff.detector_band in bundle.available_bands
+            assert diff.early_wavelength_um > 0.0
+            assert diff.late_wavelength_um > 0.0
+            assert diff.delta_wavelength_um >= 0.0
+            assert "delta_wavelength_um" in raw_dm, f"Missing delta_wavelength_um in {bundle_path}"
+            assert "early_wavelength_um" in raw_dm, f"Missing early_wavelength_um in {bundle_path}"
+            assert "late_wavelength_um" in raw_dm, f"Missing late_wavelength_um in {bundle_path}"
 
         # 5. Scientific warnings and citations
         assert len(bundle.scientific_warnings) >= 1
@@ -120,6 +129,7 @@ def test_mockup_js_implementation_contracts() -> None:
     assert "diffMode" in js_code
     assert "setDiffMode" in js_code
     assert "diff-toggle" in js_code
+    assert "delta_wavelength_um" in js_code
 
     # 6. Scientific warnings and citations rendering
     assert "panel-warnings" in js_code

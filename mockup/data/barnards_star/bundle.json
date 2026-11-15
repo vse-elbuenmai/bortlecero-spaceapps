@@ -16,6 +16,7 @@
       "spherex_dr1",
       "spherex_qr3"
     ],
+    "priority_bands": [],
     "notes": "Fastest proper-motion star (~10.39 arcsec/yr = ~1.69 SPHEREx px/yr, ~0.84 px per 6-month survey). Saturates SPHEREx detector cores (NaN in core, OVERFLOW bit in FLAGS); centroiding and visual rendering must reconstruct or use the unsaturated PSF halo and verify shift against Gaia DR3."
   },
   "propagated_current_ra_deg": 269.44977315774753,
@@ -49704,6 +49705,9 @@
       "mjd_late": 61268.631477786,
       "baseline_days": 365.7661,
       "mean_wavelength_um": 1.9676,
+      "early_wavelength_um": 2.2947,
+      "late_wavelength_um": 1.6405,
+      "delta_wavelength_um": 0.6542,
       "diff_matrix_mjy_sr": [
         [
           null,
@@ -50739,6 +50743,9 @@
       "mjd_late": 61305.628686814,
       "baseline_days": 388.9675,
       "mean_wavelength_um": 4.2556,
+      "early_wavelength_um": 4.2307,
+      "late_wavelength_um": 4.2805,
+      "delta_wavelength_um": 0.0499,
       "diff_matrix_mjy_sr": [
         [
           null,
@@ -51767,6 +51774,7 @@
       "png_base64": "data:image/png;base64,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"
     }
   ],
+  "dropped_frames": [],
   "scientific_warnings": [
     "180-degree spacecraft roll (SPS_EPA) flip detected across survey passes; all frames have been WCS-reprojected onto a common North-up, East-left TAN grid.",
     "SPHEREx Linear Variable Filters sample a different wavelength per exposure. Compare brightness strictly within the same detector band to distinguish true variability from the star's spectral energy distribution (SED).",

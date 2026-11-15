@@ -16,6 +16,7 @@
       "spherex_dr1",
       "spherex_qr3"
     ],
+    "priority_bands": [],
     "notes": "Binary T1+T6 brown dwarf system at 3.64 pc. Cleanest unsaturated high-proper-motion benchmark (~4.72 arcsec/yr = ~0.77 SPHEREx px/yr) with 4 observation passes across DR1 and QR3."
   },
   "propagated_current_ra_deg": 331.0971147022247,
@@ -49707,6 +49708,9 @@
       "mjd_late": 60833.53792627,
       "baseline_days": 43.6817,
       "mean_wavelength_um": 1.5148,
+      "early_wavelength_um": 1.5606,
+      "late_wavelength_um": 1.4689,
+      "delta_wavelength_um": 0.0917,
       "diff_matrix_mjy_sr": [
         [
           null,
@@ -50742,6 +50746,9 @@
       "mjd_late": 61309.370924615,
       "baseline_days": 4.1434,
       "mean_wavelength_um": 1.8943,
+      "early_wavelength_um": 1.7191,
+      "late_wavelength_um": 2.0694,
+      "delta_wavelength_um": 0.3503,
       "diff_matrix_mjy_sr": [
         [
           null,
@@ -51777,6 +51784,9 @@
       "mjd_late": 61315.478741768,
       "baseline_days": 2.6452,
       "mean_wavelength_um": 4.1771,
+      "early_wavelength_um": 4.2311,
+      "late_wavelength_um": 4.1232,
+      "delta_wavelength_um": 0.1079,
       "diff_matrix_mjy_sr": [
         [
           null,
@@ -52805,6 +52815,7 @@
       "png_base64": "data:image/png;base64,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"
     }
   ],
+  "dropped_frames": [],
   "scientific_warnings": [
     "180-degree spacecraft roll (SPS_EPA) flip detected across survey passes; all frames have been WCS-reprojected onto a common North-up, East-left TAN grid.",
     "SPHEREx Linear Variable Filters sample a different wavelength per exposure. Compare brightness strictly within the same detector band to distinguish true variability from the star's spectral energy distribution (SED).",

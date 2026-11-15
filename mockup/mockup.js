@@ -163,7 +163,8 @@
       live.setAttribute("aria-live", announce ? "polite" : "off");
       $("frame-count").textContent = `Difference Map · Band ${diffMap.detector_band}`;
       $("m-date").textContent = `${diffMap.baseline_days.toFixed(1)} days baseline`;
-      $("m-wave").textContent = `${diffMap.mean_wavelength_um.toFixed(3)} µm`;
+      const dLambda = diffMap.delta_wavelength_um != null ? Number(diffMap.delta_wavelength_um) : 0;
+      $("m-wave").textContent = `${diffMap.mean_wavelength_um.toFixed(3)} µm (Δλ = ${dLambda.toFixed(3)} µm)`;
       $("m-det").textContent = `Band ${diffMap.detector_band}`;
       $("m-rel").textContent = "SPHEREx ΔI";
       $("m-pa").textContent = "Aligned (0°)";
@@ -174,10 +175,16 @@
       badges.replaceChildren();
       badges.append(badge("acento", "±", `Dipole ΔI (Band ${diffMap.detector_band})`));
       badges.append(badge("ok", "✓", `${diffMap.baseline_days.toFixed(1)} days baseline`));
+      if (diffMap.delta_wavelength_um != null) {
+        badges.append(badge("acento", "λ", `Δλ = ${dLambda.toFixed(3)} µm`));
+      }
 
+      const dLamStr = diffMap.delta_wavelength_um != null
+        ? ` with spectral shift Δλ = ${dLambda.toFixed(3)} µm across epochs`
+        : "";
       $("summary").innerHTML =
         `Difference map (<strong>ΔI = I<sub>t2</sub> − I<sub>t1</sub></strong>) shows the ` +
-        `<strong>dipole signature of proper motion</strong> over ${diffMap.baseline_days.toFixed(1)} days in Band ${diffMap.detector_band}: ` +
+        `<strong>dipole signature of proper motion</strong> over ${diffMap.baseline_days.toFixed(1)} days in Band ${diffMap.detector_band}${dLamStr}: ` +
         `negative flux where the object was, and positive flux where it moved.`;
 
       drawOverlay();
@@ -290,7 +297,8 @@
     const diffMap = getDiffMapForCurrentBand();
     if (diffMap) {
       diffBtn.disabled = false;
-      diffBtn.title = `Toggle difference map for Band ${diffMap.detector_band} (${diffMap.baseline_days.toFixed(1)} d baseline)`;
+      const dLStr = diffMap.delta_wavelength_um != null ? `, Δλ=${diffMap.delta_wavelength_um.toFixed(3)} µm` : "";
+      diffBtn.title = `Toggle difference map for Band ${diffMap.detector_band} (${diffMap.baseline_days.toFixed(1)} d baseline${dLStr})`;
     } else {
       diffBtn.disabled = true;
       diffBtn.title = "No difference map available for this band (requires 2+ epochs)";
