@@ -6,17 +6,69 @@ import base64
 import io
 import json
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from spherex_ingest.domain.models import DroppedFrameDTO, ProcessedBlinkFrame, RawCutoutFrame
+from spherex_ingest.domain.models import (
+    BlinkBundleDTO,
+    DroppedFrameDTO,
+    ProcessedBlinkFrame,
+    RawCutoutFrame,
+)
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.exporters.bundle_exporter import FrontendBundleExporter
 from spherex_ingest.processors.kinematics import KinematicsAndPhotometryAnalyzer
 from spherex_ingest.processors.pipeline_processor import SPHERExFrameProcessor
+
+
+def test_readers_see_complete_bundles_during_concurrent_or_interrupted_writes(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = BENCHMARK_TARGETS["epsilon_indi_b"]
+    exporter = FrontendBundleExporter()
+    frame = raw_cutout_factory()
+    bundle = exporter.build_bundle(
+        target, *SPHERExFrameProcessor().process_frames([frame], target)
+    )
+    bundle_path = exporter.save_bundle(bundle, tmp_path)
+    assert bundle.total_frames == 1
+    original_bytes = bundle_path.read_bytes()
+    changed = bundle.model_copy(update={"scientific_warnings": ["Updated warnings."]})
+    overlap = Barrier(2, timeout=10)
+    original_replace = Path.replace
+
+    def concurrent_replace(path, destination):
+        if destination == bundle_path:
+            assert bundle_path.read_bytes() == original_bytes
+            assert BlinkBundleDTO.model_validate_json(path.read_bytes()) == changed
+            overlap.wait()
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", concurrent_replace)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        writes = [executor.submit(exporter.save_bundle, changed, tmp_path) for _ in range(2)]
+        assert [write.result(timeout=10) for write in writes] == [bundle_path, bundle_path]
+
+    def interrupted_replace(path, destination):
+        if destination == bundle_path:
+            raise OSError("Publication interrupted")
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", interrupted_replace)
+    with pytest.raises(OSError, match="Publication interrupted"):
+        exporter.save_bundle(bundle, tmp_path)
+
+    persisted = BlinkBundleDTO.model_validate_json(bundle_path.read_bytes())
+    assert persisted == changed
+    assert persisted.frames_chronological[0].png_base64 is not None
+    assert not list(tmp_path.rglob(".spherex-*.tmp"))
 
 
 def test_end_to_end_pipeline_and_bundle_exporter(
