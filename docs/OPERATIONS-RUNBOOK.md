@@ -67,6 +67,25 @@ Cloud Run automatically captures stdout/stderr from `uvicorn` and enriches each 
 | `run.googleapis.com/container/memory/utilizations` (p95) | `< 75%` of 1 GiB | `> 85%` over 5 minutes |
 | `run.googleapis.com/container/billable_instance_time` | Scale to zero (`minScale=0`) | Unexpected sustained `maxScale=2` |
 
+### Measuring live search latency
+
+Measure from submitting `POST /api/v1/jobs` to receiving the bundle. An HTTP 202
+only means the job was accepted. Compare uncached searches (202) separately from
+cached responses (200). Record job duration (`updated_at` minus `created_at`
+at completion), attempt count, frame count and drop reasons. Vega at
+RA 279.23473479°, Dec +38.78368896° with `size_arcsec: 180` and `max_frames: 12`
+is a useful smoke target. Confirm you are testing the intended Cloud Run revision.
+
+Each bounded live job downloads up to three selected IRSA cutouts at a time.
+Set `SPHEREX_IRSA_CUTOUT_WORKERS=1` on a revision to compare with serial downloads,
+or use a value from 2 to 4. If IRSA starts returning more 429 or 503 responses,
+reduce concurrency. The exposure, download byte, retry and deadline limits still
+apply. Discovery queries remain serial, and archive errors can still delay jobs.
+
+The default result cache is local to each instance, so a warm repeat does not
+measure cold search performance. The [private result store](RESULT-STORAGE.md)
+can be configured separately to reuse processed bundles across instances.
+
 ---
 
 ## 4. Uptime Checks & Alerting

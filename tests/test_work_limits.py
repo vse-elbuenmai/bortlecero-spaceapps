@@ -1,3 +1,4 @@
+from threading import Barrier
 from types import SimpleNamespace
 
 import httpx
@@ -76,6 +77,48 @@ def test_provider_balances_total_exposure_limit_across_collections(tmp_path, mon
     with bounded_ingestion(PublicLimits(), 5):
         provider.fetch_cutouts(target, max_frames_per_collection=5)
     assert limits == [("spherex_dr1", 3), ("spherex_qr3", 2)]
+
+
+@pytest.mark.parametrize("max_bytes", [48, 47])
+def test_parallel_cutouts_share_one_job_download_budget(tmp_path, monkeypatch, max_bytes):
+    provider = IRSASiaCutoutProvider(cache_dir=tmp_path, cutout_workers=3)
+    target = TargetSpec(
+        target_id="test", name="test", ra_deg=120, dec_deg=1, collections=("spherex_dr1",)
+    )
+    monkeypatch.setattr(
+        provider,
+        "_query_collection",
+        lambda **_: [
+            {"access_url": "https://example.test/cutout", "filename": str(i)}
+            for i in range(6)
+        ],
+    )
+    # Both groups must overlap. The same exposure and byte counters cover all six cutouts.
+    barrier = Barrier(3, timeout=5)
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, stream=ResponseChunks()))
+
+    # Exercise the streaming transfer helper without contacting IRSA or parsing FITS.
+    def download(cutout_url, base_filename, **_):
+        barrier.wait()
+        with httpx.Client(transport=transport) as client:
+            data = fetch_bytes(client, cutout_url, 2)
+        assert len(data) == 8
+        return SimpleNamespace(mjd_avg=61000 + int(base_filename), detector_band=1)
+
+    monkeypatch.setattr(provider, "_download_and_parse", download)
+    limits = PublicLimits(max_download_bytes=max_bytes)
+    with bounded_ingestion(limits, 6):
+        budget = active_budget.get()
+        if max_bytes == 48:
+            result = provider.fetch_cutouts(target, max_frames_per_collection=6)
+            assert len(result.frames) == 6
+            assert not result.dropped_frames
+            assert budget.bytes_left == 0
+        else:
+            with pytest.raises(WorkLimitExceeded, match="download_limit"):
+                provider.fetch_cutouts(target, max_frames_per_collection=6)
+            assert budget.bytes_left == 3
+        assert budget.exposures_left == 0
 
 
 def test_admission_controller_enforces_rate_and_concurrency_limits():
