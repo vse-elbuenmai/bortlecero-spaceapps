@@ -9,7 +9,6 @@ const REST_FOV = 120; // degrees across the screen when showing "the whole sky"
 const MAX_FOV = 170;
 const SPIN_DEG_PER_S = 1.5;
 const SHARPNESS = 0.5; // closest zoom: one screen pixel shows no less than half a map pixel
-const SESAME = "https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/S?";
 
 // Test objects: position, epoch and proper motion (mas/yr), moved to today before travelling.
 // Barnard's Star, Epsilon Indi B and R Draconis: Gaia DR3, live query of the ESA archive on
@@ -23,6 +22,9 @@ const OBJECTS = {
   rdra: { key: "r_draconis", name: "R Draconis", ra: 248.16737837, dec: 66.75500675, epoch: 2016.0, pmra: -20.643, pmdec: 6.149 },
 };
 
+const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>';
+const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg>';
+const NOTE_SECONDS = 5; // how long the note about the layer shows by itself on phones
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
 const canvas = $("sky-canvas"), modal = $("viewer-modal"), viewer = $("viewer"), msg = $("search-msg");
@@ -229,7 +231,7 @@ function setSpinning(on) {
   const btn = $("spin-toggle");
   btn.setAttribute("aria-pressed", String(state.spinning));
   btn.setAttribute("aria-label", state.spinning ? "Pause rotation" : "Rotate the sky");
-  btn.textContent = state.spinning ? "❚❚" : "▶";
+  btn.innerHTML = state.spinning ? ICON_PAUSE : ICON_PLAY;
 }
 
 function setFov(fov) {
@@ -251,11 +253,9 @@ function caption(key) {
 }
 
 async function setLayer(key) {
-  document.querySelectorAll("[data-layer]").forEach((b) => {
-    b.classList.toggle("is-active", b.dataset.layer === key);
-    b.setAttribute("aria-pressed", String(b.dataset.layer === key));
-  });
+  $("layer-select").value = key;
   $("sky-credit").textContent = caption(key);
+  showNoteBriefly();
   if (!state.gl || key === state.layer) return;
   try {
     await loadLayer(key);
@@ -268,7 +268,7 @@ async function setLayer(key) {
   state.dirty = true;
 }
 
-// ---------- coordinates and names ----------
+// ---------- coordinates ----------
 // Accepts decimal degrees (269.4485, +4.7394) and sexagesimal (17h57m48.5s, 17:57:48.5,
 // +04°44′22″, +04 44 22). Sexagesimal RA is in hours unless it is marked with ° or d.
 function parseAngle(text, isRa) {
@@ -288,21 +288,6 @@ function today(o) {
   return { key: o.key, name: o.name, simbad: o.simbad, dec, ra: (o.ra + ((o.pmra / 3.6e6) * years) / Math.cos(o.dec * RAD) + 360) % 360 };
 }
 
-async function resolveName(name) {
-  const key = name.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const known = Object.values(OBJECTS).find((o) => o.name.toLowerCase().replace(/[^a-z0-9]/g, "").replace("−", "") === key);
-  if (known) return today(known);
-  const xml = new DOMParser().parseFromString(await (await fetch(SESAME + encodeURIComponent(name))).text(), "text/xml");
-  const num = (tag) => { const el = xml.querySelector(tag); return el ? parseFloat(el.textContent) : NaN; };
-  if (Number.isNaN(num("jradeg"))) return null;
-  const oname = xml.querySelector("oname");
-  return today({
-    name, // what the person typed; SIMBAD's own identifier goes next to it
-    simbad: oname ? oname.textContent.replace(/\s+/g, " ").trim() : "",
-    ra: num("jradeg"), dec: num("jdedeg"), epoch: 2000, pmra: num("pmRA") || 0, pmdec: num("pmDE") || 0,
-  });
-}
-
 function fieldError(id, text) {
   const input = $(id), err = $(id + "-err");
   input.setAttribute("aria-invalid", String(Boolean(text)));
@@ -311,11 +296,36 @@ function fieldError(id, text) {
 }
 const say = (text) => { msg.hidden = !text; msg.textContent = text || ""; };
 
-function markChip(objectKey) {
-  document.querySelectorAll("[data-object]").forEach((c) => {
-    c.classList.toggle("is-active", c.dataset.object === objectKey);
-    c.setAttribute("aria-pressed", String(c.dataset.object === objectKey));
-  });
+// On phones the note about the layer (what the map is, and that it is a drawing or an average) is
+// tucked behind the info button. It still shows by itself for a few seconds when the page loads
+// and whenever the layer changes, so nobody takes the backdrop for a photograph unawares.
+let noteTimer = 0;
+function setInfo(open) {
+  clearTimeout(noteTimer);
+  const layers = document.querySelector(".sky-layers");
+  layers.classList.toggle("show-note", open);
+  layers.classList.toggle("show-coords", open);
+  $("info-toggle").setAttribute("aria-expanded", String(open));
+}
+function showNoteBriefly() {
+  const layers = document.querySelector(".sky-layers");
+  if (layers.classList.contains("show-coords") || !$("sky-credit").textContent) return; // opened by hand: leave it
+  clearTimeout(noteTimer);
+  layers.classList.add("show-note");
+  noteTimer = setTimeout(() => layers.classList.remove("show-note"), NOTE_SECONDS * 1000);
+}
+
+// The ring on the marked position: play its arrival once (CSS), then let it rest.
+function pingReticle() {
+  const reticle = $("reticle");
+  reticle.classList.remove("is-arriving");
+  void reticle.offsetWidth; // restart the animation
+  reticle.classList.add("is-arriving");
+}
+
+// Which test object the search shows as chosen (none for a typed position).
+function setObject(objectKey) {
+  $("object").value = objectKey || "";
 }
 
 // ---------- the trip ----------
@@ -361,7 +371,8 @@ function arrive(target) {
   state.target = target;
   state.dirty = true;
   say("");
-  setTimeout(() => openModal(target), reduceMotion ? 0 : 500);
+  pingReticle();
+  setTimeout(() => openModal(target), reduceMotion ? 0 : 900); // long enough to see the ring land
 }
 
 function findPreparedBenchmark(target) {
@@ -418,7 +429,7 @@ function wholeSky() {
   if (modal.open) modal.close();
   state.target = null;
   state.trip = null;
-  markChip(null);
+  setObject(null);
   say("");
   setSearchOpen(true);
   if (reduceMotion || !state.gl) { setFov(REST_FOV); return; }
@@ -444,45 +455,37 @@ function setSearchOpen(open) {
 
 // ---------- events ----------
 function bindEvents() {
-  $("search-form").addEventListener("submit", async (e) => {
+  $("search-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    ["name", "ra", "dec"].forEach((id) => fieldError(id, ""));
-    const name = $("name").value.trim();
-    if (name) {
-      say(`Looking up “${name}”…`);
-      let found;
-      try { found = await resolveName(name); }
-      catch (err) {
-        say("");
-        return fieldError("name", "The name service (SIMBAD at Harvard) is not responding. Enter RA and Dec instead.");
-      }
-      if (!found) { say(""); return fieldError("name", `No object called “${name}” was found in SIMBAD. Check the spelling or enter RA and Dec.`); }
-      markChip(Object.keys(OBJECTS).find((k) => OBJECTS[k].name === found.name) || null);
-      return travel(found);
-    }
+    ["object", "ra", "dec"].forEach((id) => fieldError(id, ""));
+    const objectKey = $("object").value;
+    if (objectKey) return travel(today(OBJECTS[objectKey]));
     const ra = parseAngle($("ra").value, true), dec = parseAngle($("dec").value, false);
     const raBad = Number.isNaN(ra) || ra < 0 || ra >= 360, decBad = Number.isNaN(dec) || dec < -90 || dec > 90;
-    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("name", "Type an object name, or RA and Dec.");
+    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", "Choose a test object, or enter RA and Dec.");
     fieldError("ra", raBad ? "RA must be between 0° and 360° (or 0h and 24h)" : "");
     fieldError("dec", decBad ? "Dec must be between −90° and +90°" : "");
     if (raBad || decBad) return (raBad ? $("ra") : $("dec")).focus();
     const target = { ra, dec };
     const bench = findPreparedBenchmark(target);
-    markChip(bench ? bench.chipKey : null);
+    setObject(bench ? bench.chipKey : null);
     travel(bench ? { ...target, ...bench } : target);
   });
-  // A name and a pair of coordinates are two ways to say the same thing: typing one clears the other.
-  $("name").addEventListener("input", () => { $("ra").value = $("dec").value = ""; });
-  for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => { $("name").value = ""; });
+  // A test object and a pair of coordinates are two ways to say the same thing: choosing an object
+  // fills in where it is today, and typing a position clears the choice. Nothing travels until
+  // "Go there", so stepping through the list with the keyboard does not move the sky.
+  $("object").addEventListener("change", () => {
+    ["object", "ra", "dec"].forEach((id) => fieldError(id, ""));
+    const object = OBJECTS[$("object").value];
+    if (!object) return;
+    const target = today(object);
+    $("ra").value = target.ra.toFixed(5);
+    $("dec").value = (target.dec >= 0 ? "+" : "−") + Math.abs(target.dec).toFixed(5);
+  });
+  for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => setObject(null));
 
-  document.querySelectorAll("[data-object]").forEach((chip) => chip.addEventListener("click", () => {
-    const target = today(OBJECTS[chip.dataset.object]);
-    ["name", "ra", "dec"].forEach((id) => fieldError(id, ""));
-    $("name").value = target.name;
-    markChip(chip.dataset.object);
-    travel(target);
-  }));
-  document.querySelectorAll("[data-layer]").forEach((b) => b.addEventListener("click", () => setLayer(b.dataset.layer)));
+  $("layer-select").addEventListener("change", (e) => setLayer(e.target.value));
+  $("info-toggle").addEventListener("click", () => setInfo(!document.querySelector(".sky-layers").classList.contains("show-coords")));
 
   $("spin-toggle").addEventListener("click", () => setSpinning(!state.spinning));
   $("zoom-sky-in").addEventListener("click", () => setFov(state.fov / 1.25));
@@ -490,12 +493,16 @@ function bindEvents() {
   $("whole-sky").addEventListener("click", wholeSky);
   $("search-toggle").addEventListener("click", () => setSearchOpen($("search-body").hidden));
   $("modal-close").addEventListener("click", () => modal.close());
-  $("open-barnard").addEventListener("click", () => document.querySelector('[data-object="barnard"]').click());
+  $("open-barnard").addEventListener("click", () => {
+    setObject("barnard");
+    travel(today(OBJECTS.barnard));
+  });
   $("credits-open").addEventListener("click", () => $("credits").showModal());
   $("credits-close").addEventListener("click", () => $("credits").close());
   modal.addEventListener("close", () => {
     document.dispatchEvent(new CustomEvent("viewer:close"));
     setSearchOpen(true);
+    if (state.target) pingReticle(); // back on the sky: point at the place again
   });
 
   // Looking around: drag to turn, wheel or pinch to zoom, arrows and +/− from the keyboard.

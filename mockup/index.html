@@ -16,7 +16,7 @@
   <p id="sky-fallback" class="sky-fallback" role="status">Loading the sky…</p>
 
   <div id="reticle" class="reticle" hidden aria-hidden="true">
-    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" class="reticle-halo"/><circle cx="32" cy="32" r="22" class="reticle-ring"/></svg>
+    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" class="reticle-ping"/><circle cx="32" cy="32" r="22" class="reticle-halo"/><circle cx="32" cy="32" r="22" class="reticle-ring"/></svg>
     <span id="reticle-label" class="reticle-label"></span>
   </div>
 
@@ -35,20 +35,26 @@
   </header>
 
   <section class="sky-layers" aria-label="Sky layer">
-    <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
-    <div class="chips" role="group" aria-label="Sky layer">
-      <button class="chip is-active" type="button" data-layer="visible" aria-pressed="true">Visible light</button>
-      <button class="chip" type="button" data-layer="spherex" aria-pressed="false">SPHEREx 4.77 µm</button>
-      <button class="chip" type="button" data-layer="colour" aria-pressed="false">SPHEREx false colour</button>
+    <div class="layer-row">
+      <span class="select">
+        <select id="layer-select" aria-label="Sky layer">
+          <option value="visible">Visible light</option>
+          <option value="spherex">SPHEREx 4.77 µm</option>
+          <option value="colour">SPHEREx false colour</option>
+        </select>
+      </span>
+      <button id="info-toggle" class="icon-btn info-toggle" type="button" aria-expanded="false"
+              aria-controls="sky-credit" aria-label="About this sky layer">i</button>
     </div>
+    <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
     <p id="sky-credit" class="sky-caption"></p>
   </section>
 
   <div class="sky-tools" role="group" aria-label="Sky controls">
-    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in">+</button>
-    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out">−</button>
-    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" aria-pressed="true">❚❚</button>
-    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky">⟲</button>
+    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg></button>
+    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7"/><path d="M4.6 2.2v2.9H1.7"/></svg></button>
   </div>
 
   <section id="search" class="journey glass" aria-labelledby="search-title">
@@ -60,9 +66,17 @@
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
       <form id="search-form" class="journey-form" novalidate>
         <div class="field field-name">
-          <label for="name">Object name</label>
-          <input id="name" name="name" autocomplete="off" spellcheck="false"
-                 placeholder="Barnard's Star, Vega, M31" aria-describedby="name-err">
+          <label for="object">Test object</label>
+          <span class="select">
+            <select id="object" name="object" aria-describedby="object-err">
+              <option value="">Choose one of the five</option>
+              <option value="barnard">Barnard's Star</option>
+              <option value="epsindib">Epsilon Indi B</option>
+              <option value="wise0855">WISE 0855−0714</option>
+              <option value="rwaur">RW Aurigae</option>
+              <option value="rdra">R Draconis</option>
+            </select>
+          </span>
         </div>
         <span class="journey-or" aria-hidden="true">or</span>
         <div class="field">
@@ -77,16 +91,9 @@
         </div>
         <button class="btn btn-primary journey-go" type="submit">Go there</button>
       </form>
-      <p id="name-err" class="field-error" hidden></p>
+      <p id="object-err" class="field-error" hidden></p>
       <p id="ra-err" class="field-error" hidden></p>
       <p id="dec-err" class="field-error" hidden></p>
-      <div class="chips" role="group" aria-label="Test objects">
-        <button class="chip" type="button" data-object="barnard" aria-pressed="false">Barnard's Star</button>
-        <button class="chip" type="button" data-object="epsindib" aria-pressed="false">Epsilon Indi B</button>
-        <button class="chip" type="button" data-object="wise0855" aria-pressed="false">WISE 0855−0714</button>
-        <button class="chip" type="button" data-object="rwaur" aria-pressed="false">RW Aurigae</button>
-        <button class="chip" type="button" data-object="rdra" aria-pressed="false">R Draconis</button>
-      </div>
       <p id="search-msg" class="search-msg" role="status" hidden></p>
     </div>
   </section>
@@ -98,7 +105,7 @@
         <h2 id="modal-title" class="modal-title"></h2>
         <p id="modal-coords" class="mono"></p>
       </div>
-      <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky">✕</button>
+      <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
 
     <div id="modal-empty" class="modal-empty" hidden>
@@ -127,28 +134,38 @@
         </div>
 
         <div class="controls" role="group" aria-label="Playback">
-          <button id="prev" class="icon-btn" type="button" aria-label="Previous frame">◀</button>
-          <button id="play" class="icon-btn" type="button" aria-label="Play" aria-pressed="false">▶</button>
-          <button id="next" class="icon-btn" type="button" aria-label="Next frame">▶❘</button>
+          <div class="transport">
+            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 3.6v8.8"/><path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z"/></svg></button>
+            <button id="play" class="icon-btn" type="button" aria-label="Play" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg></button>
+            <button id="next" class="icon-btn" type="button" aria-label="Next frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M3.6 3.6L9.8 8l-6.2 4.4z"/><path d="M12.4 3.6v8.8"/></svg></button>
+          </div>
           <label class="speed">
-            <span>Speed</span>
+            <span class="speed-label">Speed</span>
             <input id="speed" type="range" min="0.5" max="3" step="0.5" value="1">
             <output id="speed-out" for="speed">1 fps</output>
           </label>
-          <span class="controls-gap"></span>
           <button id="diff-toggle" class="chip diff-toggle" type="button" aria-pressed="false" title="Toggle difference map between epochs">Difference Map</button>
-          <span class="controls-gap"></span>
-          <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out">−</button>
-          <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
-          <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in">+</button>
-          <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom">⟲</button>
+          <div class="zoom-group">
+            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+            <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
+            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+            <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7"/><path d="M4.6 2.2v2.9H1.7"/></svg></button>
+          </div>
         </div>
 
-        <div id="band-chips" class="chips band-chips" role="group" aria-label="Spectral bands"></div>
+        <div class="band-row">
+          <label class="select-inline" for="band-select">Band</label>
+          <span class="select"><select id="band-select"></select></span>
+        </div>
 
         <div class="timeline-wrap"><div class="timeline" role="group" aria-label="Dates">
           <div class="timeline-track"></div>
           <div id="timeline-dots"></div>
+          <div class="tl-labels" aria-hidden="true">
+            <span id="tl-start" class="tl-end"></span>
+            <span id="tl-current" class="tl-current"></span>
+            <span id="tl-end" class="tl-end tl-end-right"></span>
+          </div>
           </div>
         </div>
       </div>
@@ -219,7 +236,7 @@
   <dialog id="credits" class="modal modal-small" aria-labelledby="credits-title">
     <div class="modal-head">
       <h2 id="credits-title" class="modal-title">Credits</h2>
-      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits">✕</button>
+      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
     <div class="credits-body">
       <p>SPHEREx data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
@@ -228,7 +245,7 @@
         14 May 2026.</p>
       <p>Visible sky: NASA/Goddard Space Flight Center Scientific Visualization Studio, "Deep Star
         Maps 2020". Gaia DR2: ESA/Gaia/DPAC.</p>
-      <p>Astrometry: ESA Gaia DR3. Object names: SIMBAD (CDS), through its mirror at Harvard.</p>
+      <p>Astrometry: ESA Gaia DR3, and SIMBAD (CDS) through its mirror at Harvard.</p>
       <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0 · Mockup.</p>
     </div>
   </dialog>

@@ -5,6 +5,8 @@
 
   const ZOOMS = [1, 2, 4, 8];
   const SCALE_STEPS = [60, 30, 15, 10, 5, 2]; // arcsec, pick one that draws 40–140 px
+  const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>';
+  const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg>';
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const BENCHMARK_MAP = {
@@ -51,10 +53,16 @@
     playing: false,
     fps: 1,
     timer: null,
+    tlX: null,             // where each timeline dot sits, in px along the track
   };
 
   const fmtDeg = (v, d = 4) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d) + "°";
   const fmtDate = (s) => (s ? s.slice(0, 16).replace("T", " ") + " UTC" : "N/A");
+  const frameDay = (f) => (f.obs_time_iso || f.date_utc || "").slice(0, 10);
+  const framesOfBand = (bundle, band) =>
+    bundle.frames_by_band && bundle.frames_by_band[String(band)]
+      ? bundle.frames_by_band[String(band)]
+      : bundle.frames_chronological.filter((f) => Number(f.detector_band) === Number(band));
   const svgEl = (tag, attrs) => {
     const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
@@ -257,7 +265,7 @@
     }
 
     document.querySelectorAll(".tl-dot").forEach((b, k) => b.setAttribute("aria-current", k === state.i ? "true" : "false"));
-    document.querySelectorAll(".tl-label").forEach((l, k) => l.classList.toggle("is-current", k === state.i));
+    placeTimelineLabel();
     drawOverlay();
   }
 
@@ -268,7 +276,7 @@
     const btn = $("play");
     btn.setAttribute("aria-pressed", String(on));
     btn.setAttribute("aria-label", on ? "Pause" : "Play");
-    btn.textContent = on ? "❚❚" : "▶";
+    btn.innerHTML = on ? ICON_PAUSE : ICON_PLAY;
     if (on) {
       if (state.diffMode) setDiffMode(false);
       state.timer = setInterval(() => show(state.i + 1), 1000 / state.fps);
@@ -321,94 +329,101 @@
   }
 
   // ---------- timeline ----------
+  // One dot per frame. Dots follow real time, with a floor on the gap so that frames taken a few
+  // days apart do not pile up. Under the track: the first date, the last date and the current one.
+  const TL_MIN_GAP = 14; // px between neighbouring dots
+  const TL_HALF_TARGET = 22; // px: half of the widest touch target a dot gets
+
   function buildTimeline() {
     const box = $("timeline-dots");
     box.replaceChildren();
+    state.tlX = null;
     const frames = state.activeFrames;
     if (!frames || frames.length === 0) return;
 
-    const t0 = frames[0].mjd_avg ?? frames[0].mjd;
-    const t1 = frames[frames.length - 1].mjd_avg ?? frames[frames.length - 1].mjd;
-    const span = t1 - t0 || 1;
-
     frames.forEach((f, k) => {
-      const mjd = f.mjd_avg ?? f.mjd;
-      const pct = ((mjd - t0) / span) * 100;
       const b = document.createElement("button");
       b.type = "button";
       b.className = "tl-dot";
-      b.style.left = pct + "%";
-      const dateStr = (f.obs_time_iso || f.date_utc || "").slice(0, 10);
-      b.setAttribute("aria-label", `Frame ${k + 1}, ${dateStr}`);
+      b.setAttribute("aria-label", `Frame ${k + 1}, ${frameDay(f)}`);
       b.addEventListener("click", () => {
         if (state.diffMode) setDiffMode(false);
         setPlaying(false);
         show(k, { announce: true });
       });
-      const label = document.createElement("span");
-      label.className = "tl-label";
-      label.style.left = pct + "%";
-      label.textContent = dateStr;
-      box.append(b, label);
+      box.append(b);
     });
+    $("tl-start").textContent = frameDay(frames[0]);
+    $("tl-end").textContent = frames.length > 1 ? frameDay(frames[frames.length - 1]) : "";
+    placeTimeline();
   }
 
-  // ---------- band filtering chips ----------
-  function buildBandChips(bundle) {
-    const container = $("band-chips");
-    if (!container) return;
-    container.replaceChildren();
+  function placeTimeline() {
+    const frames = state.activeFrames;
+    const dots = [...document.querySelectorAll(".tl-dot")];
+    const width = $("timeline-dots").clientWidth;
+    if (!frames || !dots.length || dots.length !== frames.length || !width) return;
+
+    const mjd = (f) => f.mjd_avg ?? f.mjd;
+    const t0 = mjd(frames[0]);
+    const span = mjd(frames[frames.length - 1]) - t0 || 1;
+    const gap = Math.min(TL_MIN_GAP, width / Math.max(1, frames.length - 1));
+    const free = width - gap * (frames.length - 1); // what is left to share out in proportion to time
+    $("timeline-dots").classList.toggle("is-dense", gap < 12);
+    const xs = frames.map((f, k) => gap * k + free * ((mjd(f) - t0) / span));
+
+    dots.forEach((dot, k) => {
+      // A dot owns the space up to halfway to each neighbour, so a tap lands on the dot under it.
+      const before = k ? Math.min(TL_HALF_TARGET, (xs[k] - xs[k - 1]) / 2) : TL_HALF_TARGET;
+      const after = k < xs.length - 1 ? Math.min(TL_HALF_TARGET, (xs[k + 1] - xs[k]) / 2) : TL_HALF_TARGET;
+      dot.style.left = xs[k] - before + "px";
+      dot.style.width = before + after + "px";
+      dot.style.setProperty("--tl-mark", before + "px");
+    });
+    state.tlX = xs;
+    placeTimelineLabel();
+  }
+
+  // The current date sits under its dot, kept inside the track; an end date steps aside for it.
+  function placeTimelineLabel() {
+    const frames = state.activeFrames;
+    const current = $("tl-current");
+    if (!frames || !state.tlX || !frames[state.i]) return;
+    current.textContent = frameDay(frames[state.i]);
+    const width = $("timeline-dots").clientWidth;
+    const w = current.offsetWidth;
+    const left = Math.max(0, Math.min(width - w, state.tlX[state.i] - w / 2));
+    current.style.left = left + "px";
+    $("tl-start").classList.toggle("is-hidden", left < $("tl-start").offsetWidth + 10);
+    $("tl-end").classList.toggle("is-hidden", left + w > width - $("tl-end").offsetWidth - 10);
+  }
+
+  // ---------- band filter ----------
+  function buildBandOptions(bundle) {
+    const select = $("band-select");
+    if (!select) return;
+    select.replaceChildren();
 
     const bands = bundle.available_bands || [];
-    if (bands.length === 0) return;
-
-    // "All bands" chip
-    const allBtn = document.createElement("button");
-    allBtn.type = "button";
-    allBtn.className = "chip band-chip" + (state.activeBand === null ? " is-active" : "");
-    allBtn.textContent = `All Bands (${bundle.frames_chronological.length})`;
-    allBtn.setAttribute("aria-pressed", state.activeBand === null ? "true" : "false");
-    allBtn.addEventListener("click", () => selectBand(null));
-    container.append(allBtn);
-
-    // Individual spectral band chips
-    bands.forEach((b) => {
-      const bKey = String(b);
-      const framesInBand = bundle.frames_by_band && bundle.frames_by_band[bKey]
-        ? bundle.frames_by_band[bKey]
-        : bundle.frames_chronological.filter((f) => Number(f.detector_band) === Number(b));
-
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "chip band-chip" + (state.activeBand === b ? " is-active" : "");
-      chip.textContent = `Band ${b} (${framesInBand.length})`;
-      chip.setAttribute("aria-pressed", state.activeBand === b ? "true" : "false");
-      chip.addEventListener("click", () => selectBand(b));
-      container.append(chip);
-    });
+    const count = (n) => `${n} frame${n === 1 ? "" : "s"}`;
+    const option = (value, label) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      return o;
+    };
+    select.append(option("", `All bands · ${count(bundle.frames_chronological.length)}`));
+    bands.forEach((b) => select.append(option(String(b), `Band ${b} · ${count(framesOfBand(bundle, b).length)}`)));
+    select.value = state.activeBand === null ? "" : String(state.activeBand);
+    select.closest(".band-row").hidden = bands.length === 0;
   }
 
   function selectBand(band) {
     if (state.diffMode) setDiffMode(false);
     state.activeBand = band;
+    $("band-select").value = band === null ? "" : String(band);
 
-    // Update band chips UI
-    document.querySelectorAll(".band-chip").forEach((btn) => {
-      const isAll = btn.textContent.startsWith("All Bands");
-      const isThisBand = btn.textContent.startsWith(`Band ${band} `);
-      const active = (band === null && isAll) || (band !== null && isThisBand);
-      btn.classList.toggle("is-active", active);
-      btn.setAttribute("aria-pressed", String(active));
-    });
-
-    if (band === null) {
-      state.activeFrames = state.bundle.frames_chronological;
-    } else {
-      const bKey = String(band);
-      state.activeFrames = state.bundle.frames_by_band && state.bundle.frames_by_band[bKey]
-        ? state.bundle.frames_by_band[bKey]
-        : state.bundle.frames_chronological.filter((f) => Number(f.detector_band) === Number(band));
-    }
+    state.activeFrames = band === null ? state.bundle.frames_chronological : framesOfBand(state.bundle, band);
 
     buildTimeline();
     updateDiffToggleAvailability();
@@ -672,7 +687,7 @@
     $("obj-coords").textContent = `RA ${tgt.ra_deg.toFixed(4)}°, Dec ${fmtDeg(tgt.dec_deg)}`;
 
     renderWarningsAndCitations(bundle);
-    buildBandChips(bundle);
+    buildBandOptions(bundle);
     buildTimeline();
     updateDiffToggleAvailability();
     summary();
@@ -796,6 +811,9 @@
   });
 
   window.addEventListener("resize", () => state.bundle && !$("viewer").hidden && layout());
+  // The timeline is laid out in pixels, so it follows its own width (also when the dialog opens).
+  new ResizeObserver(() => placeTimeline()).observe($("timeline-dots"));
+  $("band-select").addEventListener("change", (e) => selectBand(e.target.value === "" ? null : Number(e.target.value)));
 
   // Expose loadTarget globally for router and testing
   window.loadTarget = loadTarget;

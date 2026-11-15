@@ -14,7 +14,7 @@ R Draconis.
 
 - **`mockup/`** (rama `claude/esfera-viaje`): prototipo de la interfaz, sin compilación. El cielo
   entero a pantalla completa visto desde dentro (mapas propios hechos con `prepare_sky.py`: NASA SVS
-  para la luz visible y el cubo de SPHEREx de IRSA), un buscador por nombre o RA/Dec que viaja a la
+  para la luz visible y el cubo de SPHEREx de IRSA), un buscador (los cinco objetos de prueba en un desplegable, o RA/Dec) que viaja a la
   posición, y el visor de parpadeo en un diálogo, con tres fotos reales de Barnard. Todavía no usa
   la pipeline de ingesta. La versión anterior con Aladin Lite queda como plan B (`aladin.html`).
   Cómo correrlo y qué se comprobó: [mockup/README.md](mockup/README.md).
