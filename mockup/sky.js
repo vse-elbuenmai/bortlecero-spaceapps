@@ -291,14 +291,24 @@ function today(o) {
   return { key: o.key, name: o.name, simbad: o.simbad, dec, ra: (o.ra + ((o.pmra / 3.6e6) * years) / Math.cos(o.dec * RAD) + 360) % 360 };
 }
 
-// Where an object with this name is today. The five test objects are answered from the list above,
-// with no network. Any other name is asked to SIMBAD, which gives the position for J2000 and the
-// proper motion. Returns null when SIMBAD does not know the name, and throws when it does not answer.
-async function resolveName(name) {
-  const plain = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const known = Object.values(OBJECTS).find((o) => plain(o.name) === plain(name));
-  if (known) return today(known);
-  const reply = await fetch(SESAME + encodeURIComponent(name), { signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) });
+const BENCHMARK_ALIASES = {
+  gj699: OBJECTS.barnard,
+  gl699: OBJECTS.barnard,
+  hip87937: OBJECTS.barnard,
+  gj845b: OBJECTS.epsindib,
+  epsindb: OBJECTS.epsindib,
+  epsindib: OBJECTS.epsindib,
+  wise0855: OBJECTS.wise0855,
+  wisej085510830714425: OBJECTS.wise0855,
+  rwaur: OBJECTS.rwaur,
+  hd240764: OBJECTS.rwaur,
+  rdra: OBJECTS.rdra,
+  hd149880: OBJECTS.rdra,
+  hip81014: OBJECTS.rdra,
+};
+
+async function querySesame(url, name) {
+  const reply = await fetch(url, { signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) });
   if (!reply.ok) throw new Error(`The name service answered ${reply.status}`);
   const xml = new DOMParser().parseFromString(await reply.text(), "text/xml");
   const num = (tag) => { const el = xml.querySelector(tag); return el ? parseFloat(el.textContent) : NaN; };
@@ -309,6 +319,21 @@ async function resolveName(name) {
     simbad: oname ? oname.textContent.replace(/\s+/g, " ").trim() : "",
     ra: num("jradeg"), dec: num("jdedeg"), epoch: 2000, pmra: num("pmRA") || 0, pmdec: num("pmDE") || 0,
   });
+}
+
+// Where an object with this name is today. The five test objects are answered from the list above,
+// with no network. Any other name is asked to SIMBAD (falling back to SIMBAD+NED+VizieR), which
+// gives the position for J2000 and the proper motion. Returns null when Sesame does not know the
+// name, and throws when it does not answer.
+async function resolveName(name) {
+  const plain = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const key = plain(name);
+  const known = Object.values(OBJECTS).find((o) => plain(o.name) === key) || BENCHMARK_ALIASES[key];
+  if (known) return today(known);
+  const encoded = encodeURIComponent(name);
+  const primary = await querySesame(SESAME + encoded, name);
+  if (primary) return primary;
+  return querySesame(SESAME.replace("-ox/S?", "-ox/SNV?") + encoded, name);
 }
 
 function fieldError(id, text) {

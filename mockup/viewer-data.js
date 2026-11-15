@@ -1,12 +1,28 @@
-// Resolve public benchmarks from the static release. The synchronous API is for local development.
+// Resolve public benchmarks from the static release and live positions via the async jobs API (with local sync fallback).
 (() => {
   "use strict";
 
   const loopback = new Set(["localhost", "127.0.0.1", "[::1]"]);
   const local = location.protocol === "http:" && loopback.has(location.hostname);
-  const fetchData = (url, signal, timeout = 10000) => fetch(url, {
+  const fetchData = (url, signal, timeout = 10000, options = {}) => fetch(url, {
+    ...options,
     signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
     redirect: "error",
+  });
+  const waitMs = (ms, signal) => new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 
   async function readBundle(url, targetId, signal) {
@@ -47,18 +63,8 @@
     return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
   }
 
-  async function readCustomPosition(ra, dec, signal) {
-    if (!local || !Number.isFinite(ra) || !Number.isFinite(dec)) {
-      return { status: "benchmark-only" };
-    }
-    const response = await fetchData("viewer-config.json", signal);
-    if (!response.ok) return { status: "benchmark-only" };
-    const { liveQueries, apiBaseUrl } = await response.json();
-    if (liveQueries !== true) return { status: "benchmark-only" };
-
-    const base = new URL(apiBaseUrl || location.origin);
-    if (!loopback.has(base.hostname) || base.protocol !== "http:") return { status: "unavailable" };
-    const url = new URL("api/v1/blink", base.href.replace(/\/?$/, "/"));
+  async function readCustomPositionLegacy(baseHref, ra, dec, signal) {
+    const url = new URL("api/v1/blink", baseHref);
     url.search = new URLSearchParams({ ra, dec, size_arcsec: 180 });
     const result = await fetchData(url, signal, 120000);
     if (result.status === 404 || result.status === 204) return { status: "no-observations" };
@@ -72,6 +78,80 @@
     const bundle = await result.json();
     if (!Array.isArray(bundle.frames_chronological)) return { status: "unavailable" };
     return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
+  }
+
+  async function readCustomPosition(ra, dec, signal) {
+    if (!Number.isFinite(ra) || !Number.isFinite(dec)) {
+      return { status: "benchmark-only" };
+    }
+    const response = await fetchData("viewer-config.json", signal);
+    if (!response.ok) return { status: "benchmark-only" };
+    const { liveQueries, apiBaseUrl } = await response.json();
+    if (liveQueries !== true) return { status: "benchmark-only" };
+
+    const base = new URL(apiBaseUrl || location.origin, location.origin);
+    const allowedProtocol = base.protocol === "https:"
+      || (base.protocol === "http:" && loopback.has(base.hostname));
+    if (!allowedProtocol) return { status: "unavailable" };
+    const baseHref = base.href.replace(/\/?$/, "/");
+
+    const jobResp = await fetchData(
+      new URL("api/v1/jobs", baseHref),
+      signal,
+      30000,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ra, dec, size_arcsec: 180, max_frames: 12 }),
+      },
+    );
+    if (jobResp.status === 404 || jobResp.status === 405) {
+      return readCustomPositionLegacy(baseHref, ra, dec, signal);
+    }
+    if (jobResp.status === 422) {
+      const { detail } = await jobResp.json().catch(() => ({}));
+      return { status: detail?.code === "no_observations" ? "no-observations" : "unavailable" };
+    }
+    if (!jobResp.ok) return { status: "unavailable" };
+
+    let job = await jobResp.json();
+    const pollIntervalMs = local ? 150 : 1500;
+    while (job.status === "queued" || job.status === "running") {
+      if (!job.job_id) return { status: "unavailable" };
+      await waitMs(pollIntervalMs, signal);
+      const pollResp = await fetchData(
+        new URL(`api/v1/jobs/${encodeURIComponent(job.job_id)}`, baseHref),
+        signal,
+        15000,
+      );
+      if (!pollResp.ok) return { status: "unavailable" };
+      job = await pollResp.json();
+    }
+
+    if (job.status === "succeeded") {
+      let bundle = job.result && Array.isArray(job.result.frames_chronological) ? job.result : null;
+      if (!bundle) {
+        if (!job.job_id) return { status: "unavailable" };
+        const resultResp = await fetchData(
+          new URL(`api/v1/jobs/${encodeURIComponent(job.job_id)}/result`, baseHref),
+          signal,
+          30000,
+        );
+        if (resultResp.status === 422) {
+          const { detail } = await resultResp.json().catch(() => ({}));
+          return { status: detail?.code === "no_observations" ? "no-observations" : "unavailable" };
+        }
+        if (!resultResp.ok) return { status: "unavailable" };
+        bundle = await resultResp.json();
+      }
+      if (!bundle || !Array.isArray(bundle.frames_chronological)) return { status: "unavailable" };
+      return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
+    }
+
+    if (job.status === "failed") {
+      return { status: job.error_code === "no_observations" ? "no-observations" : "unavailable" };
+    }
+    return { status: "unavailable" };
   }
 
   window.viewerData = {
