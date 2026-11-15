@@ -11,7 +11,7 @@ Tasks if existing queued work must stop dispatching too.
 | Output grid pixels | 961 (31 × 31) | `SPHEREX_MAX_GRID_PIXELS` |
 | Downloaded bytes per attempt, including discovery and retries | 96 MiB | `SPHEREX_MAX_DOWNLOAD_BYTES` |
 | Cooperative processing deadline per attempt | 120 seconds | `SPHEREX_MAX_ELAPSED_SECONDS` |
-| Upstream attempts per discovery request or exposure | 2 | `SPHEREX_MAX_UPSTREAM_ATTEMPTS` |
+| Upstream attempts per discovery request or exposure | 3 | `SPHEREX_MAX_UPSTREAM_ATTEMPTS` |
 | New unique jobs admitted globally each minute | 6 | `SPHEREX_MAX_NEW_JOBS_PER_MINUTE` |
 | Outstanding jobs across service instances | 8 | `SPHEREX_MAX_OUTSTANDING_JOBS` |
 

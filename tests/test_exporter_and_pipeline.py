@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from spherex_ingest._atomic_files import atomic_write_bytes
 from spherex_ingest.domain.models import (
     BlinkBundleDTO,
     DroppedFrameDTO,
@@ -68,6 +69,59 @@ def test_readers_see_complete_bundles_during_concurrent_or_interrupted_writes(
     persisted = BlinkBundleDTO.model_validate_json(bundle_path.read_bytes())
     assert persisted == changed
     assert persisted.frames_chronological[0].png_base64 is not None
+    assert not list(tmp_path.rglob(".spherex-*.tmp"))
+
+
+def test_atomic_write_bytes_retries_transient_permission_error_on_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify atomic_write_bytes retries transient WinError 5 PermissionError during replace."""
+    destination = tmp_path / "bundle.json"
+    payload = b'{"status":"ok"}\n'
+    original_replace = Path.replace
+    attempts = 0
+
+    def flaky_replace(path: Path, target: Path) -> Path:
+        nonlocal attempts
+        if target == destination:
+            attempts += 1
+            if attempts <= 3:
+                raise PermissionError("WinError 5")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+
+    atomic_write_bytes(destination, payload)
+
+    assert attempts == 4
+    assert destination.read_bytes() == payload
+    assert not list(tmp_path.rglob(".spherex-*.tmp"))
+
+
+def test_atomic_write_bytes_reraises_persistent_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify atomic_write_bytes re-raises PermissionError after 10 attempts and cleans up .tmp."""
+    destination = tmp_path / "bundle.json"
+    attempts = 0
+    sleep_calls: list[float] = []
+
+    def always_locked(path: Path, target: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        raise PermissionError("WinError 5")
+
+    monkeypatch.setattr(Path, "replace", always_locked)
+    monkeypatch.setattr("spherex_ingest._atomic_files.time.sleep", sleep_calls.append)
+
+    with pytest.raises(PermissionError, match="WinError 5"):
+        atomic_write_bytes(destination, b"data")
+
+    assert attempts == 10
+    assert len(sleep_calls) == 9
+    assert not destination.exists()
     assert not list(tmp_path.rglob(".spherex-*.tmp"))
 
 

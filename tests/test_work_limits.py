@@ -35,10 +35,11 @@ def test_stream_stops_at_download_budget(declared_size):
             pytest.raises(WorkLimitExceeded, match="download_limit"),
             bounded_ingestion(PublicLimits(max_download_bytes=6), 1),
         ):
-            assert retry_limit(3) == 2
+            assert PublicLimits().max_upstream_attempts == 3
+            assert retry_limit(4) == 3
             fetch_bytes(client, "https://example.test", 2)
     assert active_budget.get() is None
-    assert retry_limit(3) == 3
+    assert retry_limit(4) == 4
 
 
 def test_deadline_is_checked_during_the_work(monkeypatch):
