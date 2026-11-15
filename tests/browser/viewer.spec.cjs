@@ -65,7 +65,9 @@ async function searchCoordinates(page) {
 for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 }]) {
   test(`HTTPS viewer opens all five deployed benchmarks at ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    const requests = await serve(page, publicOrigin, staged);
+    const requests = await serve(page, publicOrigin, staged, {
+      "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: false, apiBaseUrl: "" } }),
+    });
     const manifest = JSON.parse(await readFile(resolve(staged, "benchmark-manifest.json")));
     for (const [key, id, name] of targets) {
       await pickTarget(page, key);
@@ -164,7 +166,9 @@ test("the name of a test object opens its benchmark without asking the name serv
 });
 
 test("any other name is looked up in SIMBAD and the sky travels to where the object is today", async ({ page }) => {
-  const requests = await serve(page, publicOrigin, staged);
+  const requests = await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: false, apiBaseUrl: "" } }),
+  });
   await page.route(sesame, sesameAnswer(vega));
   await page.locator("select#object").selectOption("barnard");
   await searchName(page, "Vega");
@@ -205,4 +209,159 @@ test("typing a position clears the name, and choosing a test object clears both"
   await page.locator("select#object").selectOption("rdra");
   await expect(page.locator("#name")).toHaveValue("");
   await expect(page.locator("#ra")).toHaveValue(/^248\.1/);
+});
+
+test("HTTPS viewer submits async job, polls status, and renders returned bundle when liveQueries is enabled", async ({ page }) => {
+  const png1x1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+  let pollCount = 0;
+  let postedBody = null;
+  const requests = await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({
+      json: { liveQueries: true, apiBaseUrl: publicOrigin },
+    }),
+    "/api/v1/jobs": async (route) => {
+      expect(route.request().method()).toBe("POST");
+      postedBody = route.request().postDataJSON();
+      return route.fulfill({
+        status: 202,
+        json: { job_id: "job-vega-1", status: "queued" },
+      });
+    },
+    "/api/v1/jobs/job-vega-1": async (route) => {
+      expect(route.request().method()).toBe("GET");
+      pollCount += 1;
+      return route.fulfill({
+        json: {
+          job_id: "job-vega-1",
+          status: pollCount === 1 ? "running" : "succeeded",
+        },
+      });
+    },
+    "/api/v1/jobs/job-vega-1/result": async (route) => {
+      expect(route.request().method()).toBe("GET");
+      return route.fulfill({
+        json: {
+          schema_version: "1.0.0",
+          target: {
+            target_id: "coord_279d23_p38d78",
+            name: "Vega",
+            category: "custom",
+            ra_deg: 279.2347,
+            dec_deg: 38.7837,
+            ref_epoch_jyear: 2016.0,
+            cutout_size_arcsec: 180.0,
+            collections: ["spherex_dr1"],
+          },
+          grid: {
+            center_ra_deg: 279.2347,
+            center_dec_deg: 38.7837,
+            pixel_scale_arcsec: 6.15,
+            width_px: 31,
+            height_px: 31,
+            orientation: "North-up, East-left (ICRS TAN)",
+          },
+          total_frames: 2,
+          available_bands: [2],
+          frames_chronological: [
+            {
+              frame_id: "vega_1",
+              collection: "spherex_dr1",
+              detector_band: 2,
+              mjd_avg: 60800.0,
+              obs_time_iso: "2025-05-05T00:00:00Z",
+              sps_epa_deg: 0.0,
+              wavelength_um: 1.5,
+              bandwidth_um: 0.05,
+              predicted_pixel_x: 15.0,
+              predicted_pixel_y: 15.0,
+              measured_centroid_x: 15.02,
+              measured_centroid_y: 15.01,
+              centroid_offset_arcsec: 0.14,
+              is_saturated_core: false,
+              png_base64: png1x1,
+            },
+            {
+              frame_id: "vega_2",
+              collection: "spherex_dr1",
+              detector_band: 2,
+              mjd_avg: 60950.0,
+              obs_time_iso: "2025-10-02T00:00:00Z",
+              sps_epa_deg: 180.0,
+              wavelength_um: 1.52,
+              bandwidth_um: 0.05,
+              predicted_pixel_x: 15.01,
+              predicted_pixel_y: 14.99,
+              measured_centroid_x: 15.03,
+              measured_centroid_y: 15.0,
+              centroid_offset_arcsec: 0.14,
+              is_saturated_core: false,
+              png_base64: png1x1,
+            },
+          ],
+          frames_by_band: {},
+          difference_maps: [],
+          scientific_warnings: [],
+          citations: [],
+        },
+      });
+    },
+  });
+  await page.route(sesame, sesameAnswer(vega));
+  await searchName(page, "Vega");
+
+  await expect(page.locator("#viewer-modal")).toBeVisible();
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(page.locator("#obj-name")).toHaveText("Vega");
+  await expect(page.locator("#summary")).toContainText("Position is stationary within the 6.15″ pixel scale over 150 days");
+  await expect.poll(() => page.locator("#frame-img").evaluate((img) => img.naturalWidth))
+    .toBeGreaterThan(0);
+
+  expect(postedBody).toMatchObject({ size_arcsec: 180, max_frames: 12 });
+  expect(postedBody.ra).toBeCloseTo(279.23, 1);
+  expect(postedBody.dec).toBeCloseTo(38.78, 1);
+  expect(pollCount).toBe(2);
+  expect(requests).toContain(`${publicOrigin}/api/v1/jobs`);
+  expect(requests).toContain(`${publicOrigin}/api/v1/jobs/job-vega-1`);
+  expect(requests).toContain(`${publicOrigin}/api/v1/jobs/job-vega-1/result`);
+});
+
+test("catalog aliases resolve benchmarks offline and Sesame falls back to SNV when S has no coords", async ({ page }) => {
+  const requests = await serve(page, publicOrigin, staged);
+  await searchName(page, "GJ 699");
+  await expect(page.locator("#viewer-modal")).toBeVisible();
+  await expect(page.locator("#modal-title")).toHaveText("Barnard's Star");
+  await expect(page.locator("#viewer")).toBeVisible();
+  expect(requests.some((url) => url.includes("nph-sesame"))).toBeFalsy();
+  await page.locator("#modal-close").click();
+
+  await page.route(sesame, (route) => {
+    const url = route.request().url();
+    if (url.includes("/-ox/S?")) {
+      return route.fulfill({
+        contentType: "text/xml",
+        body: `<?xml version="1.0" encoding="UTF-8"?><Sesame><Target option="S"><name>Vega</name></Target></Sesame>`,
+      });
+    }
+    return sesameAnswer(vega)(route);
+  });
+  await searchName(page, "Vega");
+  await expect(page.locator("#viewer-modal")).toBeVisible();
+  await expect(page.locator("#modal-title")).toHaveText("Vega");
+  expect(requests).toContain("https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/S?Vega");
+  expect(requests).toContain("https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/SNV?Vega");
+});
+
+test("summary reports 8-direction compass bearing and stationary threshold for RW Aurigae and WISE 0855", async ({ page }) => {
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: false, apiBaseUrl: "" } }),
+  });
+
+  await pickTarget(page, "rwaur");
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(page.locator("#summary")).toContainText("Position is stationary within the 6.15″ pixel scale");
+  await page.locator("#modal-close").click();
+
+  await pickTarget(page, "wise0855");
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(page.locator("#summary")).toContainText("west");
 });
