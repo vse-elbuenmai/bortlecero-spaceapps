@@ -32,17 +32,20 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").match
 const $ = (id) => document.getElementById(id);
 const canvas = $("sky-canvas"), modal = $("viewer-modal"), viewer = $("viewer"), msg = $("search-msg");
 const RAD = Math.PI / 180;
+const pointerReadout = $("pointer-coords");
+const skyFallback = $("sky-fallback");
+let activePointer = null, lastTouch = null, pointerDirty = false;
 
 const state = {
   ra: 266.4, dec: -20, fov: REST_FOV, // view centre (degrees) and field of view across the screen
   layer: "visible", fade: null, // fade: { from, start } while two layers cross-fade
-  spinning: !reduceMotion, spinDir: 1, inertia: null, trip: null, target: null,
+  spinning: !reduceMotion, spinDir: 1, inertia: null, trip: null, target: null, grid: false,
   gl: null, uniforms: null, textures: {}, mapWidth: 2048, meta: null, dirty: true, last: 0,
 };
 // Handy in the browser console, and used to check that stars land where the maths says they do.
 window.skyPrototype = { state, project: (ra, dec) => project(ra, dec), redraw: () => draw(performance.now()) };
 
-const fmtRa = (v) => v.toFixed(4) + "°";
+const fmtRa = (v) => (v >= 359.99995 ? 0 : v).toFixed(4) + "°";
 const fmtDec = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(4) + "°";
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
@@ -72,6 +75,22 @@ function project(ra, dec) {
   return { x: (1 + -dot(d, e) * k) * w / 2, y: h / 2 - dot(d, n) * k * w / 2 };
 }
 
+// The inverse calculation used in the sky shader, with screen Y increasing downwards here.
+function skyAtPointer({ x, y }, { f, e, n }) {
+  const rect = canvas.getBoundingClientRect();
+  const u = (x - rect.left) / rect.width, v = (y - rect.top) / rect.height;
+  if (!Number.isFinite(u) || !Number.isFinite(v) || u < 0 || u >= 1 || v < 0 || v >= 1) return null;
+  const width = planeHalfWidth();
+  const px = (2 * u - 1) * width, py = (1 - 2 * v) * width / (canvas.width / canvas.height);
+  const r2 = px * px + py * py;
+  const d = f.map((forward, i) => (-4 * px * e[i] + 4 * py * n[i] + (4 - r2) * forward) / (4 + r2));
+  const xy = Math.hypot(d[0], d[1]);
+  return {
+    ra: xy < 1e-12 ? null : (Math.atan2(d[1], d[0]) / RAD + 360) % 360,
+    dec: Math.atan2(d[2], xy) / RAD,
+  };
+}
+
 // Closest zoom the current map allows before it turns to mush on this screen.
 function minFov() {
   const mapWidth = state.mapWidth; // the full-size map, not the small one shown while it loads
@@ -91,7 +110,14 @@ in vec2 vNdc; out vec4 outColor;
 uniform sampler2D uMapA, uMapB;
 uniform float uMix, uHalfWidth, uAspect;
 uniform vec3 uForward, uEast, uNorth;
+uniform bool uGrid;
 const float PI = 3.141592653589793;
+float gridLine(float distance, float radiansPerPixel) {
+  return 1.0 - smoothstep(0.2, 1.25, distance / max(radiansPerPixel, 1e-6));
+}
+float gridDistance(float angle, float stepSize) {
+  return abs(mod(angle + stepSize * 0.5, stepSize) - stepSize * 0.5);
+}
 void main() {
   vec2 p = vec2(vNdc.x, vNdc.y / uAspect) * uHalfWidth;          // point on the projection plane
   float r2 = dot(p, p);
@@ -105,7 +131,19 @@ void main() {
   bool b = fwidth(ub) < fwidth(ua);                              // pick the one with no seam here
   vec2 uv = vec2(b ? ub : ua, v);
   vec2 gx = vec2(b ? dFdx(ub) : dFdx(ua), dFdx(v)), gy = vec2(b ? dFdy(ub) : dFdy(ua), dFdy(v));
-  outColor = vec4(mix(textureGrad(uMapA, uv, gx, gy).rgb, textureGrad(uMapB, uv, gx, gy).rgb, uMix), 1.0);
+  vec3 color = mix(textureGrad(uMapA, uv, gx, gy).rgb, textureGrad(uMapB, uv, gx, gy).rgb, uMix);
+  if (uGrid) {
+    // Use the seam-safe texture gradients for RA. Fade meridians into the poles as they converge.
+    float raPixel = (abs(gx.x) + abs(gy.x)) * 2.0 * PI;
+    float decPixel = (abs(gx.y) + abs(gy.y)) * PI;
+    float poleFade = smoothstep(0.0, 0.04, length(d.xy));
+    float meridians = gridLine(gridDistance(ra, PI / 6.0), raPixel) * poleFade;
+    float parallels = gridLine(gridDistance(dec, PI / 12.0), decPixel);
+    float axes = max(gridLine(abs(ra), raPixel) * poleFade, gridLine(abs(dec), decPixel));
+    // Use the sky palette's star blue, with stronger strokes for RA 0° and Dec 0°.
+    color = mix(color, vec3(184.0, 212.0, 240.0) / 255.0, max(0.40 * max(meridians, parallels), 0.78 * axes));
+  }
+  outColor = vec4(color, 1.0);
 }`;
 
 function initGl() {
@@ -130,7 +168,7 @@ function initGl() {
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   state.uniforms = Object.fromEntries(
-    ["uMapA", "uMapB", "uMix", "uHalfWidth", "uAspect", "uForward", "uEast", "uNorth"].map((n) => [n, gl.getUniformLocation(prog, n)])
+    ["uMapA", "uMapB", "uMix", "uHalfWidth", "uAspect", "uForward", "uEast", "uNorth", "uGrid"].map((n) => [n, gl.getUniformLocation(prog, n)])
   );
   state.gl = gl;
   state.mapWidth = gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 4096 ? 4096 : 2048;
@@ -202,6 +240,7 @@ function draw(now) {
   gl.uniform1f(u.uMix, mix);
   gl.uniform1f(u.uHalfWidth, planeHalfWidth());
   gl.uniform1f(u.uAspect, canvas.width / canvas.height);
+  gl.uniform1i(u.uGrid, Number(state.grid));
   gl.uniform3fv(u.uForward, f); gl.uniform3fv(u.uEast, e); gl.uniform3fv(u.uNorth, n);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
@@ -213,6 +252,7 @@ function frame(now) {
   if (state.trip) stepTrip(now);
   else if (state.inertia) glide(dt);
   else if (state.spinning && !modal.open) { state.ra = (state.ra + state.spinDir * SPIN_DEG_PER_S * dt + 360) % 360; state.dirty = true; }
+  if (state.dirty || pointerDirty) updatePointerReadout();
   if (state.dirty) {
     state.dirty = false;
     if (state.gl) draw(now);
@@ -236,6 +276,19 @@ function glide(dt) {
     state.inertia = null;
     if (g.resume) setSpinning(true);
   }
+}
+
+function updatePointerReadout() {
+  pointerDirty = false;
+  const position = activePointer ? skyAtPointer(activePointer, axes()) : lastTouch;
+  let text = "";
+  if (position) {
+    const label = !activePointer ? "Last touch" : activePointer.type === "touch" ? "Touch" : "Pointer";
+    const ra = position.ra === null ? "—" : fmtRa(position.ra);
+    text = `${label}: RA ${ra}, Dec ${fmtDec(position.dec)}`;
+  }
+  if (pointerReadout.textContent !== text) pointerReadout.textContent = text;
+  pointerReadout.hidden = !text;
 }
 
 function updateOverlay() {
@@ -595,6 +648,11 @@ function bindEvents() {
   $("info-toggle").addEventListener("click", () => setInfo(!document.querySelector(".sky-layers").classList.contains("show-coords")));
 
   $("spin-toggle").addEventListener("click", () => setSpinning(!state.spinning));
+  $("grid-toggle").addEventListener("click", (e) => {
+    state.grid = !state.grid;
+    e.currentTarget.setAttribute("aria-pressed", String(state.grid));
+    state.dirty = true;
+  });
   $("zoom-sky-in").addEventListener("click", () => setFov(state.fov / 1.25));
   $("zoom-sky-out").addEventListener("click", () => setFov(state.fov * 1.25));
   $("whole-sky").addEventListener("click", wholeSky);
@@ -616,6 +674,17 @@ function bindEvents() {
   // Looking around: drag to turn, wheel or pinch to zoom, arrows and +/− from the keyboard.
   const pointers = new Map();
   let pinch = 0;
+  const trackPointer = (e) => {
+    if (!e.isPrimary || !skyFallback.hidden) return;
+    activePointer = { id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY };
+    lastTouch = null;
+    pointerDirty = true;
+  };
+  const clearPointer = (e) => {
+    if (activePointer?.id !== e.pointerId) return;
+    activePointer = null;
+    pointerDirty = true;
+  };
   // A drag: whether the sky was spinning when it started, which way it went, and the last moves
   // (to measure the speed at which it was let go).
   let resumeSpin = false, dragDx = 0, samples = [];
@@ -642,6 +711,7 @@ function bindEvents() {
     state.inertia = { vra, vdec, resume: resumeSpin };
   };
   canvas.addEventListener("pointerdown", (e) => {
+    trackPointer(e);
     if (pointers.size === 0) {
       resumeSpin = state.spinning || Boolean(state.inertia && state.inertia.resume);
       dragDx = 0;
@@ -653,6 +723,7 @@ function bindEvents() {
     pinch = 0;
   });
   canvas.addEventListener("pointermove", (e) => {
+    trackPointer(e);
     const p = pointers.get(e.pointerId);
     if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -667,10 +738,15 @@ function bindEvents() {
     if (pinch) setFov(state.fov * (pinch / dist));
     pinch = dist;
   });
-  for (const type of ["pointerup", "pointercancel"]) {
+  canvas.addEventListener("pointerleave", clearPointer);
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
     canvas.addEventListener(type, (e) => {
-      pointers.delete(e.pointerId);
+      if (!pointers.delete(e.pointerId)) return;
       pinch = 0;
+      if (type === "pointerup" && e.pointerType === "touch" && activePointer?.id === e.pointerId) {
+        lastTouch = skyAtPointer({ x: e.clientX, y: e.clientY }, axes());
+        clearPointer(e);
+      } else if (type !== "pointerup") clearPointer(e);
       if (pointers.size === 0) release(e);
     });
   }
@@ -697,11 +773,12 @@ async function start() {
     if (!initGl()) throw new Error("WebGL 2 is not available");
     resize();
     await loadLayer(state.layer);
-    $("sky-fallback").hidden = true;
+    skyFallback.hidden = true;
+    $("grid-toggle").disabled = false;
   } catch (err) {
     console.error(err);
     state.gl = null;
-    $("sky-fallback").textContent = "The sky map could not start on this device (it needs WebGL 2). Search still works.";
+    skyFallback.textContent = "The sky map could not start on this device (it needs WebGL 2). Search still works.";
   }
   resize();
   requestAnimationFrame(frame);

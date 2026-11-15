@@ -103,6 +103,10 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   way it was thrown and slows down; if it was spinning by itself before the drag, it settles back
   into that slow spin, now in the direction of the drag. The buttons on the right say what they do
   on hover and go dim when they would change nothing (zoom at its limit, whole sky already shown).
+- **Coordinate grid and readout.** Switch on **Coordinate grid** in the sky controls to show
+  lines every 30° of right ascension (RA) and 15° of declination (Dec). Brighter lines mark RA 0°
+  and the celestial equator (Dec 0°). Move the pointer over the map or touch it to read the sky
+  position in degrees. After you lift your finger, the last touched position stays visible.
 - **Search.** Three ways to say where, and the last one touched counts. The five test objects come
   from a list in `sky.js` (Gaia DR3 positions and proper motions, moved to today) and are offered
   in a select; choosing one fills in RA and Dec. Any other object can be typed by name: the page

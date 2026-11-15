@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,22 +9,27 @@
   <link rel="stylesheet" href="mockup.css">
   <link rel="stylesheet" href="sky.css">
 </head>
+
 <body class="sky-app">
   <a class="skip" href="#search-form">Skip to search</a>
 
   <canvas id="sky-canvas" class="sky-canvas" tabindex="0"
-          aria-label="The whole sky seen from inside. Drag to look around, scroll or pinch to zoom. Arrow keys turn the view, plus and minus zoom."></canvas>
+    aria-label="The whole sky seen from inside. Drag to look around, scroll or pinch to zoom. Arrow keys turn the view, plus and minus zoom."></canvas>
   <p id="sky-fallback" class="sky-fallback" role="status">Loading the sky…</p>
 
   <div id="reticle" class="reticle" hidden aria-hidden="true">
-    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" class="reticle-ping"/><circle cx="32" cy="32" r="22" class="reticle-halo"/><circle cx="32" cy="32" r="22" class="reticle-ring"/></svg>
+    <svg viewBox="0 0 64 64">
+      <circle cx="32" cy="32" r="22" class="reticle-ping" />
+      <circle cx="32" cy="32" r="22" class="reticle-halo" />
+      <circle cx="32" cy="32" r="22" class="reticle-ring" />
+    </svg>
     <span id="reticle-label" class="reticle-label"></span>
   </div>
 
   <header class="site-header sky-header">
     <div class="header-row">
       <div class="brand">
-        <span class="brand-name">BORTLE CERO</span>
+        <span class="brand-name"><a href="./" style="text-decoration: none;">BORTLE CERO</a></span>
         <span class="brand-sep" aria-hidden="true"></span>
         <span class="brand-project">Project name TBD</span>
       </div>
@@ -43,8 +49,9 @@
         </select>
       </span>
       <button id="info-toggle" class="icon-btn info-toggle" type="button" aria-expanded="false"
-              aria-controls="sky-credit" aria-label="About this sky layer">i</button>
+        aria-controls="sky-credit" aria-label="About this sky layer">i</button>
     </div>
+    <p id="pointer-coords" class="sky-pointer mono" hidden></p>
     <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
     <p id="sky-credit" class="sky-caption"></p>
   </section>
@@ -54,12 +61,14 @@
     <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
     <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" data-tip="Pause rotation" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg></button>
     <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky" data-tip="Whole sky"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+    <button id="grid-toggle" class="icon-btn" type="button" aria-label="Coordinate grid" data-tip="Coordinate grid (RA and Dec)" aria-pressed="false" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12"/></svg></button>
   </div>
 
   <section id="search" class="journey glass" aria-labelledby="search-title">
     <div class="journey-head">
       <p class="eyebrow">01 / Your patch of sky</p>
-      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="search-body">Hide</button>
+      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
+        aria-controls="search-body">Hide</button>
     </div>
     <div id="search-body">
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
@@ -80,18 +89,18 @@
         <span class="journey-or" aria-hidden="true">or</span>
         <div class="field field-name">
           <label for="name">Object name</label>
-          <input id="name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false"
-                 enterkeyhint="go" placeholder="Vega, M31" aria-describedby="name-err">
+          <input id="name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"
+            placeholder="Vega, M31" aria-describedby="name-err">
         </div>
         <div class="field">
           <label for="ra">RA</label>
-          <input id="ra" name="ra" inputmode="decimal" autocomplete="off"
-                 placeholder="269.4485 or 17h57m48.5s" aria-describedby="ra-err">
+          <input id="ra" name="ra" inputmode="decimal" autocomplete="off" placeholder="269.4485 or 17h57m48.5s"
+            aria-describedby="ra-err">
         </div>
         <div class="field field-dec">
           <label for="dec">Dec</label>
-          <input id="dec" name="dec" inputmode="decimal" autocomplete="off"
-                 placeholder="+4.7394 or +04°44′22″" aria-describedby="dec-err">
+          <input id="dec" name="dec" inputmode="decimal" autocomplete="off" placeholder="+4.7394 or +04°44′22″"
+            aria-describedby="dec-err">
         </div>
         <button class="btn btn-primary journey-go" type="submit">Go there</button>
       </form>
@@ -184,7 +193,7 @@
     <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
       <div class="viewer-main">
         <div id="stage" class="stage" tabindex="0"
-             aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
+          aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
           <div id="plate" class="plate">
             <img id="frame-img" alt="" draggable="false">
             <img id="flags-img" class="flags" alt="" draggable="false" hidden>
@@ -226,14 +235,15 @@
           <span class="select"><select id="band-select"></select></span>
         </div>
 
-        <div class="timeline-wrap"><div class="timeline" role="group" aria-label="Dates">
-          <div class="timeline-track"></div>
-          <div id="timeline-dots"></div>
-          <div class="tl-labels" aria-hidden="true">
-            <span id="tl-start" class="tl-end"></span>
-            <span id="tl-current" class="tl-current"></span>
-            <span id="tl-end" class="tl-end tl-end-right"></span>
-          </div>
+        <div class="timeline-wrap">
+          <div class="timeline" role="group" aria-label="Dates">
+            <div class="timeline-track"></div>
+            <div id="timeline-dots"></div>
+            <div class="tl-labels" aria-hidden="true">
+              <span id="tl-start" class="tl-end"></span>
+              <span id="tl-current" class="tl-current"></span>
+              <span id="tl-end" class="tl-end tl-end-right"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -328,7 +338,10 @@
   <dialog id="credits" class="modal modal-small" aria-labelledby="credits-title">
     <div class="modal-head">
       <h2 id="credits-title" class="modal-title">Credits</h2>
-      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"><svg viewBox="0 0 16 16"
+          aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg></button>
     </div>
     <div class="credits-body">
       <p>SPHEREx data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
@@ -346,4 +359,5 @@
   <script src="mockup.js"></script>
   <script type="module" src="sky.js"></script>
 </body>
+
 </html>
