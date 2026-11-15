@@ -117,6 +117,18 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   API configured in `viewer-config.json`.
 - `window.skyPrototype` in the browser console gives the view's state.
 
+### While the server works
+
+A position the server has not seen takes a while (it asks IRSA, downloads a cutout per visit and
+aligns them; Barnard's Star took 31 s and 52 s in two runs on 15 Nov, a random empty position
+71 s). If the answer is not back within 1.2 s the dialog shows the journey of the data: a star,
+the telescope, the IRSA archive and your screen, with three numbered stations that follow the
+job's real phases (`queued`, `running`, result) and an elapsed-time counter. `viewer-data.js`
+reports each phase through the `onProgress` callback of `viewerData.load`. A cached answer opens
+the viewer directly. The server keeps a result for 24 hours, but in the memory of a Cloud Run
+instance that scales to zero when idle, so the first visitor after a quiet spell waits again.
+`DESIGN.md` §7.6 has the drawing's rules.
+
 ### The viewer's two levels of detail
 
 The dialog opens in **Basic**: image, playback, band, timeline, the legend (each line switches its

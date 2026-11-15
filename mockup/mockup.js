@@ -674,6 +674,38 @@
     unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
   };
   let targetRequest;
+
+  // The loading scene (DESIGN §7.6): shown only if the answer takes more than a moment, so a
+  // cached result opens the viewer straight away. Its station follows the phase the server reports.
+  const LOADING_SHOW_AFTER_MS = 1200;
+  const STEP_OF_PHASE = { submitting: 1, queued: 1, running: 2, result: 3 };
+  function beginLoading() {
+    const box = $("modal-loading");
+    if (!box) return { progress() {}, end() {} };
+    const t0 = performance.now();
+    let step = 1, shown = false;
+    const render = () => {
+      box.dataset.step = String(step);
+      box.querySelectorAll(".ld-steps li").forEach((li) => {
+        if (Number(li.dataset.step) === step) li.setAttribute("aria-current", "step");
+        else li.removeAttribute("aria-current");
+      });
+    };
+    const elapsed = () => {
+      const s = Math.floor((performance.now() - t0) / 1000);
+      $("loading-elapsed").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    };
+    const showTimer = setTimeout(() => { shown = true; render(); elapsed(); box.hidden = false; }, LOADING_SHOW_AFTER_MS);
+    const tick = setInterval(() => { if (shown) elapsed(); }, 1000);
+    return {
+      progress(p) {
+        step = STEP_OF_PHASE[p && p.phase] || step;
+        if (shown) render();
+      },
+      end() { clearTimeout(showTimer); clearInterval(tick); box.hidden = true; },
+    };
+  }
+
   function setTargetStatus(message) {
     const status = $("modal-empty");
     if (!status) return;
@@ -715,12 +747,15 @@
       setTargetStatus("Loading SPHEREx frames…");
     }
     $("loading").hidden = false;
+    const loading = beginLoading();
     let result;
     try {
-      result = await window.viewerData.load({ targetId, ra, dec }, signal);
+      result = await window.viewerData.load({ targetId, ra, dec }, signal, loading.progress);
     } catch (error) {
       if (signal.aborted) return;
       throw error;
+    } finally {
+      loading.end();
     }
     if (signal.aborted) return;
     $("loading").hidden = true;

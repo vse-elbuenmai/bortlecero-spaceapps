@@ -336,7 +336,7 @@ Todo estado lleva **frase + qué puede hacer la persona**. Nunca un spinner solo
 
 | Estado | Qué se ve |
 |---|---|
-| Cargando | Barra de progreso con el gradiente del sistema y «Loading 2 of 3 frames…» |
+| Cargando | «Loading SPHEREx frames…» y, si pasa más de 1.2 s sin respuesta, **el viaje de los datos** (abajo). Una respuesta de caché abre el visor directo, sin escena |
 | Sin cobertura | «SPHEREx has no images of this position yet.» + enlace a los objetos de prueba |
 | Servicio caído | «The NASA/IPAC archive (IRSA) is not responding. Try again or open a test object.» |
 | Error de datos | «This frame could not be read.» y el visor sigue con las demás fotos |
@@ -346,6 +346,32 @@ Gradiente de progreso:
 ```css
 background: linear-gradient(90deg, #060a16 0%, #122a52 30%, #2f5e9e 55%, #5b93cf 78%, #bfe0ff 100%);
 ```
+
+**El viaje de los datos.** Una pedida nueva al servidor tarda de uno a varios minutos (busca en IRSA,
+descarga un recorte por visita y los alinea). Mientras, el diálogo enseña por qué, sin barra que
+mienta: no hay porcentaje porque el servidor no lo da.
+
+- **Escena:** un SVG en el HTML (640 × 240, ancho completo hasta 640 px), sin imágenes ni
+  librerías. De izquierda a derecha: una estrella, el telescopio (tres conos anidados y un cuerpo,
+  silueta genérica, sin marcas de la misión), el archivo de IRSA (una pared de 20 teselas) y «tu
+  pantalla» (un monitor con tres recortes apilados). Unidos por una línea de puntos en
+  `--viz-trayectoria`. Trazo de 1.6 px en `--bc-estrella`, como los iconos; rótulos en
+  `--bc-fs-micro` / mayúsculas / `--bc-muted`, ocultos por debajo de 520 px.
+- **Qué se mueve:** fotones (puntos blancos) de la estrella al telescopio; el telescopio flota;
+  las teselas del archivo se encienden en barrido y cinco quedan encendidas (las que coinciden);
+  paquetes (cuadrados de 10 px, uno en `--bc-aviso`) del archivo a la pantalla; el recorte de
+  arriba llega girado 180° y se endereza; el anillo de Gaia (el de la leyenda) cae sobre la pila.
+  Sólo transformaciones y opacidad, en bucles de 2.4 a 5 s. Con `prefers-reduced-motion` todo
+  queda quieto y en su estado final.
+- **Tres estaciones** bajo la escena, numeradas, que siguen **la fase real del trabajo** en el
+  servidor: 1 «Asking IRSA which SPHEREx images saw this patch of sky» (`queued`), 2 «Downloading a
+  cutout of every visit (about 4 MB each) and turning them all north up» (`running`), 3 «Placing
+  Gaia's predicted position on every date» (al recibir el resultado). La activa lleva el número
+  relleno en `--bc-estrella` y el texto en `--bc-texto`; las otras, en `--bc-muted`. En la escena,
+  el nodo de la estación activa va a opacidad 1 y los demás a 0.55.
+- **Texto honesto:** «The first time for a patch of sky this takes a few minutes. Next time it
+  opens in seconds.» y un contador «Elapsed m:ss» en `--bc-blanco`. El contador es el único número.
+- Las tres estaciones se apilan por debajo de 760 px.
 
 ### 7.7 Botones
 
