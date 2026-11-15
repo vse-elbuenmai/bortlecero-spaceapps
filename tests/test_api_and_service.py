@@ -346,7 +346,7 @@ def test_api_kill_switch_and_sanitized_upstream_errors(
     assert resp_disabled.status_code == 503
     assert resp_disabled.json()["detail"]["code"] == "live_queries_disabled"
 
-    monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(Path("mockup/data").resolve()))
+    monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(Path("tests/fixtures/container").resolve()))
     app.dependency_overrides.pop(get_output_dir, None)
-    resp_precomputed = client.get("/api/v1/blink/barnards_star")
+    resp_precomputed = client.get("/api/v1/blink/epsilon_indi_b")
     assert resp_precomputed.status_code == 200

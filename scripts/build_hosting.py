@@ -55,11 +55,25 @@ def _resolve_commit_sha() -> str:
 
 def build_hosting(source: Path, destination: Path) -> str:
     """Build fresh output so obsolete or unrelated files cannot enter a release."""
-    bundles = {
-        target: (source / "data" / target / "bundle.json").read_bytes()
-        for target in BENCHMARKS
-    }
-    checksums = {target: hashlib.sha256(bundle).hexdigest() for target, bundle in bundles.items()}
+    data_dir = source / "data"
+    has_local_bundles = data_dir.is_dir() and all(
+        (data_dir / target / "bundle.json").is_file() for target in BENCHMARKS
+    )
+
+    if has_local_bundles:
+        bundles = {
+            target: (data_dir / target / "bundle.json").read_bytes()
+            for target in BENCHMARKS
+        }
+        checksums = {
+            target: hashlib.sha256(bundle).hexdigest() for target, bundle in bundles.items()
+        }
+    else:
+        bundles = {}
+        checksums = {
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in PUBLIC_FILES
+        }
     version = hashlib.sha256(json.dumps(checksums, sort_keys=True).encode()).hexdigest()
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -70,17 +84,21 @@ def build_hosting(source: Path, destination: Path) -> str:
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / relative, path)
 
-        release = staged / "releases" / version
-        release.mkdir(parents=True)
-        manifest = {
+        manifest: dict[str, object] = {
             "version": version,
             "commit_sha": _resolve_commit_sha(),
             "bundles": {},
         }
-        for target, bundle in bundles.items():
-            path = release / f"{target}.json"
-            path.write_bytes(bundle)
-            manifest["bundles"][target] = path.relative_to(staged).as_posix()
+        if bundles:
+            release = staged / "releases" / version
+            release.mkdir(parents=True)
+            for target, bundle in bundles.items():
+                path = release / f"{target}.json"
+                path.write_bytes(bundle)
+                manifest["bundles"][target] = path.relative_to(staged).as_posix()
+        else:
+            manifest["mode"] = "live_irsa"
+
         (staged / "benchmark-manifest.json").write_text(
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
         )

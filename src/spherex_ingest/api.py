@@ -526,6 +526,16 @@ def get_benchmark_blink_bundle(
                 exc,
             )
 
+    if not force_refresh:
+        sized_target = (
+            target
+            if target.cutout_size_arcsec == size_arcsec
+            else target.model_copy(update={"cutout_size_arcsec": size_arcsec})
+        )
+        cached = get_result_store().lookup(ResultKey.from_target(sized_target, max_frames))
+        if cached is not None:
+            return cached
+
     require_legacy_sync()
     if force_refresh and not _is_maintenance_authorized(x_maintenance_token):
         raise _error_http_exception(
