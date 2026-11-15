@@ -134,7 +134,9 @@
 /* The frames viewer fills the screen (DESIGN §7.11): it is the main tool, not a pop-up. Its head stays
    at the top while the page scrolls, so Minimize and Close are always at hand; the sections keep their
    reading widths and sit centred, up to 1680 px. */
-.modal-full { --mf-pad: clamp(16px, 3vw, 48px); width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+/* ".modal.modal-full": heavier than ".modal", whose phone padding comes later in the file and would leave a
+   gap above the sticky head where the frames show through while scrolling */
+.modal.modal-full { --mf-pad: clamp(16px, 3vw, 48px); width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
   margin: 0; padding: 0 var(--mf-pad) 24px; border: 0; border-radius: 0; box-shadow: none; }
 .modal-full[open] { animation-name: modal-full-in; }
 @keyframes modal-full-in { from { opacity: 0; } to { opacity: 1; } }
@@ -161,7 +163,7 @@
     max-width: max(min(100%, 320px), min(100%, calc(100dvh - 390px), 900px)); }
 }
 @media (max-width: 760px) {
-  .modal-full { padding: 0 16px 16px; --mf-pad: 16px; }
+  .modal.modal-full { padding: 0 16px 16px; --mf-pad: 16px; }
   .modal-full .modal-head { padding-block: 12px; }
   .modal-full .viewer { padding-top: var(--bc-sp-s); }
 }
