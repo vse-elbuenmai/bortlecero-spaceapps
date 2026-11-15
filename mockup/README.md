@@ -3,7 +3,15 @@
 The viewer displays live SPHEREx blink series fetched from IRSA via the `spherex_ingest` API for
 the five challenge benchmarks and lets visitors look around the sky by test object, by name or by
 coordinates. There are no local `mockup/data/` snapshots or `prepare_barnard.py` files: all blink
-frames come from the live IRSA ingestion backend.
+frames originate from the live IRSA ingestion backend.
+
+The viewer stores successful processed blink bundles (images and metadata) in IndexedDB. Reopening
+the same benchmark or exact coordinates in the same browser profile within one hour skips the
+ingestion API. The cache holds up to 24 bundles and 24 MiB of bundle payloads; expired entries are
+ignored and pruned on writes. Failed searches and bundles missing data due to upstream errors are
+not cached. If browser storage is unavailable, searches still run against the API. On GCS, use the
+bucket-specific viewer URL below: the path-style `storage.googleapis.com/<bucket>/...` URL serves
+the same page but skips persistent caching because it shares an origin with other buckets.
 
 - `index.html`, `sky.css`, `sky.js` — the **sky view**: the whole sky on screen, seen from inside,
   a search panel (one of the five test objects, an object name, or RA and Dec) that travels to the
@@ -40,7 +48,7 @@ The build copies an explicit list of public HTML, CSS, JavaScript, and sky maps 
 the local checkout.
 
 In staging, the static viewer is hosted on the public GCS bucket
-`gs://bortle-cero-nasa-staging-26-viewer` (`https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html`)
+`gs://bortle-cero-nasa-staging-26-viewer` (`https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html`)
 and deployed automatically on every push to `main` by `.github/workflows/cd-deploy.yml`, setting
 `Cache-Control: no-cache` on mutable entrypoints and manifest (`index.html`, `*.js`, `*.css`,
 `*.json`, `sky/sky.json`). Firebase Hosting via `firebase.json` (using `firebase emulators:start` or
@@ -58,7 +66,7 @@ Verify the live GCS deployment (or optional Firebase Hosting preview) at desktop
 checking all five modal views, live coordinate queries, and `Cache-Control` headers:
 
 ```sh
-curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html
+curl -I https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html
 curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/benchmark-manifest.json
 ```
 
