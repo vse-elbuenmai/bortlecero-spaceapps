@@ -17,6 +17,14 @@ from spherex_ingest.domain.targets import BENCHMARK_TARGETS, get_benchmark_targe
 logger = logging.getLogger(__name__)
 
 
+class NoObservations(ValueError):
+    """The upstream search succeeded but found no observations for the target."""
+
+
+class UpstreamUnavailable(RuntimeError):
+    """The upstream search or downloads failed before returning any cutouts."""
+
+
 class SPHERExBlinkIngestionService:
     """Orchestrates SPHEREx target resolution, cutout fetching, processing, and exporting.
 
@@ -90,28 +98,34 @@ class SPHERExBlinkIngestionService:
             target.cutout_size_arcsec,
         )
 
-        raw_frames = self.cutout_provider.fetch_cutouts(
+        fetched = self.cutout_provider.fetch_cutouts(
             target=target,
             max_frames_per_collection=max_frames_per_collection,
         )
-        if not raw_frames:
-            raise ValueError(
+        if not fetched.frames:
+            if any(
+                dropped.reason in {"collection_query_error", "cutout_download_error"}
+                for dropped in fetched.dropped_frames
+            ):
+                raise UpstreamUnavailable(
+                    "SPHEREx retrieval failed before any cutouts could be processed."
+                )
+            raise NoObservations(
                 f"No SPHEREx Level 2b cutouts found for target '{target.name}' "
                 f"(RA={target.ra_deg:.5f}, Dec={target.dec_deg:.5f})."
             )
 
         processed_frames, common_wcs, grid_shape = self.frame_processor.process_frames(
-            raw_frames=raw_frames,
+            raw_frames=fetched.frames,
             target=target,
         )
 
-        dropped_cutouts = getattr(self.cutout_provider, "dropped_frames", [])
         bundle = self.bundle_exporter.build_bundle(
             target=target,
             processed_frames=processed_frames,
             common_wcs=common_wcs,
             grid_shape=grid_shape,
-            dropped_frames=dropped_cutouts,
+            dropped_frames=fetched.dropped_frames,
         )
 
         if output_dir is not None:
