@@ -1,5 +1,9 @@
 # Run the ingestion API on Cloud Run
 
+See also:
+- [GCP bootstrap and Workload Identity Federation setup](../deploy/gcp/README.md) for automated keyless CI/CD provisioning via `deploy/gcp/bootstrap.sh` and `.github/workflows/cd-deploy.yml`.
+- [Operations runbook](OPERATIONS-RUNBOOK.md) for Cloud Logging queries, Cloud Monitoring alerts, and backend/frontend/data rollback procedures.
+
 ## Local development
 
 The Python API works outside the container in Bash and PowerShell.
