@@ -54,6 +54,9 @@
     fps: 1,
     timer: null,
     tlX: null,             // where each timeline dot sits, in px along the track
+    overlays: { predicted: true, measured: true, path: true, flags: false }, // marks drawn over the image
+    legacyFlags: false,    // the current frame brings its flags as an image (frames.json)
+    mode: "basic",         // detail level: "basic" or "advanced"
   };
 
   const fmtDeg = (v, d = 4) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d) + "°";
@@ -85,6 +88,10 @@
     plate.style.width = plate.style.height = w + "px";
     plate.style.transform = `translate(${Math.round(half - state.cx * ppx)}px, ${Math.round(half - state.cy * ppx)}px)`;
     $("zoom-out-label").textContent = ZOOMS[state.zoomIdx] + "×";
+    // At 1× the image is always centred, so the reset has nothing to do either
+    $("zoom-in").disabled = state.zoomIdx >= ZOOMS.length - 1;
+    $("zoom-out").disabled = state.zoomIdx <= 0;
+    $("zoom-reset").disabled = state.zoomIdx <= 0;
 
     const scale = grid.pixel_scale_arcsec || 6.15;
     const arcsec = SCALE_STEPS.find((a) => (a / scale) * ppx <= 140) || 2;
@@ -93,52 +100,61 @@
   }
 
   // ---------- overlay: trajectory for all dates, markers for current one ----------
+  // Each kind of mark has a switch in the legend (state.overlays).
   function drawOverlay() {
     if (!state.bundle) return;
-    if (state.diffMode) {
-      overlay.replaceChildren();
-      return;
-    }
+    overlay.replaceChildren();
+    if (state.diffMode) return;
     const grid = state.bundle.grid;
     const w = grid.width_px || grid.size_px || 31;
     const h = grid.height_px || grid.size_px || 31;
     overlay.setAttribute("viewBox", `0 0 ${w} ${h}`);
-    overlay.replaceChildren();
 
     const P = (p) => [p.x + 0.5, p.y + 0.5]; // standard pixel center alignment
 
     const frames = state.activeFrames;
     if (!frames || frames.length === 0) return;
-
-    // Trajectory of predicted coordinates
-    const predPts = frames.map((f) => {
-      const px = f.predicted_pixel_x ?? (f.predicted ? f.predicted.x : w / 2);
-      const py = f.predicted_pixel_y ?? (f.predicted ? f.predicted.y : h / 2);
-      return P({ x: px, y: py });
-    });
-
-    if (predPts.length > 1) {
-      const ptsStr = predPts.map((pt) => pt.join(",")).join(" ");
-      overlay.append(svgEl("polyline", { points: ptsStr, class: "mk-traj" }));
-    }
-    predPts.forEach(([x, y]) => {
-      overlay.append(svgEl("circle", { cx: x, cy: y, r: 0.25, class: "mk-dot" }));
-    });
-
-    // Predicted marker for current frame
     const cur = frames[state.i];
     if (!cur) return;
-    const curPx = cur.predicted_pixel_x ?? (cur.predicted ? cur.predicted.x : w / 2);
-    const curPy = cur.predicted_pixel_y ?? (cur.predicted ? cur.predicted.y : h / 2);
-    const [px, py] = P({ x: curPx, y: curPy });
-    const r = 2.2;
-    overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred-halo" }));
-    overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred" }));
+
+    // Flagged pixels of this frame (bundles carry them as two masks; frames.json as an image)
+    if (state.overlays.flags) {
+      const paint = (mask, cls) => {
+        if (!Array.isArray(mask)) return;
+        mask.forEach((row, y) => {
+          if (!Array.isArray(row)) return;
+          row.forEach((v, x) => { if (v) overlay.append(svgEl("rect", { x, y, width: 1, height: 1, class: cls })); });
+        });
+      };
+      paint(cur.bad_pixel_mask, "mk-flag-bad");
+      paint(cur.saturation_mask, "mk-flag-sat");
+    }
+
+    // Trajectory of predicted coordinates
+    if (state.overlays.path && frames.length > 1) {
+      const predPts = frames.map((f) => {
+        const px = f.predicted_pixel_x ?? (f.predicted ? f.predicted.x : w / 2);
+        const py = f.predicted_pixel_y ?? (f.predicted ? f.predicted.y : h / 2);
+        return P({ x: px, y: py });
+      });
+      overlay.append(svgEl("polyline", { points: predPts.map((pt) => pt.join(",")).join(" "), class: "mk-traj" }));
+      predPts.forEach(([x, y]) => overlay.append(svgEl("circle", { cx: x, cy: y, r: 0.25, class: "mk-dot" })));
+    }
+
+    // Predicted marker for current frame
+    if (state.overlays.predicted) {
+      const curPx = cur.predicted_pixel_x ?? (cur.predicted ? cur.predicted.x : w / 2);
+      const curPy = cur.predicted_pixel_y ?? (cur.predicted ? cur.predicted.y : h / 2);
+      const [px, py] = P({ x: curPx, y: curPy });
+      const r = 2.2;
+      overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred-halo" }));
+      overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred" }));
+    }
 
     // Measured centroid marker (only rendered when centroid measurement succeeded)
     const mxVal = cur.measured_centroid_x ?? (cur.measured ? cur.measured.x : null);
     const myVal = cur.measured_centroid_y ?? (cur.measured ? cur.measured.y : null);
-    if (mxVal !== null && myVal !== null) {
+    if (state.overlays.measured && mxVal !== null && myVal !== null) {
       const [mx, my] = P({ x: mxVal, y: myVal });
       const g = 0.9, a = 2.6;
       const d = `M${mx} ${my - a}V${my - g}M${mx} ${my + g}V${my + a}M${mx - a} ${my}H${mx - g}M${mx + g} ${my}H${mx + a}`;
@@ -147,15 +163,38 @@
     }
   }
 
-  // ---------- badges ----------
-  function badge(kind, icon, text) {
-    const li = document.createElement("li");
-    li.className = "badge badge-" + kind;
-    const ic = document.createElement("span");
-    ic.setAttribute("aria-hidden", "true");
-    ic.textContent = icon;
-    li.append(ic, document.createTextNode(" " + text));
-    return li;
+  function applyOverlays() {
+    flagsImg.hidden = !(state.overlays.flags && state.legacyFlags && !state.diffMode);
+    drawOverlay();
+  }
+
+  function setOverlay(key, on) {
+    if (!(key in state.overlays)) return;
+    state.overlays[key] = on;
+    document.querySelectorAll(`input[data-overlay="${key}"]`).forEach((input) => { input.checked = on; });
+    applyOverlays();
+  }
+
+  // ---------- frame checks: four cells that are always there (DESIGN §7.4) ----------
+  function setStatus(id, kind, text, title) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = "status-v is-" + kind;
+    el.title = title || "";
+  }
+
+  // ---------- detail level: basic hides the numbers only a check needs (DESIGN §7.13) ----------
+  function setMode(mode, { remember = true } = {}) {
+    state.mode = mode === "advanced" ? "advanced" : "basic";
+    const dialog = $("viewer-modal"), sw = $("mode-switch");
+    if (dialog) dialog.dataset.mode = state.mode;
+    if (sw) {
+      sw.classList.toggle("is-advanced", state.mode === "advanced");
+      sw.querySelectorAll("[role=radio]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === state.mode)));
+    }
+    if (state.diffMode && state.mode === "basic") setDiffMode(false); // its button is not shown in basic
+    if (remember) { try { localStorage.setItem("viewer-detail", state.mode); } catch { /* private window */ } }
   }
 
   // ---------- show frame or difference map ----------
@@ -172,19 +211,21 @@
       $("frame-count").textContent = `Difference Map · Band ${diffMap.detector_band}`;
       $("m-date").textContent = `${diffMap.baseline_days.toFixed(1)} days baseline`;
       const dLambda = diffMap.delta_wavelength_um != null ? Number(diffMap.delta_wavelength_um) : 0;
-      $("m-wave").textContent = `${diffMap.mean_wavelength_um.toFixed(3)} µm (Δλ = ${dLambda.toFixed(3)} µm)`;
+      $("m-wave").textContent = `${diffMap.mean_wavelength_um.toFixed(3)} µm`;
       $("m-det").textContent = `Band ${diffMap.detector_band}`;
       $("m-rel").textContent = "SPHEREx ΔI";
       $("m-pa").textContent = "Aligned (0°)";
       $("m-off").textContent = "Dipole signature";
       $("hud-date").textContent = `Δt = ${diffMap.baseline_days.toFixed(1)} d`;
 
-      const badges = $("badges");
-      badges.replaceChildren();
-      badges.append(badge("acento", "±", `Dipole ΔI (Band ${diffMap.detector_band})`));
-      badges.append(badge("ok", "✓", `${diffMap.baseline_days.toFixed(1)} days baseline`));
+      setStatus("st-roll", "acento", "↻ Aligned (0°)");
+      setStatus("st-core", "off", "— Not applicable");
+      setStatus("st-gaia", "acento", "± Dipole ΔI", `Dipole signature of proper motion in Band ${diffMap.detector_band}`);
       if (diffMap.delta_wavelength_um != null) {
-        badges.append(badge("acento", "λ", `Δλ = ${dLambda.toFixed(3)} µm`));
+        setStatus("st-wave", dLambda > 0.05 ? "aviso" : "ok", `${dLambda > 0.05 ? "⚠" : "✓"} Δλ ${dLambda.toFixed(3)} µm`,
+          "Wavelength difference between the two epochs");
+      } else {
+        setStatus("st-wave", "off", "— Unknown Δλ");
       }
 
       const dLamStr = diffMap.delta_wavelength_um != null
@@ -215,17 +256,24 @@
     const dateStr = f.obs_time_iso || f.date_utc || "";
     img.alt = `SPHEREx image of ${state.bundle.target.name}, ${dateStr.slice(0, 10)}, ${f.wavelength_um.toFixed(2)} µm`;
 
+    state.legacyFlags = Boolean(f.flags);
     if (f.flags) {
       flagsImg.src = f.flags;
-    } else {
-      flagsImg.hidden = true;
     }
+    flagsImg.hidden = !(state.overlays.flags && state.legacyFlags);
 
     live.setAttribute("aria-live", announce ? "polite" : "off");
     $("frame-count").textContent = `Frame ${state.i + 1} / ${frames.length}`;
     $("m-date").textContent = fmtDate(dateStr);
-    $("m-wave").textContent = f.wavelength_um.toFixed(3) + " µm" +
-      (f.bandwidth_um ? ` (±${(f.bandwidth_um / 2).toFixed(3)} µm)` : "");
+    // The half-width of the filter is a number for the advanced level only
+    $("m-wave").replaceChildren(document.createTextNode(f.wavelength_um.toFixed(3)));
+    if (f.bandwidth_um) {
+      const span = document.createElement("span");
+      span.className = "adv";
+      span.textContent = ` ± ${(f.bandwidth_um / 2).toFixed(3)}`;
+      $("m-wave").append(span);
+    }
+    $("m-wave").append(document.createTextNode(" µm"));
     $("m-det").textContent = `Band ${f.detector_band || f.detector || "?"}`;
     $("m-rel").textContent = f.collection || f.release || "SPHEREx";
     const pa = f.sps_epa_deg ?? f.pa_deg ?? null;
@@ -235,31 +283,33 @@
     $("m-off").textContent = off !== null ? off.toFixed(2) + "″" : "N/A";
     $("hud-date").textContent = dateStr.slice(0, 10);
 
-    const badges = $("badges");
-    badges.replaceChildren();
+    // Roll: the spacecraft saw this frame upside down and it was re-aligned north-up
+    const rotated = pa !== null && (Math.abs(pa - 180) < 45 || f.rotated);
+    setStatus("st-roll", rotated ? "acento" : "ok", rotated ? "↻ 180°, aligned" : "✓ 0°, as taken",
+      rotated ? "Taken with the spacecraft rolled 180° and turned back north-up" : "Taken north-up");
 
-    // Roll rotation badge
-    if (pa !== null && (Math.abs(pa - 180) < 45 || f.rotated)) {
-      badges.append(badge("acento", "↻", "Rotated 180°, re-aligned"));
-    }
+    // Core saturation
+    const saturated = Boolean(f.is_saturated_core || f.saturated);
+    setStatus("st-core", saturated ? "aviso" : "ok", saturated ? "⚠ Saturated" : "✓ Not saturated",
+      saturated ? "The core of the star is saturated: the centroid comes from its halo" : "");
 
-    // Core saturation badge
-    if (f.is_saturated_core || f.saturated) {
-      badges.append(badge("aviso", "⚠", "Saturated core (halo centroid)"));
-    }
-
-    // Centroid astrometry badge
+    // Centroid against Gaia's prediction
     if (off !== null) {
-      if (off <= 0.5) badges.append(badge("ok", "✓", `${off.toFixed(2)}″ from Gaia`));
-      else badges.append(badge("aviso", "⚠", `${off.toFixed(2)}″ from Gaia`));
-    } else if (f.measured_centroid_x === null && !f.measured) {
-      badges.append(badge("aviso", "—", "Unmeasured / diffuse"));
+      setStatus("st-gaia", off <= 0.5 ? "ok" : "aviso", `${off <= 0.5 ? "✓" : "⚠"} ${off.toFixed(2)}″ off`,
+        `Measured centre ${off.toFixed(2)}″ from where Gaia DR3 predicts the star`);
+    } else {
+      setStatus("st-gaia", "off", "— Unmeasured", "No centroid: the star is diffuse or saturated here");
     }
 
-    // Wavelength jump warning
+    // Wavelength against the previous frame: a change in brightness between two colours proves nothing
     const prev = frames[state.i - 1];
-    if (prev && Math.abs(prev.wavelength_um - f.wavelength_um) > 0.05) {
-      badges.append(badge("aviso", "⚠", `Different wavelength (${prev.wavelength_um.toFixed(2)} → ${f.wavelength_um.toFixed(2)} µm)`));
+    if (!prev) {
+      setStatus("st-wave", "off", "— First frame");
+    } else if (Math.abs(prev.wavelength_um - f.wavelength_um) > 0.05) {
+      setStatus("st-wave", "aviso", `⚠ ${prev.wavelength_um.toFixed(2)}→${f.wavelength_um.toFixed(2)} µm`,
+        "Different wavelength than the previous frame: a change in brightness is not variability");
+    } else {
+      setStatus("st-wave", "ok", "✓ Same as before", "Same wavelength as the previous frame: brightness can be compared");
     }
 
     document.querySelectorAll(".tl-dot").forEach((b, k) => b.setAttribute("aria-current", k === state.i ? "true" : "false"));
@@ -624,6 +674,38 @@
     unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
   };
   let targetRequest;
+
+  // The loading scene (DESIGN §7.6): shown only if the answer takes more than a moment, so a
+  // cached result opens the viewer straight away. Its station follows the phase the server reports.
+  const LOADING_SHOW_AFTER_MS = 1200;
+  const STEP_OF_PHASE = { submitting: 1, queued: 1, running: 2, result: 3 };
+  function beginLoading() {
+    const box = $("modal-loading");
+    if (!box) return { progress() {}, end() {} };
+    const t0 = performance.now();
+    let step = 1, shown = false;
+    const render = () => {
+      box.dataset.step = String(step);
+      box.querySelectorAll(".ld-steps li").forEach((li) => {
+        if (Number(li.dataset.step) === step) li.setAttribute("aria-current", "step");
+        else li.removeAttribute("aria-current");
+      });
+    };
+    const elapsed = () => {
+      const s = Math.floor((performance.now() - t0) / 1000);
+      $("loading-elapsed").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    };
+    const showTimer = setTimeout(() => { shown = true; render(); elapsed(); box.hidden = false; }, LOADING_SHOW_AFTER_MS);
+    const tick = setInterval(() => { if (shown) elapsed(); }, 1000);
+    return {
+      progress(p) {
+        step = STEP_OF_PHASE[p && p.phase] || step;
+        if (shown) render();
+      },
+      end() { clearTimeout(showTimer); clearInterval(tick); box.hidden = true; },
+    };
+  }
+
   function setTargetStatus(message) {
     const status = $("modal-empty");
     if (!status) return;
@@ -665,12 +747,15 @@
       setTargetStatus("Loading SPHEREx frames…");
     }
     $("loading").hidden = false;
+    const loading = beginLoading();
     let result;
     try {
-      result = await window.viewerData.load({ targetId, ra, dec }, signal);
+      result = await window.viewerData.load({ targetId, ra, dec }, signal, loading.progress);
     } catch (error) {
       if (signal.aborted) return;
       throw error;
+    } finally {
+      loading.end();
     }
     if (signal.aborted) return;
     $("loading").hidden = true;
@@ -750,9 +835,34 @@
     zoomTo(0);
   });
 
-  $("flags-toggle").addEventListener("change", (e) => {
-    flagsImg.hidden = !e.target.checked;
+  // Legend switches: one per kind of mark, plus All and None
+  document.querySelectorAll("input[data-overlay]").forEach((input) => {
+    input.addEventListener("change", (e) => setOverlay(e.target.dataset.overlay, e.target.checked));
   });
+  const legacyFlagsToggle = $("flags-toggle");
+  if (legacyFlagsToggle && !legacyFlagsToggle.dataset.overlay) {
+    legacyFlagsToggle.addEventListener("change", (e) => setOverlay("flags", e.target.checked));
+  }
+  $("legend-all")?.addEventListener("click", () => Object.keys(state.overlays).forEach((k) => setOverlay(k, true)));
+  $("legend-none")?.addEventListener("click", () => Object.keys(state.overlays).forEach((k) => setOverlay(k, false)));
+
+  // Detail level: remembered between visits
+  const modeSwitch = $("mode-switch");
+  if (modeSwitch) {
+    modeSwitch.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-mode]");
+      if (btn) setMode(btn.dataset.mode);
+    });
+    modeSwitch.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      setMode(state.mode === "basic" ? "advanced" : "basic");
+      modeSwitch.querySelector(`[data-mode="${state.mode}"]`).focus();
+    });
+  }
+  let savedMode = null;
+  try { savedMode = localStorage.getItem("viewer-detail"); } catch { /* private window */ }
+  setMode(savedMode || "basic", { remember: false });
 
   const diffToggleBtn = $("diff-toggle");
   if (diffToggleBtn) {

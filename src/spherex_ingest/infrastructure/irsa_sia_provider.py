@@ -49,7 +49,7 @@ class IRSASiaCutoutProvider:
     def __init__(
         self,
         sia_url: str = DEFAULT_IRSA_SIA_URL,
-        cache_dir: Path = Path(".cache/fits"),
+        cache_dir: Path | None = Path(".cache/fits"),
         parser: SPHERExMEFParser | None = None,
         timeout_sec: float = 45.0,
         max_retries: int = 3,
@@ -57,7 +57,7 @@ class IRSASiaCutoutProvider:
         cutout_workers: int = 3,
     ) -> None:
         self.sia_url = sia_url
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.parser = parser or SPHERExMEFParser()
         self.timeout_sec = timeout_sec
         self.max_retries = max_retries
@@ -83,7 +83,8 @@ class IRSASiaCutoutProvider:
     ) -> CutoutFetchResult:
         """Retrieve raw cutouts and diagnostics for the requested sky position."""
         self.validate_collections(target.collections)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        if self.cache_dir is not None:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Propagate catalog coordinates to mid-SPHEREx survey (MJD 61000 ~ Nov 2025)
         # so high-proper-motion stars (e.g., Barnard's Star) are centered in the cutout.
@@ -257,21 +258,23 @@ class IRSASiaCutoutProvider:
         dec_deg: float,
     ) -> Table:
         """Execute SIAv2 search with local VOTable caching and exponential backoff retries."""
-        cache_file = (
-            self.cache_dir
-            / f"sia_{collection}_{ra_deg:.4f}_{dec_deg:+.4f}.vot".replace("+", "p").replace(
-                "-", "m"
+        cache_file = None
+        if self.cache_dir is not None:
+            cache_file = (
+                self.cache_dir
+                / f"sia_{collection}_{ra_deg:.4f}_{dec_deg:+.4f}.vot".replace("+", "p").replace(
+                    "-", "m"
+                )
             )
-        )
-        try:
-            with cache_file.open("rb") as cached:
-                age = time.time() - os.fstat(cached.fileno()).st_mtime
-                if age < self.sia_cache_ttl_sec:
-                    return self._parse_sia_table(cached.read())
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
-            logger.warning("Ignoring unreadable SIAv2 cache entry %s: %s", cache_file, exc)
+            try:
+                with cache_file.open("rb") as cached:
+                    age = time.time() - os.fstat(cached.fileno()).st_mtime
+                    if age < self.sia_cache_ttl_sec:
+                        return self._parse_sia_table(cached.read())
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                logger.warning("Ignoring unreadable SIAv2 cache entry %s: %s", cache_file, exc)
 
         last_exc: Exception | None = None
         attempts = retry_limit(self.max_retries)
@@ -312,7 +315,8 @@ class IRSASiaCutoutProvider:
                     )
                     retry_sleep(delay)
             else:
-                self._publish_cache_entry(cache_file, raw_bytes)
+                if cache_file is not None:
+                    self._publish_cache_entry(cache_file, raw_bytes)
                 return table
 
         assert last_exc is not None
@@ -497,7 +501,9 @@ class IRSASiaCutoutProvider:
         """Download cutout FITS (or load from local cache) and parse into RawCutoutFrame."""
         url_hash = hashlib.sha256(cutout_url.encode("utf-8")).hexdigest()[:12]
         stem = base_filename.replace(".fits", "")
-        cache_path = self.cache_dir / f"{stem}_{url_hash}.fits"
+        cache_path = (
+            self.cache_dir / f"{stem}_{url_hash}.fits" if self.cache_dir is not None else None
+        )
 
         def parse_cutout(data: bytes) -> RawCutoutFrame:
             if not data or len(data) % FITS_BLOCK_BYTES:
@@ -514,12 +520,13 @@ class IRSASiaCutoutProvider:
                     source_url=cutout_url,
                     frame_id=stem,
                 )
-        try:
-            return parse_cutout(cache_path.read_bytes())
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
-            logger.warning("Ignoring unreadable FITS cache entry %s: %s", cache_path, exc)
+        if cache_path is not None:
+            try:
+                return parse_cutout(cache_path.read_bytes())
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                logger.warning("Ignoring unreadable FITS cache entry %s: %s", cache_path, exc)
 
         last_exc: Exception | None = None
         attempts = retry_limit(self.max_retries)
@@ -539,7 +546,8 @@ class IRSASiaCutoutProvider:
                 if attempt < attempts:
                     retry_sleep(1.0 * attempt)
             else:
-                self._publish_cache_entry(cache_path, data)
+                if cache_path is not None:
+                    self._publish_cache_entry(cache_path, data)
                 return frame
         assert last_exc is not None
         raise last_exc

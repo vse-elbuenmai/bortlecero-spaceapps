@@ -143,6 +143,78 @@ async function searchCoordinates(page, ra = "0", dec = "0") {
   await page.locator("#search-form button[type=submit]").click();
 }
 
+test("the optional grid brightens the celestial axes and the desktop readout reports a known sky position", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await serve(page, publicOrigin, staged);
+  const grid = page.getByRole("button", { name: "Coordinate grid" });
+  const readout = page.locator("#pointer-coords");
+  await expect(grid).toBeEnabled();
+  await expect(grid).toHaveAttribute("aria-pressed", "false");
+  await expect(readout).toBeHidden();
+
+  await page.mouse.move(720, 450);
+  await expect(readout).toHaveText("Pointer: RA 266.4000°, Dec −20.0000°");
+  // Use the existing sky-to-screen calculation to locate Barnard's catalog position.
+  const barnard = await page.evaluate(() => window.skyPrototype.project(269.4485, 4.7394));
+  await page.mouse.move(barnard.x, barnard.y);
+  await expect(readout).toHaveText(/^Pointer: RA 269\.448\d°, Dec \+4\.739\d°$/);
+  const beforeZoom = await readout.textContent();
+  await page.mouse.wheel(0, -160);
+  await expect(readout).not.toHaveText(beforeZoom);
+  await expect(readout).toContainText("Pointer: RA");
+  await page.mouse.move(720, 32);
+  await expect(readout).toBeHidden();
+
+  // Sample the actual WebGL output at the RA 0° / Dec 0° intersection and a point away from
+  // any grid line. The GPU buffer must be read in the same task as the draw.
+  await expect.poll(() => page.evaluate(() => window.skyPrototype.state.textures.visible?.width)).toBe(4096);
+  const sample = () => page.evaluate(() => {
+    const { state, project, redraw } = window.skyPrototype;
+    Object.assign(state, { ra: 0, dec: 0 });
+    redraw();
+    const gl = state.gl;
+    return [[0, 0], [12, 7]].map(([ra, dec]) => {
+      const point = project(ra, dec), rgb = new Uint8Array(4);
+      gl.readPixels(Math.floor(point.x), gl.drawingBufferHeight - 1 - Math.floor(point.y),
+        1, 1, gl.RGBA, gl.UNSIGNED_BYTE, rgb);
+      return [...rgb];
+    });
+  });
+  const off = await sample();
+  await grid.focus();
+  await grid.press("Space");
+  await expect(grid).toHaveAttribute("aria-pressed", "true");
+  const on = await sample();
+  expect(on[0][2]).toBeGreaterThan(off[0][2] + 35);
+  expect(on[1]).toEqual(off[1]);
+  await grid.click();
+  await expect(grid).toHaveAttribute("aria-pressed", "false");
+  expect(await sample()).toEqual(off);
+});
+
+test.describe("touch sky coordinates", () => {
+  test.use({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+
+  test("show the primary finger's position while dragging and keep the last touch after release", async ({ page, context }) => {
+    await serve(page, publicOrigin, staged);
+    await expect(page.getByRole("button", { name: "Coordinate grid" })).toBeEnabled();
+    await expect(page.locator(".sky-readout")).toBeHidden();
+    const readout = page.locator("#pointer-coords");
+    await expect(readout).toBeHidden();
+    const session = await context.newCDPSession(page);
+    const touch = (type, ...touchPoints) => session.send("Input.dispatchTouchEvent", { type, touchPoints });
+    await touch("touchStart", { x: 180, y: 400 });
+    await expect(readout).toHaveText("Touch: RA 266.4000°, Dec −20.0000°");
+    await touch("touchMove", { x: 224, y: 422 });
+    await expect(readout).not.toHaveText("Touch: RA 266.4000°, Dec −20.0000°");
+    const coords = (await readout.textContent()).replace("Touch:", "Last touch:");
+    await touch("touchEnd");
+    await expect(readout).toHaveText(coords);
+    await page.getByRole("button", { name: "Zoom in" }).tap();
+    await expect(readout).toHaveText(coords);
+  });
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 }]) {
   test(`HTTPS viewer opens all five benchmarks and coordinates via async IRSA jobs at ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -183,6 +255,117 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 
     expect(requests.some((url) => new URL(url).pathname === "/benchmark-manifest.json")).toBeFalsy();
   });
 }
+
+test("a slow benchmark search keeps the loading scene in sync with the server", async ({ page }) => {
+  let phase = "queued";
+  const bundle = makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 });
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+    "/api/v1/jobs": (route) => route.fulfill({ json: { status: "queued", job_id: "benchmark" } }),
+    "/api/v1/jobs/benchmark": (route) => route.fulfill({ json: { status: phase, job_id: "benchmark" } }),
+    "/api/v1/jobs/benchmark/result": (route) => route.fulfill({ json: bundle }),
+  });
+
+  await pickTarget(page, "barnard");
+  const loading = page.locator("#modal-loading");
+  await expect(loading).toBeVisible();
+  await expect(loading).toHaveAttribute("data-step", "1");
+  phase = "running";
+  await expect(loading).toHaveAttribute("data-step", "2");
+  phase = "succeeded";
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(loading).toBeHidden();
+});
+
+test("exact coordinates reuse rendered frames after reload until the browser cache expires", async ({ page }) => {
+  const jobs = [];
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+    "/api/v1/jobs": (route) => {
+      const { ra, dec } = route.request().postDataJSON();
+      jobs.push(ra);
+      return route.fulfill({ json: {
+        status: "succeeded",
+        result: makeBundle({ targetId: "coord_test", name: `Position ${ra}`, ra, dec }),
+      } });
+    },
+  });
+
+  async function showPosition(ra) {
+    await searchCoordinates(page, String(ra), "0");
+    await expect(page.locator("#modal-title")).toHaveText(`Position ${ra}`);
+    await expect(page.locator("#viewer")).toBeVisible();
+    await expect.poll(() => page.locator("#frame-img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+    await page.locator("#modal-close").click();
+  }
+
+  await showPosition(0);
+  await page.reload();
+  await showPosition(0);
+  expect(jobs).toEqual([0]);
+
+  await showPosition(1);
+  expect(jobs).toEqual([0, 1]);
+
+  await page.clock.setFixedTime(new Date(Date.now() + 61 * 60 * 1000));
+  await showPosition(0);
+  expect(jobs).toEqual([0, 1, 0]);
+});
+
+test("browser storage evicts an older bundle before exceeding its byte budget", async ({ page }) => {
+  const jobs = [];
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+    "/api/v1/jobs": (route) => {
+      const { ra, dec } = route.request().postDataJSON();
+      jobs.push(ra);
+      const bundle = makeBundle({ targetId: "coord_test", name: "Position", ra, dec });
+      bundle.scientific_warnings = ["x".repeat(13 * 1024 * 1024)];
+      return route.fulfill({ json: { status: "succeeded", result: bundle } });
+    },
+  });
+  const load = (ra) => page.evaluate(async (ra) => {
+    const { status } = await window.viewerData.load({ ra, dec: 0 }, new AbortController().signal);
+    return status;
+  }, ra);
+  // The viewer writes in the background. Wait for each transaction to settle before loading again.
+  const cachedPositions = () => page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open("bortle-cero-blink", 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const keys = db.transaction("bundles").objectStore("bundles").getAllKeys();
+      keys.onerror = () => reject(keys.error);
+      keys.onsuccess = () => resolve(keys.result.map((key) => JSON.parse(key)[2].ra));
+      db.close();
+    };
+  }));
+
+  expect(await load(0)).toBe("ready");
+  await expect.poll(cachedPositions).toEqual([0]);
+  expect(await load(1)).toBe("ready");
+  await expect.poll(cachedPositions).toEqual([1]);
+  expect(await load(1)).toBe("ready");
+  expect(await load(0)).toBe("ready");
+  expect(jobs).toEqual([0, 1, 0]);
+});
+
+test("disabled browser storage still allows live ingestion", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "indexedDB", {
+      get: () => { throw new DOMException("Storage disabled", "SecurityError"); },
+    });
+  });
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+    "/api/v1/jobs": (route) => route.fulfill({ json: {
+      status: "succeeded",
+      result: makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 }),
+    } }),
+  });
+  await pickTarget(page, "barnard");
+  await expect(page.locator("#viewer")).toBeVisible();
+});
 
 test("liveQueries disabled reports unavailability without calling ingestion API or local data", async ({ page }) => {
   const requests = await serve(page, publicOrigin, staged, {

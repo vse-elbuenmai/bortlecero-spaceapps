@@ -3,7 +3,15 @@
 The viewer displays live SPHEREx blink series fetched from IRSA via the `spherex_ingest` API for
 the five challenge benchmarks and lets visitors look around the sky by test object, by name or by
 coordinates. There are no local `mockup/data/` snapshots or `prepare_barnard.py` files: all blink
-frames come from the live IRSA ingestion backend.
+frames originate from the live IRSA ingestion backend.
+
+The viewer stores successful processed blink bundles (images and metadata) in IndexedDB. Reopening
+the same benchmark or exact coordinates in the same browser profile within one hour skips the
+ingestion API. The cache holds up to 24 bundles and 24 MiB of bundle payloads; expired entries are
+ignored and pruned on writes. Failed searches and bundles missing data due to upstream errors are
+not cached. If browser storage is unavailable, searches still run against the API. On GCS, use the
+bucket-specific viewer URL below: the path-style `storage.googleapis.com/<bucket>/...` URL serves
+the same page but skips persistent caching because it shares an origin with other buckets.
 
 - `index.html`, `sky.css`, `sky.js` — the **sky view**: the whole sky on screen, seen from inside,
   a search panel (one of the five test objects, an object name, or RA and Dec) that travels to the
@@ -40,7 +48,7 @@ The build copies an explicit list of public HTML, CSS, JavaScript, and sky maps 
 the local checkout.
 
 In staging, the static viewer is hosted on the public GCS bucket
-`gs://bortle-cero-nasa-staging-26-viewer` (`https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html`)
+`gs://bortle-cero-nasa-staging-26-viewer` (`https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html`)
 and deployed automatically on every push to `main` by `.github/workflows/cd-deploy.yml`, setting
 `Cache-Control: no-cache` on mutable entrypoints and manifest (`index.html`, `*.js`, `*.css`,
 `*.json`, `sky/sky.json`). Firebase Hosting via `firebase.json` (using `firebase emulators:start` or
@@ -58,7 +66,7 @@ Verify the live GCS deployment (or optional Firebase Hosting preview) at desktop
 checking all five modal views, live coordinate queries, and `Cache-Control` headers:
 
 ```sh
-curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html
+curl -I https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html
 curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/benchmark-manifest.json
 ```
 
@@ -99,6 +107,14 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
 - **How close it gets.** One map pixel covers 5.3′ of sky, so the view stops where one screen pixel
   would show less than half a map pixel: about 60° across on a laptop, never closer than 30°. The
   trip ends there, with a ring on the position; the dialog is where the real pixels are.
+- **Looking around.** Drag with the mouse or a finger. When the sky is let go it keeps turning the
+  way it was thrown and slows down; if it was spinning by itself before the drag, it settles back
+  into that slow spin, now in the direction of the drag. The buttons on the right say what they do
+  on hover and go dim when they would change nothing (zoom at its limit, whole sky already shown).
+- **Coordinate grid and readout.** Switch on **Coordinate grid** in the sky controls to show
+  lines every 30° of right ascension (RA) and 15° of declination (Dec). Brighter lines mark RA 0°
+  and the celestial equator (Dec 0°). Move the pointer over the map or touch it to read the sky
+  position in degrees. After you lift your finger, the last touched position stays visible.
 - **Search.** Three ways to say where, and the last one touched counts. The five test objects come
   from a list in `sky.js` (Gaia DR3 positions and proper motions, moved to today) and are offered
   in a select; choosing one fills in RA and Dec. Any other object can be typed by name: the page
@@ -112,6 +128,30 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   object names open the blink viewer by querying live SPHEREx data from IRSA through the ingestion
   API configured in `viewer-config.json`.
 - `window.skyPrototype` in the browser console gives the view's state.
+
+### While the server works
+
+A position the server has not seen takes a while (it asks IRSA, downloads a cutout per visit and
+aligns them; Barnard's Star took 31 s and 52 s in two runs on 15 Nov, a random empty position
+71 s). If the answer is not back within 1.2 s the dialog shows the journey of the data: a star,
+the telescope, the IRSA archive and your screen, with three numbered stations that follow the
+job's real phases (`queued`, `running`, result) and an elapsed-time counter. `viewer-data.js`
+reports each phase through the `onProgress` callback of `viewerData.load`. A cached answer opens
+the viewer directly. The server keeps a result for 24 hours, but in the memory of a Cloud Run
+instance that scales to zero when idle, so the first visitor after a quiet spell waits again.
+`DESIGN.md` §7.6 has the drawing's rules.
+
+### The viewer's two levels of detail
+
+The dialog opens in **Basic**: image, playback, band, timeline, the legend (each line switches its
+marks on and off; All / None do the four at once), the frame's date, wavelength and detector, four
+fixed check cells (roll, core, distance to Gaia, wavelength against the previous frame) and "What
+moved". **Advanced**, the other position of the switch in the dialog's header, adds the difference
+map, release, position angle, the measured distance to Gaia, the filter's half-width, the Gaia
+position of the object, the scientific notes (under the timeline on a wide screen) and the
+citations. The choice is remembered in the browser. The four cells are always there, so the panel
+keeps its height from one frame to the next while playing. `DESIGN.md` §7.4 and §7.13 have the
+details.
 
 ### Rebuilding the sky maps
 

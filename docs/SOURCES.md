@@ -58,6 +58,7 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Space Grotesk](https://github.com/floriankarsten/space-grotesk), by Florian Karsten | SIL Open Font License 1.1 | Typeface of the interface, chosen in `DESIGN.md` (self-hosted; how it is installed is added here when it is) | 2026-11-14 |
 | [Astral `uv`](https://github.com/astral-sh/uv) | Apache-2.0 / MIT | Python environment, package, and lockfile management | 2026-11-14 |
 | [Google Cloud Storage for Python](https://github.com/googleapis/google-cloud-python/tree/main/packages/google-cloud-storage) | Apache-2.0 | Private result bucket access through Application Default Credentials and object generation preconditions. | 2026-11-15 |
+| [Indexed Database API](https://www.w3.org/TR/IndexedDB/) | Browser platform | Persistent blink bundles with atomic pruning across tabs on the viewer origin | 2026-11-15 |
 | [SQLite transactions](https://www.sqlite.org/lang_transaction.html) and [page limits](https://www.sqlite.org/pragma.html#pragma_max_page_count) | Public domain | Cross-process local result publication and storage capacity. | 2026-11-15 |
 | [Astropy (`astropy`)](https://www.astropy.org/) (Astropy Collaboration et al. 2013, 2022) | BSD-3-Clause | FITS I/O, World Coordinate Systems (`WCS` & `WCS-WAVE` `WAVE-TAB`), proper motion & parallax epoch propagation (`SkyCoord.apply_space_motion`), and physical units | 2026-11-14 |
 | [reproject](https://reproject.readthedocs.io/) (Robitaille et al.) | BSD-3-Clause | Reprojecting multi-epoch SPHEREx cutouts (including $180^\circ$ `SPS_EPA` spacecraft flips) onto a common North-up celestial TAN grid | 2026-11-14 |
@@ -76,6 +77,7 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Astral `setup-uv` Action](https://github.com/astral-sh/setup-uv) | Apache-2.0 / MIT | GitHub Action to set up Astral `uv` binary and dependency cache in CI runners | 2026-11-14 |
 | [Firebase Hosting configuration](https://firebase.google.com/docs/hosting/full-config) | Managed Google service | Serving the static benchmark viewer with HTTPS and release cache headers | 2026-11-15 |
 | [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 | Offline Chromium tests for the hosted viewer, benchmark fallback and ingestion statuses | 2026-11-15 |
+| [MDN Pointer Events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) and [MDN WebGL uniforms](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/uniform), consulted via Context7 | CC BY-SA 2.5 | Primary pointer and capture handling; passing the grid toggle to the sky shader | 2026-11-15 |
 | [GitHub Actions Node.js setup](https://github.com/actions/setup-node) | MIT | Provisioning Node.js for browser CI | 2026-11-15 |
 | [Docker Official Image for Python](https://github.com/docker-library/python) | PSF-2.0 for Python | Digest-pinned CPython 3.14 base image for the ingestion service | 2026-11-15 |
 

@@ -30,6 +30,7 @@ use generation preconditions, so both receive the published result.
 | `SPHEREX_RESULTS_DIR` | `.cache/results`, or `results` beside `SPHEREX_CACHE_DIR` | Location of the local SQLite database when Cloud Storage is disabled. |
 | `SPHEREX_CODE_SHA` | Source SHA-256 in local development | Set to the full Git commit SHA of the deployed image when using Cloud Storage. |
 | `SPHEREX_RESULT_TTL_SECONDS` | `86400` | Reuse lifetime for completed results, from one second to seven days. |
+| `SPHEREX_IRSA_DISK_CACHE_ENABLED` | `true` for local API; `false` in the container | Read and write raw FITS and discovery caches on disk. The CLI keeps its local cache. |
 | `SPHEREX_SIA_CACHE_TTL_SECONDS` | `3600` | Revalidate IRSA discovery tables after this period. Set to zero to bypass discovery cache reads. |
 
 A partial result with failed upstream retrievals becomes eligible for refresh after
@@ -52,7 +53,7 @@ readable. Successful retries can switch the manifest to a new complete bundle.
   eight days on writes. Allow space for the transaction journal. Clear the local
   results directory while the service is stopped when a full cache needs immediate
   cleanup.
-- Raw FITS files stay in local scratch storage. Use the bounded Cloud Run scratch
-  volume with worker-scoped temporary directories that are removed after each job.
-  For local CLI and legacy API development, periodically clear the configured FITS
-  cache with the service stopped. Discovery tables in that cache expire independently.
+- The runtime container processes raw FITS cutouts and discovery tables in memory and does not
+  persist them to scratch. Local CLI and API development can still cache them on disk.
+- The viewer may reuse a processed bundle from its browser cache for one hour from receipt.
+  This is separate from the server-side reuse lifetime and from physical retention.
