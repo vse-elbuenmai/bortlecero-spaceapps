@@ -10,6 +10,7 @@
 *.fits binary
 *.fit binary
 *.fz binary
+*.npz binary
 *.png binary
 *.jpg binary
 *.jpeg binary
