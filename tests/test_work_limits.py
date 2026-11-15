@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from spherex_ingest.admission import AdmissionDenied, InMemoryAdmissionController
 from spherex_ingest.domain.models import TargetSpec
 from spherex_ingest.infrastructure.bounded_http import fetch_bytes, retry_limit
 from spherex_ingest.infrastructure.irsa_sia_provider import IRSASiaCutoutProvider
@@ -74,3 +75,38 @@ def test_provider_balances_total_exposure_limit_across_collections(tmp_path, mon
     with bounded_ingestion(PublicLimits(), 5):
         provider.fetch_cutouts(target, max_frames_per_collection=5)
     assert limits == [("spherex_dr1", 3), ("spherex_qr3", 2)]
+
+
+def test_admission_controller_enforces_rate_and_concurrency_limits():
+    now = [100.0]
+    limits = PublicLimits(max_new_jobs_per_minute=2, max_outstanding_jobs=1)
+    controller = InMemoryAdmissionController(limits=limits, clock=lambda: now[0])
+
+    with controller.admit():
+        with pytest.raises(AdmissionDenied) as exc_info:
+            with controller.admit():
+                pass
+        assert exc_info.value.reason == "queue_full"
+        assert exc_info.value.retry_after_seconds >= 1
+
+    now[0] = 110.0
+    with controller.admit():
+        pass
+
+    with pytest.raises(AdmissionDenied) as rate_exc:
+        with controller.admit():
+            pass
+    assert rate_exc.value.reason == "rate_limit"
+    assert rate_exc.value.retry_after_seconds == 50
+
+    now[0] = 160.1
+    with controller.admit():
+        pass
+
+
+def test_public_limits_from_environment(monkeypatch):
+    monkeypatch.setenv("SPHEREX_MAX_EXPOSURES", "6")
+    monkeypatch.setenv("SPHEREX_MAX_NEW_JOBS_PER_MINUTE", "3")
+    limits = PublicLimits.from_environment()
+    assert limits.max_exposures == 6
+    assert limits.max_new_jobs_per_minute == 3
