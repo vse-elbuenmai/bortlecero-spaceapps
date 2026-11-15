@@ -1,29 +1,36 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blink Viewer Mockup</title>
-  <meta name="description" content="Mockup: the whole sky seen from inside, a search that travels to any position, and a SPHEREx blink viewer for Barnard's Star.">
+  <meta name="description"
+    content="Mockup: the whole sky seen from inside, a search that travels to any position, and a SPHEREx blink viewer for Barnard's Star.">
   <link rel="stylesheet" href="mockup.css">
   <link rel="stylesheet" href="sky.css">
 </head>
+
 <body class="sky-app">
   <a class="skip" href="#search-form">Skip to search</a>
 
   <canvas id="sky-canvas" class="sky-canvas" tabindex="0"
-          aria-label="The whole sky seen from inside. Drag to look around, scroll or pinch to zoom. Arrow keys turn the view, plus and minus zoom."></canvas>
+    aria-label="The whole sky seen from inside. Drag to look around, scroll or pinch to zoom. Arrow keys turn the view, plus and minus zoom."></canvas>
   <p id="sky-fallback" class="sky-fallback" role="status">Loading the sky…</p>
 
   <div id="reticle" class="reticle" hidden aria-hidden="true">
-    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" class="reticle-ping"/><circle cx="32" cy="32" r="22" class="reticle-halo"/><circle cx="32" cy="32" r="22" class="reticle-ring"/></svg>
+    <svg viewBox="0 0 64 64">
+      <circle cx="32" cy="32" r="22" class="reticle-ping" />
+      <circle cx="32" cy="32" r="22" class="reticle-halo" />
+      <circle cx="32" cy="32" r="22" class="reticle-ring" />
+    </svg>
     <span id="reticle-label" class="reticle-label"></span>
   </div>
 
   <header class="site-header sky-header">
     <div class="header-row">
       <div class="brand">
-        <span class="brand-name">BORTLE CERO</span>
+        <span class="brand-name"><a href="/" style="text-decoration: none;">BORTLE CERO</a></span>
         <span class="brand-sep" aria-hidden="true"></span>
         <span class="brand-project">Project name TBD</span>
       </div>
@@ -44,23 +51,37 @@
         </select>
       </span>
       <button id="info-toggle" class="icon-btn info-toggle" type="button" aria-expanded="false"
-              aria-controls="sky-credit" aria-label="About this sky layer">i</button>
+        aria-controls="sky-credit" aria-label="About this sky layer">i</button>
     </div>
     <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
     <p id="sky-credit" class="sky-caption"></p>
   </section>
 
   <div class="sky-tools" role="group" aria-label="Sky controls">
-    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
-    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
-    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg></button>
-    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7"/><path d="M4.6 2.2v2.9H1.7"/></svg></button>
+    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in"><svg viewBox="0 0 16 16"
+        aria-hidden="true">
+        <path d="M8 3v10M3 8h10" />
+      </svg></button>
+    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out"><svg viewBox="0 0 16 16"
+        aria-hidden="true">
+        <path d="M3 8h10" />
+      </svg></button>
+    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" aria-pressed="true"><svg
+        viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M5.5 3.5v9M10.5 3.5v9" />
+      </svg></button>
+    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky"><svg viewBox="0 0 16 16"
+        aria-hidden="true">
+        <path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7" />
+        <path d="M4.6 2.2v2.9H1.7" />
+      </svg></button>
   </div>
 
   <section id="search" class="journey glass" aria-labelledby="search-title">
     <div class="journey-head">
       <p class="eyebrow">01 / Your patch of sky</p>
-      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="search-body">Hide</button>
+      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
+        aria-controls="search-body">Hide</button>
     </div>
     <div id="search-body">
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
@@ -81,18 +102,18 @@
         <span class="journey-or" aria-hidden="true">or</span>
         <div class="field field-name">
           <label for="name">Object name</label>
-          <input id="name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false"
-                 enterkeyhint="go" placeholder="Vega, M31" aria-describedby="name-err">
+          <input id="name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"
+            placeholder="Vega, M31" aria-describedby="name-err">
         </div>
         <div class="field">
           <label for="ra">RA</label>
-          <input id="ra" name="ra" inputmode="decimal" autocomplete="off"
-                 placeholder="269.4485 or 17h57m48.5s" aria-describedby="ra-err">
+          <input id="ra" name="ra" inputmode="decimal" autocomplete="off" placeholder="269.4485 or 17h57m48.5s"
+            aria-describedby="ra-err">
         </div>
         <div class="field field-dec">
           <label for="dec">Dec</label>
-          <input id="dec" name="dec" inputmode="decimal" autocomplete="off"
-                 placeholder="+4.7394 or +04°44′22″" aria-describedby="dec-err">
+          <input id="dec" name="dec" inputmode="decimal" autocomplete="off" placeholder="+4.7394 or +04°44′22″"
+            aria-describedby="dec-err">
         </div>
         <button class="btn btn-primary journey-go" type="submit">Go there</button>
       </form>
@@ -111,7 +132,10 @@
         <h2 id="modal-title" class="modal-title"></h2>
         <p id="modal-coords" class="mono"></p>
       </div>
-      <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky"><svg
+          viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg></button>
     </div>
 
     <div id="modal-empty" class="modal-empty" hidden>
@@ -122,7 +146,7 @@
     <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
       <div class="viewer-main">
         <div id="stage" class="stage" tabindex="0"
-             aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
+          aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
           <div id="plate" class="plate">
             <img id="frame-img" alt="" draggable="false">
             <img id="flags-img" class="flags" alt="" draggable="false" hidden>
@@ -141,21 +165,43 @@
 
         <div class="controls" role="group" aria-label="Playback">
           <div class="transport">
-            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 3.6v8.8"/><path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z"/></svg></button>
-            <button id="play" class="icon-btn" type="button" aria-label="Play" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg></button>
-            <button id="next" class="icon-btn" type="button" aria-label="Next frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M3.6 3.6L9.8 8l-6.2 4.4z"/><path d="M12.4 3.6v8.8"/></svg></button>
+            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame"><svg viewBox="0 0 16 16"
+                aria-hidden="true">
+                <path d="M3.6 3.6v8.8" />
+                <path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z" />
+              </svg></button>
+            <button id="play" class="icon-btn" type="button" aria-label="Play" aria-pressed="false"><svg
+                viewBox="0 0 16 16" aria-hidden="true">
+                <path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z" />
+              </svg></button>
+            <button id="next" class="icon-btn" type="button" aria-label="Next frame"><svg viewBox="0 0 16 16"
+                aria-hidden="true">
+                <path class="ico-fill" d="M3.6 3.6L9.8 8l-6.2 4.4z" />
+                <path d="M12.4 3.6v8.8" />
+              </svg></button>
           </div>
           <label class="speed">
             <span class="speed-label">Speed</span>
             <input id="speed" type="range" min="0.5" max="3" step="0.5" value="1">
             <output id="speed-out" for="speed">1 fps</output>
           </label>
-          <button id="diff-toggle" class="chip diff-toggle" type="button" aria-pressed="false" title="Toggle difference map between epochs">Difference Map</button>
+          <button id="diff-toggle" class="chip diff-toggle" type="button" aria-pressed="false"
+            title="Toggle difference map between epochs">Difference Map</button>
           <div class="zoom-group">
-            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out"><svg viewBox="0 0 16 16"
+                aria-hidden="true">
+                <path d="M3 8h10" />
+              </svg></button>
             <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
-            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
-            <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7"/><path d="M4.6 2.2v2.9H1.7"/></svg></button>
+            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in"><svg viewBox="0 0 16 16"
+                aria-hidden="true">
+                <path d="M8 3v10M3 8h10" />
+              </svg></button>
+            <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom"><svg viewBox="0 0 16 16"
+                aria-hidden="true">
+                <path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7" />
+                <path d="M4.6 2.2v2.9H1.7" />
+              </svg></button>
           </div>
         </div>
 
@@ -164,14 +210,15 @@
           <span class="select"><select id="band-select"></select></span>
         </div>
 
-        <div class="timeline-wrap"><div class="timeline" role="group" aria-label="Dates">
-          <div class="timeline-track"></div>
-          <div id="timeline-dots"></div>
-          <div class="tl-labels" aria-hidden="true">
-            <span id="tl-start" class="tl-end"></span>
-            <span id="tl-current" class="tl-current"></span>
-            <span id="tl-end" class="tl-end tl-end-right"></span>
-          </div>
+        <div class="timeline-wrap">
+          <div class="timeline" role="group" aria-label="Dates">
+            <div class="timeline-track"></div>
+            <div id="timeline-dots"></div>
+            <div class="tl-labels" aria-hidden="true">
+              <span id="tl-start" class="tl-end"></span>
+              <span id="tl-current" class="tl-current"></span>
+              <span id="tl-end" class="tl-end tl-end-right"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -186,12 +233,30 @@
         <div class="panel-block" id="frame-meta" aria-live="off">
           <p class="eyebrow" id="frame-count">Frame</p>
           <dl class="meta">
-            <div><dt>Date</dt><dd id="m-date"></dd></div>
-            <div><dt>Wavelength</dt><dd id="m-wave"></dd></div>
-            <div><dt>Detector</dt><dd id="m-det"></dd></div>
-            <div><dt>Release</dt><dd id="m-rel"></dd></div>
-            <div><dt>Position angle</dt><dd id="m-pa"></dd></div>
-            <div><dt>Measured vs Gaia</dt><dd id="m-off"></dd></div>
+            <div>
+              <dt>Date</dt>
+              <dd id="m-date"></dd>
+            </div>
+            <div>
+              <dt>Wavelength</dt>
+              <dd id="m-wave"></dd>
+            </div>
+            <div>
+              <dt>Detector</dt>
+              <dd id="m-det"></dd>
+            </div>
+            <div>
+              <dt>Release</dt>
+              <dd id="m-rel"></dd>
+            </div>
+            <div>
+              <dt>Position angle</dt>
+              <dd id="m-pa"></dd>
+            </div>
+            <div>
+              <dt>Measured vs Gaia</dt>
+              <dd id="m-off"></dd>
+            </div>
           </dl>
           <ul id="badges" class="badges"></ul>
         </div>
@@ -209,11 +274,22 @@
         <div class="panel-block">
           <p class="eyebrow">Legend</p>
           <ul class="legend">
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" class="mk-pred-halo"/><circle cx="12" cy="12" r="7" class="mk-pred"/></svg>Predicted (Gaia DR3)</li>
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas-halo"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas"/></svg>Measured centroid</li>
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18L21 6" class="mk-traj"/><circle cx="3" cy="18" r="2" class="mk-dot"/><circle cx="21" cy="6" r="2" class="mk-dot"/></svg>Path between dates</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="7" class="mk-pred-halo" />
+                <circle cx="12" cy="12" r="7" class="mk-pred" />
+              </svg>Predicted (Gaia DR3)</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas-halo" />
+                <path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas" />
+              </svg>Measured centroid</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 18L21 6" class="mk-traj" />
+                <circle cx="3" cy="18" r="2" class="mk-dot" />
+                <circle cx="21" cy="6" r="2" class="mk-dot" />
+              </svg>Path between dates</li>
             <li>
-              <label class="toggle"><input id="flags-toggle" type="checkbox"> <span class="swatch-flag" aria-hidden="true"></span>Flagged pixels</label>
+              <label class="toggle"><input id="flags-toggle" type="checkbox"> <span class="swatch-flag"
+                  aria-hidden="true"></span>Flagged pixels</label>
             </li>
           </ul>
         </div>
@@ -242,7 +318,10 @@
   <dialog id="credits" class="modal modal-small" aria-labelledby="credits-title">
     <div class="modal-head">
       <h2 id="credits-title" class="modal-title">Credits</h2>
-      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"><svg viewBox="0 0 16 16"
+          aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg></button>
     </div>
     <div class="credits-body">
       <p>SPHEREx data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
@@ -260,4 +339,5 @@
   <script src="mockup.js"></script>
   <script type="module" src="sky.js"></script>
 </body>
+
 </html>
