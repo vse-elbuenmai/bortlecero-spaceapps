@@ -189,6 +189,29 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .speed output, .zoom-label { color: var(--bc-blanco); font-variant-numeric: tabular-nums; font-size: var(--bc-fs-sm); min-width: 3.2em; }
 .zoom-label { text-align: center; min-width: 2.4em; }
 
+.diff-toggle { min-height: 38px; padding: 0 14px; font-size: var(--bc-fs-xs); border-radius: var(--bc-radius-pill);
+  cursor: pointer; border: 1px solid var(--bc-border); background: transparent; color: var(--bc-texto);
+  transition: border-color var(--bc-transition), color var(--bc-transition), background var(--bc-transition); }
+.diff-toggle:hover { border-color: var(--bc-acento); color: var(--bc-blanco); }
+.diff-toggle[aria-pressed="true"] { border-color: var(--bc-aviso); background: rgba(212, 168, 112, 0.15); color: var(--bc-aviso); font-weight: 600; }
+.diff-toggle:disabled { opacity: 0.35; cursor: not-allowed; border-color: var(--bc-border-soft); }
+
+.band-chips { display: flex; flex-wrap: wrap; gap: var(--bc-sp-xs); align-items: center; justify-content: flex-start;
+  max-width: 720px; margin: var(--bc-sp-xs) auto 0; padding: 0 4px; }
+.band-chip { min-height: 34px; padding: 0 12px; font-size: var(--bc-fs-xs); border-radius: var(--bc-radius-pill);
+  border: 1px solid var(--bc-border); background: transparent; color: var(--bc-texto); cursor: pointer;
+  transition: border-color var(--bc-transition), color var(--bc-transition), background var(--bc-transition); }
+.band-chip:hover { border-color: var(--bc-acento); color: var(--bc-blanco); }
+.band-chip.is-active { border-color: var(--bc-estrella); background: var(--bc-horizonte); color: var(--bc-blanco); font-weight: 600; }
+
+.warnings-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--bc-fs-xs); }
+.warnings-list li { padding: 8px 12px; background: rgba(212, 168, 112, 0.08); border-left: 3px solid var(--bc-aviso);
+  border-radius: var(--bc-radius-sm); color: var(--bc-texto); line-height: 1.5; }
+
+.citations-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--bc-fs-micro); color: var(--bc-muted); }
+.citations-list li { line-height: 1.4; border-bottom: 1px solid var(--bc-border-soft); padding-bottom: 6px; }
+.citations-list li:last-child { border-bottom: none; }
+
 .timeline { position: relative; height: 72px; margin: var(--bc-sp-s) 44px 0; }
 .controls, .timeline-wrap { max-width: 720px; margin-inline: auto; }
 .timeline-track { position: absolute; left: 0; right: 0; top: 21px; height: 1px; background: var(--bc-border); }

@@ -102,9 +102,8 @@
     </div>
 
     <div id="modal-empty" class="modal-empty" hidden>
-      <p><strong>No SPHEREx frames are prepared for this position yet.</strong></p>
-      <p>This mockup only carries frames for Barnard's Star. The real tool will ask the team's
-        ingestion service for the frames of any position.</p>
+      <p><strong>No SPHEREx frames are available for this position.</strong></p>
+      <p id="modal-empty-msg">No Level 2b exposures cover this area in the requested collections, or the local ingestion service is offline.</p>
       <button id="open-barnard" class="btn btn-secondary" type="button">Go to Barnard's Star</button>
     </div>
 
@@ -138,11 +137,15 @@
             <output id="speed-out" for="speed">1 fps</output>
           </label>
           <span class="controls-gap"></span>
+          <button id="diff-toggle" class="chip diff-toggle" type="button" aria-pressed="false" title="Toggle difference map between epochs">Difference Map</button>
+          <span class="controls-gap"></span>
           <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out">−</button>
           <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
           <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in">+</button>
           <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom">⟲</button>
         </div>
+
+        <div id="band-chips" class="chips band-chips" role="group" aria-label="Spectral bands"></div>
 
         <div class="timeline-wrap"><div class="timeline" role="group" aria-label="Dates">
           <div class="timeline-track"></div>
@@ -176,6 +179,11 @@
           <p id="summary"></p>
         </div>
 
+        <div class="panel-block" id="panel-warnings" hidden>
+          <p class="eyebrow">Scientific Warnings &amp; Notes</p>
+          <ul id="warnings-list" class="warnings-list"></ul>
+        </div>
+
         <div class="panel-block">
           <p class="eyebrow">Legend</p>
           <ul class="legend">
@@ -186,6 +194,11 @@
               <label class="toggle"><input id="flags-toggle" type="checkbox"> <span class="swatch-flag" aria-hidden="true"></span>Flagged pixels</label>
             </li>
           </ul>
+        </div>
+
+        <div class="panel-block" id="panel-citations" hidden>
+          <p class="eyebrow">Data &amp; Astrometry Citations</p>
+          <ul id="citations-list" class="citations-list"></ul>
         </div>
       </aside>
     </section>
