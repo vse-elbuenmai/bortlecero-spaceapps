@@ -200,6 +200,9 @@ El sistema se apoya en superficies, no en sombras. Sólo hay tres:
 - **El cambio de foto del parpadeo es un corte seco**, sin fundido. Un fundido mezcla dos fechas y
   esconde justo el movimiento que se quiere ver.
 - El zoom y el desplazamiento de la imagen siguen al cursor o al dedo, sin inercia ni animación.
+  **La excepción es el cielo** (§7.11): al soltarlo después de un arrastre sigue girando hacia donde
+  se lanzó y frena (pierde 1/e de la velocidad extra cada 0.4 s). Si giraba solo antes del arrastre,
+  en vez de pararse se asienta en el giro en reposo, en la dirección del arrastre.
 - **Nada se mueve solo más de cinco segundos** sin un botón de pausa (WCAG 2.2.2). Por eso el anillo
   del cielo da tres pulsos y se queda quieto, y el giro del cielo lleva su pausa.
 - `prefers-reduced-motion: reduce` es obligatorio: se apagan transiciones y **el parpadeo no arranca
@@ -243,6 +246,15 @@ El sistema se apoya en superficies, no en sombras. Sólo hay tres:
   otra, en `--bc-fs-xs` sobre una placa `rgba(4, 7, 11, 0.7)`.
 - **Todas las fotos de una serie** van en la misma cuadrícula, con el mismo encuadre y el mismo estirado.
   Cambiar de foto no mueve el lienzo.
+- **Leyenda:** el primer bloque del panel, para que se vea sin desplazar. Cada línea es un interruptor
+  de la marca que nombra (posición predicha, centro medido, trayectoria, píxeles marcados), con una
+  casilla propia de 18 px y radio 4 que, marcada, se rellena del color de esa marca y muestra un
+  check en `--bc-cosmos`; sin marcar, la línea y su icono se atenúan. «All» y «None» encienden o
+  apagan las cuatro. Los píxeles marcados se pintan sobre la imagen desde las máscaras del paquete:
+  los malos en `--bc-muted` al 45 % y los saturados en `--bc-error` al 50 %.
+- **Avisos científicos:** sólo en el nivel avanzado (§7.13). En pantallas de más de 1100 px van en
+  la columna de la imagen, debajo de la línea de fechas, como tarjetas (§7.8) en dos columnas si
+  caben y sin franja de color al lado; en una columna van después del panel, al final.
 
 ### 7.2 Controles de reproducción
 
@@ -251,7 +263,8 @@ El sistema se apoya en superficies, no en sombras. Sólo hay tres:
 | Anterior / siguiente | Botones de icono de 44 × 44, `aria-label="Previous frame"` / `"Next frame"`. Con reproducir / pausa forman un grupo que no se separa |
 | Reproducir / pausa | Botón de icono de 44 × 44, `aria-pressed`; el icono y la etiqueta cambian |
 | Velocidad | `<input type="range">` de 0.5 a **3 fotos por segundo** (§8), con valor en texto y `tabular-nums`. Va en la misma fila que anterior / pausa / siguiente y ocupa lo que sobra, como la barra de un reproductor. En móvil su rótulo «Speed» queda sólo para lectores de pantalla. Por debajo de 380 px los tres botones se centran en su fila y la barra se estira debajo |
-| Zoom | Botones de alejar, acercar y «reset», con el nivel en texto entre ellos; también rueda o pellizco sobre el lienzo. Los cuatro forman un grupo: si no caben en la fila, bajan juntos |
+| Zoom | Botones de alejar, acercar y «reset» (icono de encuadre: cuatro esquinas), con el nivel en texto entre ellos; también rueda o pellizco sobre el lienzo. Los cuatro forman un grupo: si no caben en la fila, bajan juntos. Acercar y alejar se desactivan en su tope, y «reset» en 1×, para que nadie pulse un botón que no hace nada (§7.7) |
+| Mapa de diferencia | Chip con `aria-pressed`; sólo en el nivel avanzado (§7.13) |
 | Banda | Desplegable (§7.12) con «All bands» y una opción por banda, cada una con su número de fotos |
 | Línea de fechas | Un punto por foto, separados en proporción al tiempo real, con un mínimo de 14 px entre vecinos para que las fotos de días seguidos no se amontonen; el activo en `--bc-estrella` y más grande; cada punto es un botón con la fecha en su `aria-label`. Debajo sólo van tres fechas: la primera, la última y la de la foto activa, bajo su punto; una fecha de extremo se oculta si la activa le cae encima |
 
@@ -264,6 +277,11 @@ estrecha), los puntos se reparten por igual y la marca baja de 10 a 6 px.
 trazo de 1.6 px con extremos redondos sobre una cuadrícula de 16 px, en `currentColor`. No se usan
 caracteres como ❚❚ o ⟲: cada teléfono los pinta con otra fuente y otro tamaño.
 
+**Etiqueta flotante.** Todo botón de icono lleva su nombre en `data-tip`, y el CSS lo muestra al
+pasar el ratón o al llegar con el teclado: placa `rgba(4, 7, 11, 0.94)` con borde `--bc-border`,
+radio 4 px, `--bc-fs-xs` / 500, encima del botón (a la izquierda en la columna del cielo). En
+pantallas táctiles no se muestra. El nombre accesible sigue siendo el `aria-label`.
+
 **Teclado** (sólo con el foco dentro del visor, para no robar teclas a la página): `Space`
 reproducir o pausar, `←` / `→` foto anterior o siguiente, `+` / `−` zoom, `0` restablecer.
 
@@ -272,22 +290,27 @@ reproducir o pausar, `←` / `→` foto anterior o siguiente, `+` / `−` zoom, 
 - Lista de definiciones (`<dl>`): etiqueta en `--bc-fs-xs` / `--bc-muted` / mayúsculas; valor en
   `--bc-fs-base` / `--bc-blanco` / `tabular-nums`.
 - Por foto: fecha y hora **en UTC** (formato ISO, `2026-05-04 07:12 UTC`), longitud de onda en µm,
-  detector, entrega (DR1 o QR3), ángulo de posición y estado de calidad.
+  detector, entrega (DR1 o QR3), ángulo de posición y estado de calidad. Entrega, ángulo de posición,
+  distancia a Gaia y la media anchura del filtro (`4.231 ± 0.018 µm`, el `±` en `--bc-muted`) sólo
+  en el nivel avanzado (§7.13). Los valores no parten línea (`white-space: nowrap`).
 - El valor que cambia al pasar de foto se actualiza dentro de una región `aria-live="polite"` (sólo
   cuando el usuario cambia de foto a mano, no en reproducción automática).
 
-### 7.4 Avisos de calidad (badges)
+### 7.4 Comprobaciones de la foto (antes, badges)
 
-Pill de 20 px de radio, `--bc-fs-xs` / 500, icono + texto, fondo del color de estado al 10 % y borde
-al 25 %. Siempre con texto; el icono va con `aria-hidden="true"`.
+Cuatro celdas **fijas** bajo los metadatos, en dos columnas, siempre las mismas y en el mismo orden,
+para que el panel mida lo mismo en todas las fotos y nada brinque durante la reproducción. Celda:
+padding 8 × 10 px, borde `--bc-border-soft`, radio 4 px, fondo `rgba(4, 7, 11, 0.35)`; etiqueta en
+`--bc-fs-micro` / mayúsculas / `--bc-muted`; valor en `--bc-fs-xs` / 500, de una sola línea
+(`text-overflow: ellipsis`), con el texto completo en `title`. En teléfonos de hasta 400 px el valor
+baja a `--bc-fs-micro`. Las celdas sustituyen a las pills, que cambiaban de número y de alto.
 
-| Caso | Color | Texto de ejemplo |
-|---|---|---|
-| Núcleo saturado | aviso | `⚠ Saturated core` |
-| La foto ve otro color que la anterior | aviso | `⚠ Different wavelength (4.85 → 3.10 µm)` |
-| Imagen girada y corregida | acento | `↻ Rotated 180°, re-aligned` |
-| Coincide con la predicción | ok | `✓ Within 0.3″ of Gaia` |
-| Pocas fotos o datos parciales | aviso | `⚠ Only 2 epochs` |
+| Celda | Valores y color |
+|---|---|
+| Roll | `↻ 180°, aligned` (acento) · `✓ 0°, as taken` (ok) · `↻ Aligned (0°)` en el mapa de diferencia |
+| Core | `⚠ Saturated` (aviso) · `✓ Not saturated` (ok) · `— Not applicable` (`--bc-muted`) |
+| vs Gaia | `✓ 0.31″ off` (ok, hasta 0.5″) · `⚠ 3.27″ off` (aviso) · `— Unmeasured` (`--bc-muted`) · `± Dipole ΔI` |
+| Wavelength | `✓ Same as before` (ok) · `⚠ 2.29→4.23 µm` (aviso, salto mayor de 0.05 µm) · `— First frame` · `Δλ 0.012 µm` |
 
 ### 7.5 Entrada de coordenadas
 
@@ -391,13 +414,17 @@ Sale de la prueba de `mockup/sky.js`.
   aparece solo durante 5 segundos al cargar la página y cada vez que se cambia de capa, para que
   nadie tome el telón de fondo por una fotografía sin haberlo leído. Abierto con el botón, se queda
   hasta que se cierra. En escritorio sigue siempre visible.
-- **Cabecera en móvil:** por debajo de 520 px sólo caben el nombre del equipo, la etiqueta «Mockup»
-  y «Credits»; el nombre del proyecto se oculta.
+- **Cabecera en móvil:** por debajo de 520 px sólo caben el nombre del equipo y «Credits»; el
+  nombre del proyecto se oculta. La interfaz no se presenta como maqueta en ningún sitio.
 - **Controles:** columna de botones de icono de 44 × 44 a la derecha (acercar, alejar, pausa y
-  volver al cielo completo); en móvil, arriba a la derecha.
+  volver al cielo completo, con el icono de encuadre de cuatro esquinas); en móvil, arriba a la
+  derecha. Cada uno lleva su etiqueta flotante (§7.2). Acercar se desactiva en la vista más cercana,
+  alejar en los 170° y «cielo completo» cuando ya se ve el cielo completo y no hay posición marcada.
 - **Giro en reposo:** 1.5° por segundo, con botón de pausa (WCAG 2.2.2). Se detiene al tocar el
   cielo, durante el viaje y mientras el diálogo está abierto. Con `prefers-reduced-motion` no gira
-  y el viaje es un salto.
+  y el viaje es un salto. Al soltar un arrastre el cielo sigue hacia donde se lanzó y frena (§6);
+  si giraba antes del arrastre, vuelve a girar solo en esa dirección. Un toque sin arrastre no
+  cambia nada.
 - **Viaje:** 5 s: gira por el camino más corto mientras se aleja y después se acerca. Al llegar,
   un anillo discontinuo en `--bc-estrella` con halo marca la posición, con su nombre debajo. El
   anillo «aterriza» (entra un poco grande y se asienta en 0.6 s) y suelta tres pulsos lentos que se
@@ -405,8 +432,9 @@ Sale de la prueba de `mockup/sky.js`.
   se vea el aterrizaje, y al cerrarlo el anillo repite los pulsos para volver a señalar el sitio.
 - **Diálogo del visor:** `<dialog>` modal de 1180 px como máximo, fondo `--bc-cosmos`, borde
   `--bc-border`, radio 16 px, fondo oscurecido `rgba(4, 7, 11, 0.72)`. Cabecera con el nombre, la
-  posición de hoy y un botón de cerrar de 44 × 44. Si no hay fotos para esa posición, lo dice y
-  ofrece ir a un objeto que sí las tiene (§7.6).
+  posición de hoy, el selector de nivel de detalle (§7.13) y un botón de cerrar de 44 × 44; por
+  debajo de 520 px el selector y el cierre pasan a su propia fila, encima del nombre. Si no hay
+  fotos para esa posición, lo dice y ofrece ir a un objeto que sí las tiene (§7.6).
 - **Créditos:** como no hay pie de página, el botón «Credits» de la cabecera abre un diálogo con el
   texto del §7.10.
 - **Enlace de salto:** «Skip to search».
@@ -429,6 +457,27 @@ de prueba.
   para que recorrer la lista con el teclado no dispare cinco viajes. Capa y banda sí cambian al
   elegir, porque sólo cambian lo que se ve en el sitio.
 - Sobre el cielo lleva el fondo de superficie flotante, `rgba(8, 12, 20, 0.78)`.
+
+### 7.13 Nivel de detalle del visor (básico y avanzado)
+
+El visor tiene dos niveles. **Básico** (el inicial) enseña lo que hace falta para ver el parpadeo y
+saber si la estrella se movió; **avanzado** añade los números con los que se comprueba. La elección
+se recuerda en el navegador (`localStorage`, clave `viewer-detail`).
+
+- **Selector:** un `radiogroup` de dos opciones («Basic», «Advanced») en la cabecera del diálogo,
+  en forma de pill con borde `--bc-border` y fondo `rgba(13, 22, 37, 0.6)`; un pulgar en
+  `--bc-estrella` se desliza (0.2 s) hasta la opción elegida, cuyo texto pasa a `--bc-cosmos`.
+  Flechas izquierda y derecha cambian de opción.
+- **Cómo se marca:** el diálogo lleva `data-mode="basic|advanced"` y lo que sólo es del nivel
+  avanzado lleva la clase `adv`; en básico no se muestra (`display: none`).
+
+| Siempre | Sólo en avanzado |
+|---|---|
+| Imagen, reproducción, velocidad, zoom, banda, línea de fechas | Botón «Difference Map» |
+| Leyenda con sus interruptores | Entrega, ángulo de posición, «Measured vs Gaia» y el `±` de la longitud de onda |
+| Número de foto, fecha, longitud de onda, detector | Bloque «Object» (nombre y posición de Gaia, que la cabecera ya da) |
+| Las cuatro comprobaciones (§7.4) | «Scientific Warnings & Notes» |
+| «What moved» y «How these frames were made» | «Data & Astrometry Citations» |
 
 ---
 

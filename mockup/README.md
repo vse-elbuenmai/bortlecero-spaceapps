@@ -108,6 +108,10 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
 - **How close it gets.** One map pixel covers 5.3′ of sky, so the view stops where one screen pixel
   would show less than half a map pixel: about 60° across on a laptop, never closer than 30°. The
   trip ends there, with a ring on the position; the dialog is where the real pixels are.
+- **Looking around.** Drag with the mouse or a finger. When the sky is let go it keeps turning the
+  way it was thrown and slows down; if it was spinning by itself before the drag, it settles back
+  into that slow spin, now in the direction of the drag. The buttons on the right say what they do
+  on hover and go dim when they would change nothing (zoom at its limit, whole sky already shown).
 - **Search.** Three ways to say where, and the last one touched counts. The five test objects come
   from a list in `sky.js` (Gaia DR3 positions and proper motions, moved to today) and are offered
   in a select; choosing one fills in RA and Dec. Any other object can be typed by name: the page
@@ -121,6 +125,18 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   bundle. Any other position opens the dialog with a message: the public page shows the five
   benchmarks only (see "Benchmark hosting" above).
 - `window.skyPrototype` in the browser console gives the view's state.
+
+### The viewer's two levels of detail
+
+The dialog opens in **Basic**: image, playback, band, timeline, the legend (each line switches its
+marks on and off; All / None do the four at once), the frame's date, wavelength and detector, four
+fixed check cells (roll, core, distance to Gaia, wavelength against the previous frame) and "What
+moved". **Advanced**, the other position of the switch in the dialog's header, adds the difference
+map, release, position angle, the measured distance to Gaia, the filter's half-width, the Gaia
+position of the object, the scientific notes (under the timeline on a wide screen) and the
+citations. The choice is remembered in the browser. The four cells are always there, so the panel
+keeps its height from one frame to the next while playing. `DESIGN.md` §7.4 and §7.13 have the
+details.
 
 ### Rebuilding the sky maps
 
