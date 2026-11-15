@@ -9,6 +9,10 @@
 #   ./deploy/gcp/bootstrap.sh
 #
 #   Add --dry-run (or DRY_RUN=true) to print commands without executing them.
+#
+# Windows:
+#   Run from Git Bash or WSL with the Google Cloud CLI (`gcloud`) installed and
+#   available in PATH (`bash deploy/gcp/bootstrap.sh --dry-run`).
 
 set -euo pipefail
 
@@ -19,7 +23,7 @@ for arg in "$@"; do
       DRY_RUN="true"
       ;;
     --help|-h)
-      sed -n '2,12p' "$0"
+      sed -n '2,15p' "$0"
       exit 0
       ;;
     *)

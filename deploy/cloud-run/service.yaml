@@ -11,6 +11,7 @@ spec:
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "2"
         run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/cpu-throttling: "false"
     spec:
       serviceAccountName: __RUNTIME_SERVICE_ACCOUNT__
       containerConcurrency: 1
