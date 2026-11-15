@@ -1,34 +1,30 @@
 # SPHEREx blink viewer
 
-The viewer displays prepared SPHEREx bundles for the five challenge benchmarks and lets visitors
-look around the sky by test object, by name or by coordinates.
+The viewer displays live SPHEREx blink series fetched from IRSA via the `spherex_ingest` API for
+the five challenge benchmarks and lets visitors look around the sky by test object, by name or by
+coordinates. There are no local `mockup/data/` snapshots or `prepare_barnard.py` files: all blink
+frames come from the live IRSA ingestion backend.
 
-- `prepare_barnard.py` — downloads a few SPHEREx cutouts of Barnard's Star from IRSA, picks one
-  per visit at nearly the same wavelength, re-aligns them north-up, stretches them and writes
-  `data/barnard/` (PNGs + `frames.json`). Each step is explained at the top of the file.
 - `index.html`, `sky.css`, `sky.js` — the **sky view**: the whole sky on screen, seen from inside,
   a search panel (one of the five test objects, an object name, or RA and Dec) that travels to the
   position, and the blink viewer in a dialog on arrival. Plain HTML/CSS/JS and one WebGL 2 shader; no libraries, no build step.
 - `prepare_sky.py` — builds the three all-sky maps the sky view paints (`sky/*.webp`, `sky/sky.json`).
-- `mockup.css`, `mockup.js` — the blink viewer, following `DESIGN.md` §7.
+- `mockup.css`, `mockup.js`, `viewer-data.js`, `viewer-config.json` — the blink viewer, following `DESIGN.md` §7, configured to call `POST /api/v1/jobs` (with `GET /api/v1/blink` fallback for local sync servers).
 - `aladin.html`, `sky-aladin.js` — **plan B**: the earlier version of the sky, drawn by Aladin Lite
   with sky maps streamed from IRSA. Kept because it can zoom all the way in. See "Plan B" below.
 
 ## Run it
 
 ```sh
-# 1. (optional) regenerate the data with uv — the PNGs and frames.json are already committed
-uv run python mockup/prepare_barnard.py          # downloads ~48 MB to .cache/spherex (git-ignored)
-
-# 2. serve the folder (fetch() does not work from file://)
+# 1. serve the folder (fetch() does not work from file://); queries use viewer-config.json
 uv run python -m http.server 8765 --directory mockup
 # open http://127.0.0.1:8765/
 ```
 
 Use Astral `uv` (`uv run ...`) or the project's Python (`.venv/bin/python` on Linux, `.venv\Scripts\python` on Windows, or the
-shared `D:\dev\lab\.venvs\astro` on Miguel's laptop). Any static server works for step 2.
+shared `D:\dev\lab\.venvs\astro` on Miguel's laptop). Any static server works for step 1.
 
-## Benchmark hosting
+## Live IRSA hosting
 
 Stage the public static viewer directory from the repository root:
 
@@ -38,39 +34,32 @@ uv run python -m http.server 8765 --directory dist/hosting
 ```
 
 The build copies an explicit list of public HTML, CSS, JavaScript, and sky maps into
-`dist/hosting`. `benchmark-manifest.json` records `version`, `commit_sha`, and the five `bundles`
-under `releases/<release SHA-256>/`. The release hash changes only when the content of at least one
-bundle changes. The standalone Aladin page and its legacy data remain available in the local
-checkout.
+`dist/hosting`. Because `mockup/data/` has been removed, `benchmark-manifest.json` records
+`version` (hashed from the public viewer assets), `commit_sha`, `"mode": "live_irsa"`, and
+`"bundles": {}` with no local `releases/` directory. The standalone Aladin page remains available in
+the local checkout.
 
 In staging, the static viewer is hosted on the public GCS bucket
 `gs://bortle-cero-nasa-staging-26-viewer` (`https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html`)
 and deployed automatically on every push to `main` by `.github/workflows/cd-deploy.yml`, setting
 `Cache-Control: no-cache` on mutable entrypoints and manifest (`index.html`, `*.js`, `*.css`,
-`*.json`, `sky/sky.json`) and `Cache-Control: public, max-age=31536000, immutable` on
-`releases/**`. Firebase Hosting via `firebase.json` (using `firebase emulators:start` or
+`*.json`, `sky/sky.json`). Firebase Hosting via `firebase.json` (using `firebase emulators:start` or
 `firebase hosting:channel:deploy`) remains an optional alternative.
 
-On the public origin, the viewer opens benchmarks from the manifest and offers a benchmark-only
-status for other positions unless configured for live queries. For local development, start the API
-with `uv run spherex-ingest serve --host 127.0.0.1 --port 8000`, then set `liveQueries` to `true`
-and `apiBaseUrl` to `http://127.0.0.1:8000` in your local copy of `mockup/viewer-config.json` (keep
-the committed capability disabled when not targeting the public staging API). In staging,
-`spherex-ingest-staging` on Cloud Run (`https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app`) is
-publicly invokable (`allUsers` `roles/run.invoker`, `GCP_REQUIRE_INVOKER_IAM=false` default in
-`cd-deploy.yml`) for the NASA Space Apps demo, with synchronous ingestion disabled
-(`SPHEREX_LEGACY_SYNC_ENABLED=false`) and arbitrary coordinate queries served via the bounded async
-job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
+With `viewer-config.json` pointing to `spherex-ingest-staging` on Cloud Run
+(`https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app`, `liveQueries: true`), both benchmark
+targets and arbitrary sky coordinates query IRSA through the bounded async job queue
+(`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding; `All` `roles/run.invoker` with
+`GCP_REQUIRE_INVOKER_IAM=false` and `SPHEREX_LEGACY_SYNC_ENABLED=false`). For local development
+against a local API, start `uv run spherex-ingest serve --host 127.0.0.1 --port 8000` and point
+`apiBaseUrl` in your local `mockup/viewer-config.json` to `http://127.0.0.1:8000`.
 
-Wait for all five bundles to pass the scientific validation in
-[issue #13](https://github.com/vse-elbuenmai/bortlecero-spaceapps/issues/13) before approving a
-production release. Verify the live GCS deployment (or optional Firebase Hosting preview) at desktop
-and phone widths, checking all five modal views, the decoded first image, manifest paths, and
-`Cache-Control` headers:
+Verify the live GCS deployment (or optional Firebase Hosting preview) at desktop and phone widths,
+checking all five modal views, live coordinate queries, and `Cache-Control` headers:
 
 ```sh
+curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html
 curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/benchmark-manifest.json
-curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/releases/RELEASE_HASH/barnards_star.json
 ```
 
 Run the offline browser suite from the repository root with Node.js 22 and Playwright Chromium.
@@ -119,9 +108,9 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   as RA and Dec. The name lookup was removed on 15 Nov to keep the phone layout clear and came back
   the same day in a layout that is no taller on a phone. The mirror does not know every catalogue
   name: on 15 Nov 2026 it found "Vega", "M31" and "Barnard's star", not "GJ 699" or "HIP 87937".
-- **What opens on arrival.** The five test objects open the blink viewer with their prepared
-  bundle. Any other position opens the dialog with a message: the public page shows the five
-  benchmarks only (see "Benchmark hosting" above).
+- **What opens on arrival.** Both the five benchmark targets and arbitrary coordinates or resolved
+  object names open the blink viewer by querying live SPHEREx data from IRSA through the ingestion
+  API configured in `viewer-config.json`.
 - `window.skyPrototype` in the browser console gives the view's state.
 
 ### Rebuilding the sky maps

@@ -1,6 +1,14 @@
-// Resolve public benchmarks from the static release and live positions via the async jobs API (with local sync fallback).
+// Resolve benchmark and custom sky positions live from the SPHEREx IRSA ingestion API.
 (() => {
   "use strict";
+
+  const BENCHMARK_ID = {
+    barnard: "barnards_star",
+    epsindib: "epsilon_indi_b",
+    wise0855: "wise_0855_0714",
+    rwaur: "rw_aurigae",
+    rdra: "r_draconis",
+  };
 
   const loopback = new Set(["localhost", "127.0.0.1", "[::1]"]);
   const local = location.protocol === "http:" && loopback.has(location.hostname);
@@ -25,48 +33,31 @@
     signal.addEventListener("abort", onAbort, { once: true });
   });
 
-  async function readBundle(url, targetId, signal) {
-    const response = await fetchData(url, signal);
-    if (!response.ok) return null;
-    const raw = await response.json();
-    if (raw.target?.target_id !== targetId || !Array.isArray(raw.frames_chronological)) return null;
-    return raw;
+  function liveDisabledError() {
+    const error = new Error("Live IRSA queries are disabled.");
+    error.code = "live_disabled";
+    return error;
   }
 
-  async function readBenchmark(targetId, signal) {
-    const response = await fetchData("benchmark-manifest.json", signal);
-    if (local && response.status === 404) {
-      try {
-        const bundle = await readBundle(`data/${targetId}/bundle.json`, targetId, signal);
-        if (bundle?.frames_chronological.length) return { status: "ready", bundle };
-      } catch (error) {
-        if (signal.aborted) throw error;
-      }
-      if (targetId === "barnards_star") {
-        const legacy = await fetchData("data/barnard/frames.json", signal);
-        if (legacy.ok) {
-          const bundle = await legacy.json();
-          if (Array.isArray(bundle.frames) && bundle.frames.length) return { status: "ready", bundle };
-        }
-      }
-      return { status: "unavailable" };
-    }
+  async function readConfig(signal) {
+    const response = await fetchData("viewer-config.json", signal);
+    if (!response.ok) return { liveQueries: false, baseHref: "" };
+    const { liveQueries, apiBaseUrl } = await response.json();
+    if (liveQueries !== true) return { liveQueries: false, baseHref: "" };
 
-    if (!response.ok) return { status: "unavailable" };
-    const { version, bundles } = await response.json();
-    const expectedPath = `releases/${version}/${targetId}.json`;
-    if (!/^[a-f0-9]{64}$/.test(version) || bundles?.[targetId] !== expectedPath) {
-      return { status: "unavailable" };
+    const base = new URL(apiBaseUrl || location.origin, location.origin);
+    const allowedProtocol = base.protocol === "https:"
+      || (base.protocol === "http:" && loopback.has(base.hostname));
+    if (!allowedProtocol) {
+      throw new Error("Disallowed API protocol");
     }
-    const bundle = await readBundle(expectedPath, targetId, signal);
-    if (!bundle) return { status: "unavailable" };
-    return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
+    return {
+      liveQueries: true,
+      baseHref: base.href.replace(/\/?$/, "/"),
+    };
   }
 
-  async function readCustomPositionLegacy(baseHref, ra, dec, signal) {
-    const url = new URL("api/v1/blink", baseHref);
-    url.search = new URLSearchParams({ ra, dec, size_arcsec: 180 });
-    const result = await fetchData(url, signal, 120000);
+  async function parseBundleResponse(result) {
     if (result.status === 404 || result.status === 204) return { status: "no-observations" };
     if (!result.ok) {
       const { detail } = await result.json().catch(() => ({}));
@@ -80,21 +71,7 @@
     return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
   }
 
-  async function readCustomPosition(ra, dec, signal) {
-    if (!Number.isFinite(ra) || !Number.isFinite(dec)) {
-      return { status: "benchmark-only" };
-    }
-    const response = await fetchData("viewer-config.json", signal);
-    if (!response.ok) return { status: "benchmark-only" };
-    const { liveQueries, apiBaseUrl } = await response.json();
-    if (liveQueries !== true) return { status: "benchmark-only" };
-
-    const base = new URL(apiBaseUrl || location.origin, location.origin);
-    const allowedProtocol = base.protocol === "https:"
-      || (base.protocol === "http:" && loopback.has(base.hostname));
-    if (!allowedProtocol) return { status: "unavailable" };
-    const baseHref = base.href.replace(/\/?$/, "/");
-
+  async function runAsyncJob(baseHref, payload, fallbackFn, signal) {
     const jobResp = await fetchData(
       new URL("api/v1/jobs", baseHref),
       signal,
@@ -102,11 +79,11 @@
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ra, dec, size_arcsec: 180, max_frames: 12 }),
+        body: JSON.stringify(payload),
       },
     );
     if (jobResp.status === 404 || jobResp.status === 405) {
-      return readCustomPositionLegacy(baseHref, ra, dec, signal);
+      return fallbackFn();
     }
     if (jobResp.status === 422) {
       const { detail } = await jobResp.json().catch(() => ({}));
@@ -154,12 +131,46 @@
     return { status: "unavailable" };
   }
 
+  async function readBenchmark(targetId, signal) {
+    const id = BENCHMARK_ID[targetId] || targetId;
+    const config = await readConfig(signal);
+    if (!config.liveQueries) throw liveDisabledError();
+    return runAsyncJob(
+      config.baseHref,
+      { query: id, size_arcsec: 180, max_frames: 12 },
+      async () => {
+        const url = new URL(`api/v1/blink/${encodeURIComponent(id)}`, config.baseHref);
+        return parseBundleResponse(await fetchData(url, signal, 120000));
+      },
+      signal,
+    );
+  }
+
+  async function readCustomPosition(ra, dec, signal) {
+    if (!Number.isFinite(ra) || !Number.isFinite(dec)) {
+      return { status: "unavailable" };
+    }
+    const config = await readConfig(signal);
+    if (!config.liveQueries) throw liveDisabledError();
+    return runAsyncJob(
+      config.baseHref,
+      { ra, dec, size_arcsec: 180, max_frames: 12 },
+      async () => {
+        const url = new URL("api/v1/blink", config.baseHref);
+        url.search = new URLSearchParams({ ra, dec, size_arcsec: 180 });
+        return parseBundleResponse(await fetchData(url, signal, 120000));
+      },
+      signal,
+    );
+  }
+
   window.viewerData = {
     async load({ targetId, ra, dec }, signal) {
       try {
         return targetId ? await readBenchmark(targetId, signal) : await readCustomPosition(ra, dec, signal);
       } catch (error) {
         if (signal.aborted) throw error;
+        if (error?.code === "live_disabled") return { status: "live-disabled" };
         return { status: "unavailable" };
       }
     },

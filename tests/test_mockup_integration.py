@@ -1,7 +1,8 @@
-"""Integration tests verifying Frontend Mockup & Blink Bundle contracts (Milestone 5)."""
+"""Integration tests verifying Frontend Mockup live-IRSA API & hosting contracts."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from pathlib import Path
@@ -9,9 +10,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from spherex_ingest.api import app
-from spherex_ingest.domain.models import BlinkBundleDTO
+from spherex_ingest.api import app, get_output_dir
+from spherex_ingest.domain.models import (
+    BlinkBundleDTO,
+    CommonGridSpecDTO,
+    FrameMetadataDTO,
+    TargetSpec,
+)
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
+from spherex_ingest.result_storage import ResultKey, get_result_store
 
 BENCHMARK_IDS = [
     "barnards_star",
@@ -22,77 +29,48 @@ BENCHMARK_IDS = [
 ]
 
 
-def test_benchmark_bundles_exist_and_validate_dto() -> None:
-    """Verify all 5 benchmark targets have valid BlinkBundleDTO JSON bundles in mockup/data/."""
-    mockup_data = Path("mockup/data")
-    assert mockup_data.exists(), "mockup/data directory must exist"
+def _load_build_hosting():
+    script_path = Path("scripts/build_hosting.py").resolve()
+    spec = importlib.util.spec_from_file_location("build_hosting", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.build_hosting
 
-    for target_id in BENCHMARK_IDS:
-        bundle_path = mockup_data / target_id / "bundle.json"
-        assert bundle_path.exists(), f"Benchmark bundle missing at {bundle_path}"
 
-        raw_json = bundle_path.read_text(encoding="utf-8")
-        bundle = BlinkBundleDTO.model_validate_json(raw_json)
+def test_mockup_has_no_local_data_or_preparation_script() -> None:
+    """Verify mockup/ contains no local snapshot data or prepare_barnard.py."""
+    assert not Path("mockup/data").exists(), "mockup/data directory must be removed"
+    assert not Path("mockup/prepare_barnard.py").exists(), (
+        "mockup/prepare_barnard.py must be removed"
+    )
+    assert Path("mockup/sky/sky.json").is_file(), "3D sky backdrop assets must remain"
 
-        # 1. Target and Grid specification
-        expected_target = BENCHMARK_TARGETS[target_id]
-        assert bundle.target.target_id == target_id
-        assert bundle.target.ra_deg == pytest.approx(expected_target.ra_deg, abs=1e-6)
-        assert bundle.target.dec_deg == pytest.approx(expected_target.dec_deg, abs=1e-6)
-        assert bundle.target.pm_ra_cosdec_mas_yr == pytest.approx(
-            expected_target.pm_ra_cosdec_mas_yr, abs=1e-4
-        )
-        assert bundle.target.pm_dec_mas_yr == pytest.approx(
-            expected_target.pm_dec_mas_yr, abs=1e-4
-        )
-        assert bundle.target.parallax_mas == pytest.approx(
-            expected_target.parallax_mas, abs=1e-4
-        )
-        assert bundle.grid.width_px > 0
-        assert bundle.grid.height_px > 0
-        assert "North-up" in bundle.grid.orientation
 
-        # 2. Chronological and band frames
-        assert len(bundle.frames_chronological) >= 3, f"{target_id} must have >= 3 frames"
-        assert len(bundle.available_bands) >= 1
-        for band in bundle.available_bands:
-            band_key = str(band)
-            assert band_key in bundle.frames_by_band
-            assert len(bundle.frames_by_band[band_key]) >= 1
+def test_viewer_data_uses_live_irsa_api_without_local_data_fallbacks() -> None:
+    """Verify mockup/viewer-data.js routes benchmarks and coordinates through the API."""
+    viewer_data = Path("mockup/viewer-data.js").read_text(encoding="utf-8")
+    assert "api/v1/jobs" in viewer_data
+    assert "api/v1/blink" in viewer_data
+    assert "benchmark-manifest.json" not in viewer_data
+    assert "releases/" not in viewer_data
+    assert "data/barnard" not in viewer_data
+    assert "bundle.json" not in viewer_data
 
-        # 3. Base64 Data URIs and astrometry
-        for f in bundle.frames_chronological:
-            assert f.png_base64 is not None
-            assert f.png_base64.startswith("data:image/png;base64,")
-            assert 0.0 <= f.predicted_pixel_x <= bundle.grid.width_px
-            assert 0.0 <= f.predicted_pixel_y <= bundle.grid.height_px
-            if target_id == "barnards_star":
-                assert 10.0 <= f.predicted_pixel_x <= 21.0
-                assert 10.0 <= f.predicted_pixel_y <= 21.0
-            if f.measured_centroid_x is not None:
-                assert 0.0 <= f.measured_centroid_x <= bundle.grid.width_px
-                assert f.measured_centroid_y is not None
-                assert 0.0 <= f.measured_centroid_y <= bundle.grid.height_px
 
-        # 4. Difference maps contract (if multi-epoch in same band)
-        raw_dict = json.loads(raw_json)
-        raw_diff_maps = raw_dict.get("difference_maps", [])
-        assert len(bundle.difference_maps) == len(raw_diff_maps)
-        for diff, raw_dm in zip(bundle.difference_maps, raw_diff_maps, strict=False):
-            assert diff.png_base64 is not None
-            assert diff.png_base64.startswith("data:image/png;base64,")
-            assert diff.baseline_days >= 0.0
-            assert diff.detector_band in bundle.available_bands
-            assert diff.early_wavelength_um > 0.0
-            assert diff.late_wavelength_um > 0.0
-            assert diff.delta_wavelength_um >= 0.0
-            assert "delta_wavelength_um" in raw_dm, f"Missing delta_wavelength_um in {bundle_path}"
-            assert "early_wavelength_um" in raw_dm, f"Missing early_wavelength_um in {bundle_path}"
-            assert "late_wavelength_um" in raw_dm, f"Missing late_wavelength_um in {bundle_path}"
+def test_build_hosting_stages_live_irsa_manifest(tmp_path: Path) -> None:
+    """Verify build_hosting emits a live_irsa manifest with no local releases/ bundles."""
+    build_hosting = _load_build_hosting()
+    dest = tmp_path / "hosting"
+    version = build_hosting(Path("mockup"), dest)
+    assert version
 
-        # 5. Scientific warnings and citations
-        assert len(bundle.scientific_warnings) >= 1
-        assert len(bundle.citations) >= 4
+    assert not (dest / "releases").exists()
+    manifest = json.loads((dest / "benchmark-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["version"] == version
+    assert manifest["commit_sha"]
+    assert manifest["mode"] == "live_irsa"
+    assert manifest["bundles"] == {}
 
 
 def test_mockup_html_has_required_modal_elements() -> None:
@@ -119,7 +97,7 @@ def test_mockup_html_has_required_modal_elements() -> None:
 
 
 def test_mockup_js_implementation_contracts() -> None:
-    """Verify mockup/mockup.js implements all required integration logic."""
+    """Verify mockup/mockup.js integration logic without local data/ paths."""
     js_path = Path("mockup/mockup.js")
     assert js_path.exists()
     js_code = js_path.read_text(encoding="utf-8")
@@ -128,9 +106,11 @@ def test_mockup_js_implementation_contracts() -> None:
     for target_id in BENCHMARK_IDS:
         assert target_id in js_code, f"{target_id} must be in mockup.js benchmark map"
 
+    # No local data/barnard/ fallback paths
+    assert "data/barnard/" not in js_code
+
     # Base64 Data URI handling
     assert "f.png_base64" in js_code
-    assert "data:image/png;base64" in js_code or "startsWith(\"data:\")" in js_code
 
     # Astrometric coordinate pixel-center formula: [p.x + 0.5, p.y + 0.5]
     assert re.search(r"p\.x\s*\+\s*0\.5", js_code) is not None
@@ -181,28 +161,59 @@ def test_sky_js_target_router_connection() -> None:
     assert 'id="name"' in Path("mockup/index.html").read_text(encoding="utf-8")
 
 
-def test_fastapi_blink_and_static_bundle_parity(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify the API reads the tracked static bundle without contacting IRSA."""
-    monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(Path("mockup/data").resolve()))
+def test_fastapi_benchmark_endpoint_serves_result_store_cache_when_legacy_sync_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify GET /api/v1/blink/{target_id} returns ResultStore cache if legacy sync disabled."""
+    target: TargetSpec = BENCHMARK_TARGETS["barnards_star"]
+    frame = FrameMetadataDTO(
+        frame_id="barnard_test_1",
+        collection="spherex_dr1",
+        detector_band=2,
+        mjd_avg=60800.0,
+        obs_time_iso="2025-05-05T00:00:00Z",
+        sps_epa_deg=0.0,
+        wavelength_um=1.5,
+        bandwidth_um=0.05,
+        predicted_ra_deg=target.ra_deg,
+        predicted_dec_deg=target.dec_deg,
+        predicted_pixel_x=15.0,
+        predicted_pixel_y=15.0,
+        matrix_mjy_sr=[[1.0]],
+        saturation_mask=[[False]],
+        bad_pixel_mask=[[False]],
+        png_base64="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
+    )
+    bundle = BlinkBundleDTO(
+        target=target,
+        propagated_current_ra_deg=target.ra_deg,
+        propagated_current_dec_deg=target.dec_deg,
+        grid=CommonGridSpecDTO(
+            center_ra_deg=target.ra_deg,
+            center_dec_deg=target.dec_deg,
+            pixel_scale_arcsec=6.15,
+            width_px=31,
+            height_px=31,
+        ),
+        total_frames=1,
+        available_bands=[2],
+        frames_chronological=[frame],
+        frames_by_band={"2": [frame]},
+        difference_maps=[],
+        scientific_warnings=[],
+        citations=[],
+    )
+
+    monkeypatch.setenv("SPHEREX_RESULTS_DIR", str(tmp_path / "results"))
+    monkeypatch.delenv("SPHEREX_RESULTS_BUCKET", raising=False)
+    monkeypatch.setenv("SPHEREX_LEGACY_SYNC_ENABLED", "false")
+    monkeypatch.setitem(app.dependency_overrides, get_output_dir, lambda: tmp_path / "empty_output")
+
+    get_result_store().publish(ResultKey.from_target(target, 12), bundle)
     client = TestClient(app)
     response = client.get("/api/v1/blink/barnards_star")
     assert response.status_code == 200
-
     api_bundle = BlinkBundleDTO.model_validate(response.json())
     assert api_bundle.target.target_id == "barnards_star"
-    assert len(api_bundle.frames_chronological) >= 3
-
-    static_path = Path("mockup/data/barnards_star/bundle.json")
-    static_bundle = BlinkBundleDTO.model_validate_json(static_path.read_text(encoding="utf-8"))
-    assert static_bundle.target.target_id == api_bundle.target.target_id
-    assert static_bundle.grid.width_px == api_bundle.grid.width_px
-
-
-def test_legacy_barnard_backward_compatibility() -> None:
-    """Verify mockup/data/barnard/frames.json is preserved for backward compatibility."""
-    legacy_path = Path("mockup/data/barnard/frames.json")
-    assert legacy_path.exists(), "Legacy frames.json must be preserved"
-    data = json.loads(legacy_path.read_text(encoding="utf-8"))
-    assert "frames" in data
-    assert len(data["frames"]) == 3
-    assert "grid" in data
+    assert api_bundle.grid.width_px == 31

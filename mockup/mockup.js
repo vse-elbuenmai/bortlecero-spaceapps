@@ -205,20 +205,18 @@
     state.i = (i + frames.length) % frames.length;
     const f = frames[state.i];
 
-    // Image source: handle png_base64 Data URI or relative path
+    // Image source: handle png_base64 Data URI or URL
     if (f.png_base64) {
       img.src = f.png_base64;
     } else if (f.image) {
-      const path = f.image.startsWith("data:") ? f.image : (f.image.includes("/") ? f.image : `data/barnard/${f.image}`);
-      img.src = path;
+      img.src = f.image;
     }
 
     const dateStr = f.obs_time_iso || f.date_utc || "";
     img.alt = `SPHEREx image of ${state.bundle.target.name}, ${dateStr.slice(0, 10)}, ${f.wavelength_um.toFixed(2)} µm`;
 
     if (f.flags) {
-      const fPath = f.flags.startsWith("data:") ? f.flags : (f.flags.includes("/") ? f.flags : `data/barnard/${f.flags}`);
-      flagsImg.src = fPath;
+      flagsImg.src = f.flags;
     } else {
       flagsImg.hidden = true;
     }
@@ -621,7 +619,7 @@
 
   // ---------- target loader ----------
   const messages = {
-    "benchmark-only": "Only the five prepared benchmark targets are available. Choose a benchmark to see its SPHEREx frames.",
+    "live-disabled": "Live SPHEREx IRSA queries are currently disabled in the viewer configuration.",
     "no-observations": "No SPHEREx observations cover this position in the requested collections.",
     unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
   };

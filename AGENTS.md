@@ -12,8 +12,9 @@ R Draconis.
 
 ## Estado (dom 15 nov 2026, demo desplegada en GCS y Cloud Run)
 
-- **`mockup/`** (en `main`): visor público sin compilación integrado con los paquetes generados por
-  `spherex_ingest` (`mockup/data/<target>/bundle.json`) y la cola asíncrona `/api/v1/jobs`. Incluye
+- **`mockup/`** (en `main`): visor público sin compilación que consulta datos actuales de IRSA en vivo
+  a través de la API de `spherex_ingest` (`POST /api/v1/jobs` con respaldo local a `/api/v1/blink`),
+  sin depender de paquetes locales en `mockup/data/` ni de `prepare_barnard.py`. Incluye
   el cielo entero a pantalla completa visto desde dentro (mapas propios hechos con `prepare_sky.py`:
   NASA SVS para la luz visible y el cubo de SPHEREx de IRSA), buscador (los cinco objetos de prueba
   en un desplegable, un nombre de objeto vía SIMBAD/Sesame o RA/Dec) y visor de parpadeo en un
@@ -40,8 +41,7 @@ R Draconis.
   # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
   uv run spherex-ingest serve --host 0.0.0.0 --port 8000
 
-  # 5. Correr script de preparación y servidor de mockup
-  uv run python mockup/prepare_barnard.py
+  # 5. Levantar servidor estático de mockup
   uv run python -m http.server 8765 --directory mockup
   ```
 - **Ingestion API & viewer delivery:** Automated GCS + Cloud Run delivery (#29 / #34 / #35) is
