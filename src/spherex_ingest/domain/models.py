@@ -251,6 +251,14 @@ class DroppedFrameDTO(BaseModel):
     error_detail: str | None = None
 
 
+@dataclass(frozen=True)
+class CutoutFetchResult:
+    """The frames and retrieval diagnostics from one ingestion request."""
+
+    frames: tuple[RawCutoutFrame, ...]
+    dropped_frames: tuple[DroppedFrameDTO, ...] = ()
+
+
 class CommonGridSpecDTO(BaseModel):
     """Metadata describing the common North-up celestial grid shared by all frames in a bundle."""
 

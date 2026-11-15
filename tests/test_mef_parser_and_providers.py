@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
+import httpx
 import numpy as np
 import pytest
+import pyvo
 from astropy.io import fits
+from astropy.table import Table
 
 from spherex_ingest.domain.models import SPHERExFlagBits, TargetSpec
 from spherex_ingest.infrastructure.catalog_provider import HarvardSimbadCatalogProvider
@@ -165,7 +172,7 @@ def test_irsa_sia_provider_tracks_dropped_cutouts_on_download_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Verify Finding 9: failed cutouts are logged in provider.dropped_frames."""
+    """The retrieval result includes failed cutouts and their source diagnostics."""
     provider = IRSASiaCutoutProvider(cache_dir=tmp_path / "cache")
     target = TargetSpec(
         target_id="test_target",
@@ -209,12 +216,79 @@ def test_irsa_sia_provider_tracks_dropped_cutouts_on_download_error(
 
     monkeypatch.setattr(provider, "_download_and_parse", mock_download)
 
-    frames = provider.fetch_cutouts(target)
-    assert len(frames) == 1
-    assert len(provider.dropped_frames) == 1
-    dropped = provider.dropped_frames[0]
+    result = provider.fetch_cutouts(target)
+    assert len(result.frames) == 1
+    assert len(result.dropped_frames) == 1
+    dropped = result.dropped_frames[0]
     assert dropped.frame_id == "cand1.fits"
     assert dropped.reason == "cutout_download_error"
     assert dropped.attempted_band == 2
     assert "503" in (dropped.error_detail or "")
+
+
+def test_corrupt_discovery_cache_refetches_and_only_publishes_valid_tables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    votable = io.BytesIO()
+    Table({"access_url": ["https://example.invalid/cutout.fits"]}).write(votable, format="votable")
+    valid_response = votable.getvalue()
+    partial_response = valid_response[: len(valid_response) // 2]
+    error_response = valid_response.replace(
+        b"</RESOURCE>", b'<INFO name="QUERY_STATUS" value="ERROR"/></RESOURCE>'
+    )
+    cache_path = tmp_path / "sia_spherex_dr1_42.0000_m10.0000.vot"
+    cache_path.write_bytes(partial_response)
+    payloads = iter([error_response, valid_response])
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda url, **kwargs: httpx.Response(
+            200, content=next(payloads), request=httpx.Request("GET", url)
+        ),
+    )
+    provider = IRSASiaCutoutProvider(cache_dir=tmp_path, max_retries=1)
+    sia_service = pyvo.dal.SIA2Service(provider.sia_url, check_baseurl=False)
+
+    def query():
+        return provider._execute_sia_table_with_retry(sia_service, "spherex_dr1", 42.0, -10.0)
+
+    with pytest.raises(ValueError, match="failed SIAv2 query"):
+        query()
+    assert cache_path.read_bytes() == partial_response
+
+    assert list(query()["access_url"]) == ["https://example.invalid/cutout.fits"]
+    assert cache_path.read_bytes() == valid_response
+    assert list(query()["access_url"]) == ["https://example.invalid/cutout.fits"]
+
+
+def test_concurrent_identical_cutouts_recover_a_truncated_fits_cache(
+    tmp_path: Path, mef_factory
+) -> None:
+    buffer = io.BytesIO()
+    mef_factory().writeto(buffer)
+    valid_cutout = buffer.getvalue()
+    url = "https://example.invalid/cutout.fits"
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:12]
+    cache_path = tmp_path / f"cutout_{url_hash}.fits"
+    cache_path.write_bytes(valid_cutout[:-1])
+    overlap = Barrier(2, timeout=10)
+    provider = IRSASiaCutoutProvider(cache_dir=tmp_path, max_retries=1)
+
+    def download(request):
+        overlap.wait()
+        return httpx.Response(200, content=valid_cutout)
+
+    def fetch(client):
+        return provider._download_and_parse(client, url, "cutout.fits", "spherex_dr1", 331, -56)
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(download)) as client,
+        ThreadPoolExecutor(max_workers=2) as executor,
+    ):
+        requests = [executor.submit(fetch, client) for _ in range(2)]
+        frames = [request.result(timeout=10) for request in requests]
+
+    assert [frame.frame_id for frame in frames] == ["cutout", "cutout"]
+    assert cache_path.read_bytes() == valid_cutout
+    assert list(tmp_path.iterdir()) == [cache_path]
 

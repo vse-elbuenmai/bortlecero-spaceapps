@@ -164,8 +164,9 @@ def test_sky_js_target_router_connection() -> None:
     assert "openModal" in sky_code
 
 
-def test_fastapi_blink_and_static_bundle_parity() -> None:
-    """Verify FastAPI GET /api/v1/blink serves a bundle consistent with static bundle."""
+def test_fastapi_blink_and_static_bundle_parity(monkeypatch) -> None:
+    """Verify FastAPI serves the checked-in bundle without contacting IRSA."""
+    monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(Path("mockup/data").resolve()))
     client = TestClient(app)
     response = client.get("/api/v1/blink/barnards_star")
     assert response.status_code == 200
