@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, fields
+from threading import Lock
 
 # The default SPHEREx output pixel scale, in arcseconds.
 PIXEL_SCALE_ARCSEC = 6.15
@@ -68,6 +69,7 @@ class WorkBudget:
         self.limits = limits
         self.exposures_left = min(max_frames, limits.max_exposures)
         self.bytes_left = limits.max_download_bytes
+        self._download_lock = Lock()
         self.deadline = time.monotonic() + limits.max_elapsed_seconds
 
     def remaining_time(self) -> float:
@@ -86,13 +88,18 @@ class WorkBudget:
         self.exposures_left -= 1
 
     def require_download_capacity(self, size: int) -> None:
+        with self._download_lock:
+            self._require_download_capacity(size)
+
+    def _require_download_capacity(self, size: int) -> None:
         self.remaining_time()
         if size > self.bytes_left:
             raise WorkLimitExceeded("download_limit")
 
     def consume_download(self, size: int) -> None:
-        self.require_download_capacity(size)
-        self.bytes_left -= size
+        with self._download_lock:
+            self._require_download_capacity(size)
+            self.bytes_left -= size
 
 
 active_budget: ContextVar[WorkBudget | None] = ContextVar("active_budget", default=None)

@@ -14,6 +14,9 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +54,7 @@ class IRSASiaCutoutProvider:
         timeout_sec: float = 45.0,
         max_retries: int = 3,
         sia_cache_ttl_sec: int = 3600,
+        cutout_workers: int = 3,
     ) -> None:
         self.sia_url = sia_url
         self.cache_dir = Path(cache_dir)
@@ -58,6 +62,9 @@ class IRSASiaCutoutProvider:
         self.timeout_sec = timeout_sec
         self.max_retries = max_retries
         self.sia_cache_ttl_sec = sia_cache_ttl_sec
+        if not 1 <= cutout_workers <= 4:
+            raise ValueError("IRSA cutout workers must be between 1 and 4.")
+        self.cutout_workers = cutout_workers
 
     @staticmethod
     def validate_collections(collections: tuple[str, ...] | list[str]) -> None:
@@ -98,6 +105,11 @@ class IRSASiaCutoutProvider:
         dropped_frames: list[DroppedFrameDTO] = []
 
         budget = active_budget.get()
+        selected: list[tuple[str, dict[str, Any]]] = []
+        fetch_size_arcsec = round(
+            min(1800.0, max(target.cutout_size_arcsec * 1.45, target.cutout_size_arcsec + 60.0)),
+            1,
+        )
         with httpx.Client(
             timeout=self.timeout_sec, follow_redirects=True, max_redirects=3 if budget else 20
         ) as client:
@@ -148,50 +160,73 @@ class IRSASiaCutoutProvider:
                 for cand in candidates:
                     if budget:
                         budget.consume_exposure()
-                    fetch_size_arcsec = round(
-                        min(
-                            1800.0,
-                            max(target.cutout_size_arcsec * 1.45, target.cutout_size_arcsec + 60.0),
-                        ),
-                        1,
+                    selected.append((collection, cand))
+
+            def fetch(item: tuple[str, dict[str, Any]]) -> RawCutoutFrame | DroppedFrameDTO:
+                collection, cand = item
+                if budget:
+                    budget.remaining_time()
+                cutout_url = self.build_cutout_url(
+                    base_access_url=cand["access_url"],
+                    ra_deg=query_ra_deg,
+                    dec_deg=query_dec_deg,
+                    size_arcsec=fetch_size_arcsec,
+                )
+                try:
+                    return self._download_and_parse(
+                        client=client,
+                        cutout_url=cutout_url,
+                        base_filename=cand["filename"],
+                        collection=collection,
+                        target_ra_deg=query_ra_deg,
+                        target_dec_deg=query_dec_deg,
                     )
-                    cutout_url = self.build_cutout_url(
-                        base_access_url=cand["access_url"],
-                        ra_deg=query_ra_deg,
-                        dec_deg=query_dec_deg,
-                        size_arcsec=fetch_size_arcsec,
+                except WorkLimitExceeded:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        "Skipping failed cutout '%s' from %s: %s", cand["filename"], collection, exc
                     )
-                    try:
-                        frame = self._download_and_parse(
-                            client=client,
-                            cutout_url=cutout_url,
-                            base_filename=cand["filename"],
-                            collection=collection,
-                            target_ra_deg=query_ra_deg,
-                            target_dec_deg=query_dec_deg,
-                        )
-                        frames.append(frame)
-                    except WorkLimitExceeded:
-                        raise
-                    except Exception as exc:
-                        logger.warning(
-                            "Skipping failed cutout '%s' from %s: %s",
-                            cand["filename"],
-                            collection,
-                            exc,
-                        )
-                        dropped_frames.append(
-                            DroppedFrameDTO(
-                                frame_id=cand.get("filename", "unknown"),
-                                reason="cutout_download_error",
-                                attempted_band=cand.get("band"),
-                                obs_date=str(cand.get("t_min")) if cand.get("t_min") else None,
-                                error_detail=str(exc),
-                            )
-                        )
+                    return DroppedFrameDTO(
+                        frame_id=cand["filename"],
+                        reason="cutout_download_error",
+                        attempted_band=cand.get("band"),
+                        obs_date=str(cand.get("t_min")) if cand.get("t_min") else None,
+                        error_detail=str(exc),
+                    )
+
+            # Only parallelize bounded jobs. CLI calls can request an uncapped set.
+            workers = self.cutout_workers if budget else 1
+            for outcome in self._fetch_selected(fetch, selected, workers):
+                if isinstance(outcome, DroppedFrameDTO):
+                    dropped_frames.append(outcome)
+                else:
+                    frames.append(outcome)
 
         frames.sort(key=lambda f: (f.mjd_avg, f.detector_band))
         return CutoutFetchResult(frames=tuple(frames), dropped_frames=tuple(dropped_frames))
+
+    @staticmethod
+    def _fetch_selected(
+        fetch: Callable[[tuple[str, dict[str, Any]]], RawCutoutFrame | DroppedFrameDTO],
+        selected: list[tuple[str, dict[str, Any]]],
+        workers: int,
+    ) -> list[RawCutoutFrame | DroppedFrameDTO]:
+        if workers == 1 or len(selected) <= 1:
+            return [fetch(item) for item in selected]
+
+        pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="irsa-cutout")
+        try:
+            # Each thread needs its own context, pointing to the same job budget.
+            futures = {
+                pool.submit(copy_context().run, fetch, item): index
+                for index, item in enumerate(selected)
+            }
+            outcomes = {futures[future]: future.result() for future in as_completed(futures)}
+            return [outcomes[index] for index in range(len(selected))]
+        finally:
+            # Cancel pending work on budget failures. Join before closing the shared client.
+            pool.shutdown(cancel_futures=True)
 
     @staticmethod
     def _parse_sia_table(data: bytes) -> Table:
