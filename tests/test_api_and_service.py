@@ -91,6 +91,41 @@ def test_service_and_fastapi_endpoints(raw_cutout_factory, tmp_path: Path) -> No
         app.dependency_overrides.clear()
 
 
+def test_cloud_health_and_live_query_gate(monkeypatch, tmp_path: Path) -> None:
+    """Health and a disabled live query must never invoke ingestion."""
+    monkeypatch.setenv("SPHEREX_LEGACY_SYNC_ENABLED", "false")
+    monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("K_REVISION", "spherex-test-00001")
+
+    class UnavailableIngestion:
+        def ingest_target(self, **kwargs):
+            raise AssertionError("Ingestion must remain disabled")
+
+    app.dependency_overrides[get_default_service] = UnavailableIngestion
+    try:
+        client = TestClient(app)
+        status = client.get("/api/v1/health").json()
+        assert status["revision"] == "spherex-test-00001"
+        assert status["legacy_sync_enabled"] is False
+        assert "cds_mirror_active" not in status
+
+        corrupted = tmp_path / "epsilon_indi_b" / "bundle.json"
+        corrupted.parent.mkdir()
+        corrupted.write_text("incomplete JSON", encoding="utf-8")
+
+        for endpoint in (
+            "/api/v1/blink?ra=331&dec=-56",
+            "/api/v1/blink/epsilon_indi_b?force_refresh=true",
+            "/api/v1/blink/epsilon_indi_b",
+            "/api/v1/blink/barnards_star",
+        ):
+            response = client.get(endpoint)
+            assert response.status_code == 503
+            assert response.json()["detail"] == "Live SPHEREx ingestion is disabled."
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_overlapping_requests_keep_dropped_cutouts_separate(
     raw_cutout_factory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

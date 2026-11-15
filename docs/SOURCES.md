@@ -74,3 +74,11 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Pytest (`pytest`)](https://docs.pytest.org/) & [Ruff (`ruff`)](https://docs.astral.sh/ruff/) | MIT | Automated unit/integration testing and static analysis | 2026-11-14 |
 | [GitHub Actions (`actions/checkout`, `actions/setup-python`)](https://github.com/actions) | MIT | Standard continuous integration workflow execution actions | 2026-11-14 |
 | [Astral `setup-uv` Action](https://github.com/astral-sh/setup-uv) | Apache-2.0 / MIT | GitHub Action to set up Astral `uv` binary and dependency cache in CI runners | 2026-11-14 |
+| [Docker Official Image for Python](https://github.com/docker-library/python) | PSF-2.0 for Python | Digest-pinned CPython 3.14 base image for the ingestion service | 2026-11-15 |
+
+## Deployment references
+
+| Source | Used for | Added |
+|---|---|---|
+| [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification, HTTP probes, and bounded scratch volume | 2026-11-15 |
+| [Astral uv Docker guide](https://docs.astral.sh/uv/guides/integration/docker/) | Multi-stage container build with locked runtime dependencies | 2026-11-15 |
