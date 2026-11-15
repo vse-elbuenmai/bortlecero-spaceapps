@@ -41,3 +41,13 @@ bash deploy/gcp/bootstrap.sh
 ```
 
 After running, copy the printed `GCP_*` variables into the corresponding GitHub Environment (`staging` or `production`) under **Settings -> Environments**. For `production`, enable **Required reviewers** on the GitHub Environment so promotions require manual approval.
+
+## Live Staging Environment (`bortle-cero-nasa-staging-26`)
+
+The staging environment is provisioned in `us-central1` (Google Cloud Free Tier eligible) with cost controls:
+
+- **Cloud Run API (`spherex-ingest-staging`)**: `https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` (private IAM-invoked; scales `0..2` with `$0` idle cost and `SPHEREX_LEGACY_SYNC_ENABLED=false`).
+- **GCS Bucket (`gs://bortle-cero-nasa-staging-26-spherex-bundles-staging`)**: Private, versioned, with a lifecycle rule deleting noncurrent versions after 7 days (keeping up to 3 newer versions) and `queries/` cache objects after 30 days.
+- **Budget Alert**: Monthly budget alert set to `20 MXN` (~$1 USD) with thresholds at 50%, 90%, and 100%.
+- **GitHub `staging` Environment**: Configured with all 8 `GCP_*` variables for keyless OIDC/WIF deployment via [`.github/workflows/cd-deploy.yml`](../../.github/workflows/cd-deploy.yml).
+- **Static Web Viewer**: The public frontend (`mockup/`) is not yet deployed to Firebase Hosting. Run it locally with `uv run python -m http.server 8765 --directory mockup`, or stage and deploy to Firebase Hosting with `uv run python scripts/build_hosting.py` and `firebase deploy --only hosting`.
