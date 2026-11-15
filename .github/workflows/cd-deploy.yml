@@ -108,7 +108,7 @@ jobs:
       (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
       (github.event.inputs.action || 'deploy') != 'rollback'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     environment: ${{ github.event.inputs.environment || 'staging' }}
     permissions:
       contents: read
@@ -141,16 +141,33 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
+      - name: Install Astral uv for benchmark seeding
+        if: ${{ (github.event.inputs.action || 'deploy') == 'deploy' }}
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Seed durable NASA benchmark cache
+        if: ${{ (github.event.inputs.action || 'deploy') == 'deploy' }}
+        env:
+          BENCHMARK_BUCKET: ${{ vars.GCP_GCS_BUCKET || format('{0}-spherex-bundles-{1}', vars.GCP_PROJECT_ID, github.event.inputs.environment || 'staging') }}
+          OPENBLAS_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: uv run --frozen --no-dev python scripts/seed_benchmark_cache.py "${BENCHMARK_BUCKET}"
+
       - name: Render Cloud Run service manifest and deploy
         env:
           SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
           RUNTIME_SA: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          BENCHMARK_BUCKET: ${{ vars.GCP_GCS_BUCKET || format('{0}-spherex-bundles-{1}', vars.GCP_PROJECT_ID, github.event.inputs.environment || 'staging') }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION }}
         run: |
           sed \
             -e "s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
+            -e "s|__BENCHMARK_BUCKET__|${BENCHMARK_BUCKET}|g" \
             -e "s|__RUNTIME_SERVICE_ACCOUNT__|${RUNTIME_SA}|g" \
             -e "s|__IMAGE_DIGEST__|${IMAGE_DIGEST}|g" \
             deploy/cloud-run/service.yaml > /tmp/service.rendered.yaml
@@ -191,6 +208,26 @@ jobs:
           GATE_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/api/v1/blink?ra=331&dec=-56")
           echo "Live-query gate -> HTTP ${GATE_CODE}"
           test "${GATE_CODE}" = "503"
+
+      - name: Verify server cache for all five viewer requests
+        if: ${{ (github.event.inputs.action || 'deploy') == 'deploy' }}
+        env:
+          SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+            --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')
+          ID_TOKEN=$(gcloud auth print-identity-token \
+            --impersonate-service-account="${DEPLOY_SA}" --audiences="${SERVICE_URL}")
+          for target in barnards_star epsilon_indi_b wise_0855_0714 rw_aurigae r_draconis; do
+            curl -fsS --max-time 60 -H "Authorization: Bearer ${ID_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "{\"query\":\"${target}\",\"size_arcsec\":180,\"max_frames\":12}" \
+              "${SERVICE_URL}/api/v1/jobs" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['status']=='succeeded' and d['cached'] and d['attempts']==0 and d['result']['total_frames']>0 and d['result']['target']['target_id']==sys.argv[1]; print(sys.argv[1], d['result']['total_frames'], 'cached frames')" "${target}"
+          done
 
   deploy-viewer:
     name: "Deploy Static Viewer (GCS)"
@@ -275,6 +312,7 @@ jobs:
           REGION: ${{ vars.GCP_REGION }}
           TARGET_REVISION: ${{ github.event.inputs.revision }}
           TARGET_DIGEST: ${{ github.event.inputs.image_digest }}
+          BENCHMARK_BUCKET: ${{ vars.GCP_GCS_BUCKET || format('{0}-spherex-bundles-{1}', vars.GCP_PROJECT_ID, github.event.inputs.environment || 'staging') }}
         run: |
           if [ -n "${TARGET_REVISION}" ]; then
             gcloud run services update-traffic "${SERVICE_NAME}" \
@@ -284,6 +322,7 @@ jobs:
           elif [ -n "${TARGET_DIGEST}" ]; then
             sed \
               -e "s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
+              -e "s|__BENCHMARK_BUCKET__|${BENCHMARK_BUCKET}|g" \
               -e "s|__RUNTIME_SERVICE_ACCOUNT__|${RUNTIME_SA}|g" \
               -e "s|__IMAGE_DIGEST__|${TARGET_DIGEST}|g" \
               deploy/cloud-run/service.yaml > /tmp/service.rollback.yaml

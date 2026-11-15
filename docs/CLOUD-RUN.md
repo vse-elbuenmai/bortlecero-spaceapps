@@ -36,7 +36,9 @@ Use the CI-published image digest when available.
 1. Copy [the service template](../deploy/cloud-run/service.yaml) to `service.staging.yaml` outside
    the repository or an ignored directory. Replace `__SERVICE_NAME__` with the staging service
    name, `__RUNTIME_SERVICE_ACCOUNT__` with the runtime account email, and `__IMAGE_DIGEST__` with
-   the full Artifact Registry image reference ending in `@sha256:<digest>`.
+   the full Artifact Registry image reference ending in `@sha256:<digest>`. Replace
+   `__BENCHMARK_BUCKET__` with the private bucket name or leave its value empty to
+   disable [benchmark caching](RESULT-STORAGE.md).
 2. Replace `PROJECT_ID`, `REGION`, and `SERVICE_NAME` in the following commands with staging values.
    These commands work in Bash and PowerShell.
 

@@ -1,9 +1,8 @@
 # SPHEREx blink viewer
 
-The viewer displays live SPHEREx blink series fetched from IRSA via the `spherex_ingest` API for
-the five challenge benchmarks and lets visitors look around the sky by test object, by name or by
-coordinates. There are no local `mockup/data/` snapshots or `prepare_barnard.py` files: all blink
-frames originate from the live IRSA ingestion backend.
+The viewer shows SPHEREx blink series from the ingestion API. Visitors can select one of the
+five challenge benchmarks or search by name or coordinates. The API serves preprocessed IRSA data
+for the default benchmark requests and queries IRSA for uncached positions.
 
 The viewer stores successful processed blink bundles (images and metadata) in IndexedDB. Reopening
 the same benchmark or exact coordinates in the same browser profile within one hour skips the
@@ -137,8 +136,8 @@ aligns them; Barnard's Star took 31 s and 52 s in two runs on 15 Nov, a random e
 the telescope, the IRSA archive and your screen, with three numbered stations that follow the
 job's real phases (`queued`, `running`, result) and an elapsed-time counter. `viewer-data.js`
 reports each phase through the `onProgress` callback of `viewerData.load`. A cached answer opens
-the viewer directly. The server keeps a result for 24 hours, but in the memory of a Cloud Run
-instance that scales to zero when idle, so the first visitor after a quiet spell waits again.
+the viewer directly. Cloud Run reads the five default benchmark sequences from private Cloud
+Storage, including after a restart. Other results are cached per instance for up to 24 hours.
 `DESIGN.md` §7.6 has the drawing's rules.
 
 ### The viewer's two levels of detail

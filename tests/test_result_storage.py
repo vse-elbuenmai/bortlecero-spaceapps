@@ -27,7 +27,12 @@ from spherex_ingest.domain.models import CutoutFetchResult, DroppedFrameDTO
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.infrastructure.result_objects import CloudResultObjects, LocalResultObjects
 from spherex_ingest.limits import PublicLimits
-from spherex_ingest.result_storage import ResultKey, ResultStore, StoredBlinkResult
+from spherex_ingest.result_storage import (
+    ResultKey,
+    ResultStore,
+    StoredBlinkResult,
+    benchmark_object_path,
+)
 from spherex_ingest.service import SPHERExBlinkIngestionService
 
 
@@ -250,3 +255,48 @@ def test_live_api_results_are_cached_by_parameters_outside_curated_bundles(
 
     assert path.read_bytes() == original
     assert (tmp_path / "private" / "results.sqlite3").is_file()
+
+
+def test_default_benchmark_is_served_without_ingestion(
+    tmp_path: Path, service_and_calls, bundle, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, calls = service_and_calls
+    calls.clear()
+    key = ResultKey.from_target(bundle.target, 12)
+    path = benchmark_object_path(key)
+    assert path and path.startswith("benchmarks/v1/epsilon_indi_b/")
+    assert benchmark_object_path(ResultKey.from_target(bundle.target, 11)) is None
+    assert benchmark_object_path(
+        ResultKey.from_target(service.resolve_target("epsilon_indi_b", 150), 12)
+    ) is None
+    assert benchmark_object_path(key.model_copy(update={"algorithm_version": "next"})) is None
+    objects = LocalResultObjects(tmp_path / "benchmarks.sqlite3")
+    assert objects.write_if_generation(path, bundle.model_dump_json().encode(), 0)
+    monkeypatch.setattr(CloudResultObjects, "from_bucket_name", lambda _: objects)
+    monkeypatch.setenv("SPHEREX_BENCHMARK_BUCKET", "test-benchmark-bucket")
+    monkeypatch.setenv("SPHEREX_ASYNC_JOBS_ENABLED", "true")
+    monkeypatch.setenv("SPHEREX_LEGACY_SYNC_ENABLED", "false")
+    monkeypatch.setenv("SPHEREX_RESULTS_DIR", str(tmp_path / "results"))
+    monkeypatch.setenv("SPHEREX_JOBS_DIR", str(tmp_path / "jobs"))
+    monkeypatch.setitem(app.dependency_overrides, get_default_service, lambda: service)
+    monkeypatch.setitem(app.dependency_overrides, get_output_dir, lambda: tmp_path / "output")
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/jobs", json={"query": "epsilon_indi_b"})
+        assert response.status_code == 200
+        job = response.json()
+        assert job["cached"] and job["attempts"] == 0
+        assert job["result"] == bundle.model_dump(mode="json")
+        assert client.get(job["result_url"]).json() == job["result"]
+        assert client.get("/api/v1/blink/epsilon_indi_b").json() == job["result"]
+        assert client.get("/api/v1/blink/epsilon_indi_b?max_frames=11").status_code == 503
+
+        store = result_storage.get_result_store()
+        fallback = bundle.model_copy(update={"scientific_warnings": ["Local fallback."]})
+        store.publish(key, fallback)
+        entry = objects.read(path)
+        assert entry is not None
+        assert objects.write_if_generation(path, b"invalid", entry.generation)
+        assert client.get("/api/v1/blink/epsilon_indi_b").json() == fallback.model_dump(mode="json")
+
+    assert not calls
