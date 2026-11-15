@@ -387,6 +387,12 @@ Sale de la prueba de `mockup/sky.js`.
   (excepción al §2.6) y su pie dice qué longitud de onda va en cada canal.
 - **Lector de coordenadas:** la posición y el campo de la vista, bajo el desplegable de capas. En
   móvil (≤ 760 px) queda oculto y un botón de icono «i» junto al desplegable lo muestra a petición.
+- **Posición bajo el puntero:** bajo el desplegable se muestran RA y Dec con 4 decimales al
+  mover el puntero o tocar el lienzo. En móvil aparece sin abrir «i» y conserva la última posición
+  al levantar el dedo, identificada con «Last touch».
+- **Retícula ecuatorial:** el botón «Coordinate grid» de los controles empieza apagado. Dibuja
+  meridianos cada 30° de RA y paralelos cada 15° de Dec en `--bc-estrella` con transparencia.
+  Destaca el meridiano de RA 0° y el ecuador de Dec 0°.
 - **Pie de la capa en móvil:** también se guarda tras el botón «i», para despejar el cielo. Aun así
   aparece solo durante 5 segundos al cargar la página y cada vez que se cambia de capa, para que
   nadie tome el telón de fondo por una fotografía sin haberlo leído. Abierto con el botón, se queda

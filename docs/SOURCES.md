@@ -76,6 +76,7 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Astral `setup-uv` Action](https://github.com/astral-sh/setup-uv) | Apache-2.0 / MIT | GitHub Action to set up Astral `uv` binary and dependency cache in CI runners | 2026-11-14 |
 | [Firebase Hosting configuration](https://firebase.google.com/docs/hosting/full-config) | Managed Google service | Serving the static benchmark viewer with HTTPS and release cache headers | 2026-11-15 |
 | [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 | Offline Chromium tests for the hosted viewer, benchmark fallback and ingestion statuses | 2026-11-15 |
+| [MDN Pointer Events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) and [MDN WebGL uniforms](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/uniform), consulted via Context7 | CC BY-SA 2.5 | Primary pointer and capture handling; passing the grid toggle to the sky shader | 2026-11-15 |
 | [GitHub Actions Node.js setup](https://github.com/actions/setup-node) | MIT | Provisioning Node.js for browser CI | 2026-11-15 |
 | [Docker Official Image for Python](https://github.com/docker-library/python) | PSF-2.0 for Python | Digest-pinned CPython 3.14 base image for the ingestion service | 2026-11-15 |
 
