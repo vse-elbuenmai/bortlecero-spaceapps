@@ -102,8 +102,7 @@
     </div>
 
     <div id="modal-empty" class="modal-empty" hidden>
-      <p><strong>No SPHEREx frames are available for this position.</strong></p>
-      <p id="modal-empty-msg">No Level 2b exposures cover this area in the requested collections, or the local ingestion service is offline.</p>
+      <p id="modal-empty-msg" role="status"></p>
       <button id="open-barnard" class="btn btn-secondary" type="button">Go to Barnard's Star</button>
     </div>
 
@@ -234,6 +233,7 @@
     </div>
   </dialog>
 
+  <script src="viewer-data.js"></script>
   <script src="mockup.js"></script>
   <script type="module" src="sky.js"></script>
 </body>
