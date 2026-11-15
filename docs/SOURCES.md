@@ -47,6 +47,7 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | Source | Used for | Added |
 |---|---|---|
 | [The full sky in the ultraviolet](https://menard.pha.jhu.edu/uvmap/), Brice Ménard (2026), its "inside" view | The approach of the sky view: one panorama of the whole sky painted inside a sphere with plain WebGL. Only the approach, seen by using the page: no code, images or data taken. | 2026-11-14 |
+| [Cloud Storage generation preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions) and [object lifecycle management](https://docs.cloud.google.com/storage/docs/lifecycle) | Atomic manifest publication and retention for private live-query results. | 2026-11-15 |
 | [Python temporary files](https://docs.python.org/3/library/tempfile.html#tempfile.NamedTemporaryFile) and [atomic replacement](https://docs.python.org/3/library/os.html#os.replace) | Publish validated cache entries and self-contained local exports from temporary sibling files. | 2026-11-15 |
 | [IAU FITS Standard](https://fits.gsfc.nasa.gov/fits_standard.html) and [Astropy FITS file handling](https://docs.astropy.org/en/stable/io/fits/api/files.html) | Validate FITS block alignment and the last HDU's byte extent before caching a cutout. | 2026-11-15 |
 
@@ -56,6 +57,8 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 |---|---|---|---|
 | [Space Grotesk](https://github.com/floriankarsten/space-grotesk), by Florian Karsten | SIL Open Font License 1.1 | Typeface of the interface, chosen in `DESIGN.md` (self-hosted; how it is installed is added here when it is) | 2026-11-14 |
 | [Astral `uv`](https://github.com/astral-sh/uv) | Apache-2.0 / MIT | Python environment, package, and lockfile management | 2026-11-14 |
+| [Google Cloud Storage for Python](https://github.com/googleapis/google-cloud-python/tree/main/packages/google-cloud-storage) | Apache-2.0 | Private result bucket access through Application Default Credentials and object generation preconditions. | 2026-11-15 |
+| [SQLite transactions](https://www.sqlite.org/lang_transaction.html) and [page limits](https://www.sqlite.org/pragma.html#pragma_max_page_count) | Public domain | Cross-process local result publication and storage capacity. | 2026-11-15 |
 | [Astropy (`astropy`)](https://www.astropy.org/) (Astropy Collaboration et al. 2013, 2022) | BSD-3-Clause | FITS I/O, World Coordinate Systems (`WCS` & `WCS-WAVE` `WAVE-TAB`), proper motion & parallax epoch propagation (`SkyCoord.apply_space_motion`), and physical units | 2026-11-14 |
 | [reproject](https://reproject.readthedocs.io/) (Robitaille et al.) | BSD-3-Clause | Reprojecting multi-epoch SPHEREx cutouts (including $180^\circ$ `SPS_EPA` spacecraft flips) onto a common North-up celestial TAN grid | 2026-11-14 |
 | [PyVO (`pyvo`)](https://pyvo.readthedocs.io/) | BSD-3-Clause | IVOA Simple Image Access v2 (`SIA2Service`) queries against IRSA (`https://irsa.ipac.caltech.edu/SIA`) | 2026-11-14 |
