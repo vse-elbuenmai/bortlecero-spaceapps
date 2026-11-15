@@ -23,6 +23,9 @@ const OBJECTS = {
   rdra: { key: "r_draconis", name: "R Draconis", ra: 248.16737837, dec: 66.75500675, epoch: 2016.0, pmra: -20.643, pmdec: 6.149 },
 };
 
+const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>';
+const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg>';
+const NOTE_SECONDS = 5; // how long the note about the layer shows by itself on phones
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
 const canvas = $("sky-canvas"), modal = $("viewer-modal"), viewer = $("viewer"), msg = $("search-msg");
@@ -229,7 +232,7 @@ function setSpinning(on) {
   const btn = $("spin-toggle");
   btn.setAttribute("aria-pressed", String(state.spinning));
   btn.setAttribute("aria-label", state.spinning ? "Pause rotation" : "Rotate the sky");
-  btn.textContent = state.spinning ? "❚❚" : "▶";
+  btn.innerHTML = state.spinning ? ICON_PAUSE : ICON_PLAY;
 }
 
 function setFov(fov) {
@@ -253,6 +256,7 @@ function caption(key) {
 async function setLayer(key) {
   $("layer-select").value = key;
   $("sky-credit").textContent = caption(key);
+  showNoteBriefly();
   if (!state.gl || key === state.layer) return;
   try {
     await loadLayer(key);
@@ -292,6 +296,33 @@ function fieldError(id, text) {
   err.textContent = text ? "⚠ " + text : "";
 }
 const say = (text) => { msg.hidden = !text; msg.textContent = text || ""; };
+
+// On phones the note about the layer (what the map is, and that it is a drawing or an average) is
+// tucked behind the info button. It still shows by itself for a few seconds when the page loads
+// and whenever the layer changes, so nobody takes the backdrop for a photograph unawares.
+let noteTimer = 0;
+function setInfo(open) {
+  clearTimeout(noteTimer);
+  const layers = document.querySelector(".sky-layers");
+  layers.classList.toggle("show-note", open);
+  layers.classList.toggle("show-coords", open);
+  $("info-toggle").setAttribute("aria-expanded", String(open));
+}
+function showNoteBriefly() {
+  const layers = document.querySelector(".sky-layers");
+  if (layers.classList.contains("show-coords") || !$("sky-credit").textContent) return; // opened by hand: leave it
+  clearTimeout(noteTimer);
+  layers.classList.add("show-note");
+  noteTimer = setTimeout(() => layers.classList.remove("show-note"), NOTE_SECONDS * 1000);
+}
+
+// The ring on the marked position: play its arrival once (CSS), then let it rest.
+function pingReticle() {
+  const reticle = $("reticle");
+  reticle.classList.remove("is-arriving");
+  void reticle.offsetWidth; // restart the animation
+  reticle.classList.add("is-arriving");
+}
 
 // Which test object the search shows as chosen (none for a typed position).
 function setObject(objectKey) {
@@ -341,7 +372,8 @@ function arrive(target) {
   state.target = target;
   state.dirty = true;
   say("");
-  setTimeout(() => openModal(target), reduceMotion ? 0 : 500);
+  pingReticle();
+  setTimeout(() => openModal(target), reduceMotion ? 0 : 900); // long enough to see the ring land
 }
 
 function findPreparedBenchmark(target) {
@@ -454,12 +486,7 @@ function bindEvents() {
   for (const id of ["ra", "dec"]) $(id).addEventListener("input", () => setObject(null));
 
   $("layer-select").addEventListener("change", (e) => setLayer(e.target.value));
-  // On phones the coordinates of the view stay out of the way until asked for.
-  $("coords-toggle").addEventListener("click", () => {
-    const shown = document.querySelector(".sky-layers").classList.toggle("show-coords");
-    $("coords-toggle").setAttribute("aria-pressed", String(shown));
-    $("coords-toggle").setAttribute("aria-label", shown ? "Hide the coordinates of the view" : "Show the coordinates of the view");
-  });
+  $("info-toggle").addEventListener("click", () => setInfo(!document.querySelector(".sky-layers").classList.contains("show-coords")));
 
   $("spin-toggle").addEventListener("click", () => setSpinning(!state.spinning));
   $("zoom-sky-in").addEventListener("click", () => setFov(state.fov / 1.25));
@@ -476,6 +503,7 @@ function bindEvents() {
   modal.addEventListener("close", () => {
     document.dispatchEvent(new CustomEvent("viewer:close"));
     setSearchOpen(true);
+    if (state.target) pingReticle(); // back on the sky: point at the place again
   });
 
   // Looking around: drag to turn, wheel or pinch to zoom, arrows and +/− from the keyboard.

@@ -194,10 +194,14 @@ El sistema se apoya en superficies, no en sombras. Sólo hay tres:
 | `0.15s ease` | Color y borde (`--bc-transition`) |
 | `0.2s ease` | Botones, hover de superficie, `translateY(-2px)` |
 | `0.5s cubic-bezier(.4, 0, .2, 1)` | Barra de progreso de carga |
+| `0.28s cubic-bezier(.2, .8, .3, 1)` | Entrada de un diálogo: sube 16 px y aparece; el fondo oscuro aparece a la vez. El cierre es inmediato |
+| `0.6s` + tres pulsos de `1.4s` | Llegada del anillo que marca una posición en el cielo (§7.11) |
 
 - **El cambio de foto del parpadeo es un corte seco**, sin fundido. Un fundido mezcla dos fechas y
   esconde justo el movimiento que se quiere ver.
 - El zoom y el desplazamiento de la imagen siguen al cursor o al dedo, sin inercia ni animación.
+- **Nada se mueve solo más de cinco segundos** sin un botón de pausa (WCAG 2.2.2). Por eso el anillo
+  del cielo da tres pulsos y se queda quieto, y el giro del cielo lleva su pausa.
 - `prefers-reduced-motion: reduce` es obligatorio: se apagan transiciones y **el parpadeo no arranca
   solo** (§8).
 
@@ -244,10 +248,10 @@ El sistema se apoya en superficies, no en sombras. Sólo hay tres:
 
 | Control | Especificación |
 |---|---|
-| Anterior / siguiente | Botones de icono de 44 × 44, `aria-label="Previous frame"` / `"Next frame"` |
+| Anterior / siguiente | Botones de icono de 44 × 44, `aria-label="Previous frame"` / `"Next frame"`. Con reproducir / pausa forman un grupo que no se separa |
 | Reproducir / pausa | Botón de icono de 44 × 44, `aria-pressed`; el icono y la etiqueta cambian |
-| Velocidad | `<input type="range">` de 0.5 a **3 fotos por segundo** (§8), con valor en texto y `tabular-nums` |
-| Zoom | Botones ⊕ ⊖ y «reset» (⟲); también rueda o pellizco sobre el lienzo |
+| Velocidad | `<input type="range">` de 0.5 a **3 fotos por segundo** (§8), con valor en texto y `tabular-nums`. Va en la misma fila que anterior / pausa / siguiente y ocupa lo que sobra, como la barra de un reproductor. En móvil su rótulo «Speed» queda sólo para lectores de pantalla. Por debajo de 380 px los tres botones se centran en su fila y la barra se estira debajo |
+| Zoom | Botones de alejar, acercar y «reset», con el nivel en texto entre ellos; también rueda o pellizco sobre el lienzo. Los cuatro forman un grupo: si no caben en la fila, bajan juntos |
 | Banda | Desplegable (§7.12) con «All bands» y una opción por banda, cada una con su número de fotos |
 | Línea de fechas | Un punto por foto, separados en proporción al tiempo real, con un mínimo de 14 px entre vecinos para que las fotos de días seguidos no se amontonen; el activo en `--bc-estrella` y más grande; cada punto es un botón con la fecha en su `aria-label`. Debajo sólo van tres fechas: la primera, la última y la de la foto activa, bajo su punto; una fecha de extremo se oculta si la activa le cae encima |
 
@@ -255,6 +259,10 @@ En una serie densa los puntos quedan a menos de 44 px. Ahí cada punto recibe co
 espacio hasta la mitad de la distancia a sus vecinos, y los botones de anterior y siguiente son la
 vía de 44 × 44 para llegar a cualquier foto. Si ni los 14 px caben (muchas fotos en una pantalla
 estrecha), los puntos se reparten por igual y la marca baja de 10 a 6 px.
+
+**Iconos.** Los botones redondos llevan iconos dibujados en SVG dentro del propio HTML, sin librería:
+trazo de 1.6 px con extremos redondos sobre una cuadrícula de 16 px, en `currentColor`. No se usan
+caracteres como ❚❚ o ⟲: cada teléfono los pinta con otra fuente y otro tamaño.
 
 **Teclado** (sólo con el foco dentro del visor, para no robar teclas a la página): `Space`
 reproducir o pausar, `←` / `→` foto anterior o siguiente, `+` / `−` zoom, `0` restablecer.
@@ -363,13 +371,18 @@ Sale de la prueba de `mockup/sky.js`.
 - **Buscador:** panel «glass» abajo al centro (880 px como máximo), con etiqueta pequeña, la pregunta
   como título y una fila con el desplegable de los cinco objetos de prueba, RA, Dec y el botón
   principal (§7.5). Lleva un botón «Hide» / «Search». Se pliega solo durante el viaje. Nada viaja
-  hasta pulsar el botón principal.
+  hasta pulsar el botón principal. Plegado, en móvil es una barra a todo el ancho, como la barra
+  inferior de una app; en escritorio se queda del ancho de su contenido.
 - **Capas del cielo:** un desplegable (§7.12) arriba a la izquierda, con un pie que dice siempre qué mapa
   se ve, de qué fechas y si es un dibujo o un promedio. El cambio de capa es un fundido de 0.4 s
   (aquí sí, porque no se comparan fechas). El falso color es la única imagen a color del sistema
   (excepción al §2.6) y su pie dice qué longitud de onda va en cada canal.
 - **Lector de coordenadas:** la posición y el campo de la vista, bajo el desplegable de capas. En
   móvil (≤ 760 px) queda oculto y un botón de icono «i» junto al desplegable lo muestra a petición.
+- **Pie de la capa en móvil:** también se guarda tras el botón «i», para despejar el cielo. Aun así
+  aparece solo durante 5 segundos al cargar la página y cada vez que se cambia de capa, para que
+  nadie tome el telón de fondo por una fotografía sin haberlo leído. Abierto con el botón, se queda
+  hasta que se cierra. En escritorio sigue siempre visible.
 - **Cabecera en móvil:** por debajo de 520 px sólo caben el nombre del equipo, la etiqueta «Mockup»
   y «Credits»; el nombre del proyecto se oculta.
 - **Controles:** columna de botones de icono de 44 × 44 a la derecha (acercar, alejar, pausa y
@@ -378,7 +391,10 @@ Sale de la prueba de `mockup/sky.js`.
   cielo, durante el viaje y mientras el diálogo está abierto. Con `prefers-reduced-motion` no gira
   y el viaje es un salto.
 - **Viaje:** 5 s: gira por el camino más corto mientras se aleja y después se acerca. Al llegar,
-  un anillo discontinuo en `--bc-estrella` con halo marca la posición, con su nombre debajo.
+  un anillo discontinuo en `--bc-estrella` con halo marca la posición, con su nombre debajo. El
+  anillo «aterriza» (entra un poco grande y se asienta en 0.6 s) y suelta tres pulsos lentos que se
+  abren y se apagan; después se queda quieto. El diálogo se abre 0.9 s después de llegar, para que
+  se vea el aterrizaje, y al cerrarlo el anillo repite los pulsos para volver a señalar el sitio.
 - **Diálogo del visor:** `<dialog>` modal de 1180 px como máximo, fondo `--bc-cosmos`, borde
   `--bc-border`, radio 16 px, fondo oscurecido `rgba(4, 7, 11, 0.72)`. Cabecera con el nombre, la
   posición de hoy y un botón de cerrar de 44 × 44. Si no hay fotos para esa posición, lo dice y

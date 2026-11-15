@@ -5,6 +5,8 @@
 
   const ZOOMS = [1, 2, 4, 8];
   const SCALE_STEPS = [60, 30, 15, 10, 5, 2]; // arcsec, pick one that draws 40–140 px
+  const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>';
+  const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg>';
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const BENCHMARK_MAP = {
@@ -274,7 +276,7 @@
     const btn = $("play");
     btn.setAttribute("aria-pressed", String(on));
     btn.setAttribute("aria-label", on ? "Pause" : "Play");
-    btn.textContent = on ? "❚❚" : "▶";
+    btn.innerHTML = on ? ICON_PAUSE : ICON_PLAY;
     if (on) {
       if (state.diffMode) setDiffMode(false);
       state.timer = setInterval(() => show(state.i + 1), 1000 / state.fps);

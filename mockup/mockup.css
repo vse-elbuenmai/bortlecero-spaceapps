@@ -193,17 +193,44 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .mk-dot { fill: var(--viz-trayectoria); stroke: var(--viz-halo); stroke-width: 1; }
 
 /* Controls (DESIGN §7.2) */
-.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bc-sp-xs); margin-top: var(--bc-sp-s); }
-.controls-gap { flex: 1; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bc-sp-xs) 12px; margin-top: var(--bc-sp-s); }
+.transport, .zoom-group { flex: none; display: flex; align-items: center; }
+.transport { gap: var(--bc-sp-xs); }
+/* The zoom buttons and their reset travel as one piece: if the row is full, they wrap together */
+.zoom-group { gap: 4px; margin-left: auto; }
 .icon-btn { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--bc-border);
   background: transparent; color: var(--bc-estrella); font-size: 16px; cursor: pointer;
   display: inline-grid; place-items: center; transition: border-color var(--bc-transition), background var(--bc-transition); }
+/* Icons are drawn as 1.6 px lines on a 16 px grid, so every round button carries the same weight */
+.icon-btn svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.icon-btn .ico-fill { fill: currentColor; stroke-width: 1.2; }
 .icon-btn:hover { border-color: var(--bc-acento); background: var(--bc-noche); }
 .icon-btn[aria-pressed="true"] { background: var(--bc-noche); border-color: var(--bc-estrella); }
-.speed { display: inline-flex; align-items: center; gap: 8px; font-size: var(--bc-fs-sm); color: var(--bc-muted); margin-left: 8px; }
-.speed input { width: 120px; accent-color: var(--bc-estrella); }
-.speed output, .zoom-label { color: var(--bc-blanco); font-variant-numeric: tabular-nums; font-size: var(--bc-fs-sm); min-width: 3.2em; }
-.zoom-label { text-align: center; min-width: 2.4em; }
+/* Speed sits on the transport row and takes what is left of it, like the bar of an audio player */
+.speed { flex: 1 1 150px; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: var(--bc-fs-sm);
+  color: var(--bc-muted); }
+.speed input { flex: 1; min-width: 60px; max-width: 200px; min-height: 44px; margin: 0; accent-color: var(--bc-estrella); }
+.speed output, .zoom-label { color: var(--bc-blanco); font-variant-numeric: tabular-nums; font-size: var(--bc-fs-sm); }
+.speed output { flex: none; min-width: 3.4em; text-align: right; }
+.zoom-label { text-align: center; min-width: 2.2em; }
+@media (max-width: 760px) {
+  /* The slider says what it is next to the transport buttons; its name stays for screen readers */
+  .speed-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .speed { flex-basis: 110px; }
+  .speed input { max-width: none; }
+  /* Tighter, so the difference map and the zoom group share the second row on a 390 px phone */
+  .controls { column-gap: var(--bc-sp-xs); }
+  .diff-toggle { padding: 0 12px; }
+  .zoom-label { min-width: 2em; }
+}
+@media (max-width: 379px) {
+  /* Very narrow phones: transport centred on its own row, the speed bar stretched under it */
+  .controls { justify-content: center; }
+  .transport { flex: 1 0 100%; justify-content: center; }
+  .speed { flex: 1 0 100%; }
+  .zoom-group { margin-left: 0; }
+}
 
 .diff-toggle { min-height: 38px; padding: 0 14px; font-size: var(--bc-fs-xs); border-radius: var(--bc-radius-pill);
   cursor: pointer; border: 1px solid var(--bc-border); background: transparent; color: var(--bc-texto);
