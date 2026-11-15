@@ -65,11 +65,11 @@
     <div id="search-body">
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
       <form id="search-form" class="journey-form" novalidate>
-        <div class="field field-name">
+        <div class="field field-object">
           <label for="object">Test object</label>
           <span class="select">
             <select id="object" name="object" aria-describedby="object-err">
-              <option value="">Choose one of the five</option>
+              <option value="">Choose one</option>
               <option value="barnard">Barnard's Star</option>
               <option value="epsindib">Epsilon Indi B</option>
               <option value="wise0855">WISE 0855−0714</option>
@@ -79,12 +79,17 @@
           </span>
         </div>
         <span class="journey-or" aria-hidden="true">or</span>
+        <div class="field field-name">
+          <label for="name">Object name</label>
+          <input id="name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false"
+                 enterkeyhint="go" placeholder="Vega, M31" aria-describedby="name-err">
+        </div>
         <div class="field">
           <label for="ra">RA</label>
           <input id="ra" name="ra" inputmode="decimal" autocomplete="off"
                  placeholder="269.4485 or 17h57m48.5s" aria-describedby="ra-err">
         </div>
-        <div class="field">
+        <div class="field field-dec">
           <label for="dec">Dec</label>
           <input id="dec" name="dec" inputmode="decimal" autocomplete="off"
                  placeholder="+4.7394 or +04°44′22″" aria-describedby="dec-err">
@@ -92,6 +97,7 @@
         <button class="btn btn-primary journey-go" type="submit">Go there</button>
       </form>
       <p id="object-err" class="field-error" hidden></p>
+      <p id="name-err" class="field-error" hidden></p>
       <p id="ra-err" class="field-error" hidden></p>
       <p id="dec-err" class="field-error" hidden></p>
       <p id="search-msg" class="search-msg" role="status" hidden></p>
@@ -245,7 +251,7 @@
         14 May 2026.</p>
       <p>Visible sky: NASA/Goddard Space Flight Center Scientific Visualization Studio, "Deep Star
         Maps 2020". Gaia DR2: ESA/Gaia/DPAC.</p>
-      <p>Astrometry: ESA Gaia DR3, and SIMBAD (CDS) through its mirror at Harvard.</p>
+      <p>Astrometry: ESA Gaia DR3. Object names and their positions: SIMBAD (CDS), through its mirror at Harvard.</p>
       <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0 · Mockup.</p>
     </div>
   </dialog>

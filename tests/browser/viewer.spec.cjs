@@ -135,3 +135,74 @@ test("explicit local API use distinguishes a pending request, empty data and ups
   await searchCoordinates(page);
   await expect(page.locator("#modal-empty-msg")).toContainText("The SPHEREx frames could not be loaded");
 });
+
+// Name lookup. The page asks SIMBAD through Sesame at Harvard; here its answers are canned, so the
+// suite stays offline. The XML has the fields the page reads, as Sesame returned them for Vega.
+const sesame = "https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/**";
+const sesameAnswer = (body) => (route) => route.fulfill({
+  contentType: "text/xml",
+  body: `<?xml version="1.0" encoding="UTF-8"?><Sesame><Target option="S">${body}</Target></Sesame>`,
+});
+const vega = `<name>Vega</name><Resolver name="Sc=Simbad (CDS, via client/server)">
+  <jradeg>279.23473479</jradeg><jdedeg>38.78368896</jdedeg>
+  <pm><pmRA>200.94</pmRA><pmDE>286.23</pmDE></pm><oname>* alf Lyr</oname></Resolver>`;
+
+async function searchName(page, name) {
+  await expect(page.locator("#search-body")).toBeVisible();
+  await page.locator("#name").fill(name);
+  await page.locator("#search-form button[type=submit]").click();
+}
+
+test("the name of a test object opens its benchmark without asking the name service", async ({ page }) => {
+  const requests = await serve(page, publicOrigin, staged);
+  await searchName(page, "barnard's star");
+  await expect(page.locator("#viewer-modal")).toBeVisible();
+  await expect(page.locator("#modal-title")).toHaveText("Barnard's Star");
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(page.locator("select#object")).toHaveValue("barnard");
+  expect(requests.some((url) => url.includes("nph-sesame"))).toBeFalsy();
+});
+
+test("any other name is looked up in SIMBAD and the sky travels to where the object is today", async ({ page }) => {
+  const requests = await serve(page, publicOrigin, staged);
+  await page.route(sesame, sesameAnswer(vega));
+  await page.locator("select#object").selectOption("barnard");
+  await searchName(page, "Vega");
+  await expect(page.locator("#viewer-modal")).toBeVisible();
+  await expect(page.locator("#modal-title")).toHaveText("Vega");
+  await expect(page.locator("#modal-coords")).toContainText("SIMBAD: * alf Lyr");
+  await expect(page.locator("#modal-empty-msg")).toContainText("Only the five prepared benchmark targets");
+  // Typing a name drops the chosen test object, and the trip writes the position found.
+  await expect(page.locator("select#object")).toHaveValue("");
+  await expect(page.locator("#ra")).toHaveValue(/^279\.23/);
+  await expect(page.locator("#dec")).toHaveValue(/^\+38\.78/);
+  expect(requests).toContain("https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/S?Vega");
+  expect(requests.every((url) => !url.startsWith("http:"))).toBeTruthy();
+});
+
+test("an unknown name and a silent name service are explained next to the field", async ({ page }) => {
+  await serve(page, publicOrigin, staged);
+  await page.route(sesame, sesameAnswer("<name>Qwertyuiopzz</name><INFO> *** Nothing found *** </INFO>"));
+  await searchName(page, "Qwertyuiopzz");
+  await expect(page.locator("#name-err")).toContainText("did not find “Qwertyuiopzz”");
+  await expect(page.locator("#name")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#viewer-modal")).toBeHidden();
+
+  await page.unroute(sesame); // back to the suite's default: every other origin is unreachable
+  await searchName(page, "Vega");
+  await expect(page.locator("#name-err")).toContainText("The name service (SIMBAD at Harvard) is not responding");
+  await expect(page.locator("#viewer-modal")).toBeHidden();
+});
+
+test("typing a position clears the name, and choosing a test object clears both", async ({ page }) => {
+  await serve(page, publicOrigin, staged);
+  await expect(page.locator("#search-body")).toBeVisible();
+  await page.locator("#name").fill("Vega");
+  await page.locator("#ra").fill("10");
+  await expect(page.locator("#name")).toHaveValue("");
+  await page.locator("#name").fill("Vega");
+  await expect(page.locator("#ra")).toHaveValue("");
+  await page.locator("select#object").selectOption("rdra");
+  await expect(page.locator("#name")).toHaveValue("");
+  await expect(page.locator("#ra")).toHaveValue(/^248\.1/);
+});
