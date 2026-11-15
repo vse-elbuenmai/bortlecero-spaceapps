@@ -29,12 +29,13 @@
   <header class="site-header sky-header">
     <div class="header-row">
       <div class="brand">
-        <span class="brand-name"><a href="./" style="text-decoration: none;">BORTLE CERO</a></span>
+        <span class="brand-name"><a href="#" style="text-decoration: none;">BORTLE CERO</a></span>
         <span class="brand-sep" aria-hidden="true"></span>
         <span class="brand-project">Project name TBD</span>
       </div>
       <div class="header-actions">
         <button id="credits-open" class="link-btn" type="button">Credits</button>
+        <button id="tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help" title="Tour &amp; Help">?</button>
       </div>
     </div>
   </header>
@@ -125,6 +126,7 @@
           <button type="button" role="radio" aria-checked="true" data-mode="basic">Basic</button>
           <button type="button" role="radio" aria-checked="false" data-mode="advanced">Advanced</button>
         </div>
+        <button id="modal-tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help" title="Tour &amp; Help" data-tip="Guide">?</button>
         <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky" data-tip="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
       </div>
     </div>
@@ -352,6 +354,22 @@
         Maps 2020". Gaia DR2: ESA/Gaia/DPAC.</p>
       <p>Astrometry: ESA Gaia DR3. Object names and their positions: SIMBAD (CDS), through its mirror at Harvard.</p>
       <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0.</p>
+    </div>
+  </dialog>
+
+  <dialog id="tour-dialog" class="tour-dialog" aria-labelledby="tour-title">
+    <div id="tour-spotlight" class="tour-spotlight"></div>
+    <div id="tour-card" class="tour-card glass" role="region" aria-labelledby="tour-title">
+      <div class="tour-card-head">
+        <span id="tour-counter" class="eyebrow tour-counter">1 / 5 · GUIDED TOUR</span>
+        <button id="tour-skip" class="tour-skip-btn" type="button" aria-label="Skip tour">Skip tour ×</button>
+      </div>
+      <h3 id="tour-title" class="tour-title"></h3>
+      <p id="tour-desc" class="tour-desc"></p>
+      <div class="tour-card-foot">
+        <button id="tour-prev" class="tour-btn-prev" type="button">Previous</button>
+        <button id="tour-next" class="tour-btn-next" type="button">Next</button>
+      </div>
     </div>
   </dialog>
 

@@ -949,6 +949,297 @@
   window.loadTarget = loadTarget;
   window.viewerState = state;
 
+  // ---------- Interactive Guided Tour (DESIGN.md / Noir Cósmico v2) ----------
+  const SKY_TOUR_STEPS = [
+    {
+      target: "#sky-canvas",
+      isCanvas: true,
+      title: "Explore the Sky in 3D",
+      desc: "The whole sky seen from inside. Click and drag with mouse or touch to turn the celestial sphere in any direction (360°). Scroll or pinch to zoom into constellations and deep space.",
+    },
+    {
+      target: ".sky-layers",
+      title: "Wavelength & Spectral Layers",
+      desc: "Switch the celestial sphere between Visible optical light (NASA SVS) and SPHEREx infrared all-sky surveys (4.77 µm and false-colour). The live readout displays the exact celestial coordinates (RA/Dec) where you are looking.",
+    },
+    {
+      target: ".sky-tools",
+      title: "Camera & Rotation Controls",
+      desc: "Convenient controls to zoom in (+), zoom out (-), pause or resume background sky rotation, and instantly reset your camera back to the full celestial view.",
+    },
+    {
+      target: "#search",
+      title: "Target Search & Discovery",
+      desc: "The core launchpad: select one of the 5 NASA benchmark objects (e.g., Barnard's Star or WISE 0855), search any star or galaxy via SIMBAD, or input custom RA/Dec. Click 'Go there' to travel across the sky and open the SPHEREx Blink Viewer.",
+    },
+    {
+      target: ".header-actions",
+      title: "Attribution & Tour Help",
+      desc: "Review mission credits and scientific data citations (NASA IRSA, Gaia DR3, SIMBAD), or click the '?' button anytime to replay this interactive guide.",
+    },
+  ];
+
+  const VIEWER_TOUR_STEPS = [
+    {
+      target: "#stage",
+      title: "SPHEREx Multi-Epoch Stage",
+      desc: "Reprojected, north-up SPHEREx image cutouts across observation epochs. Overlays highlight Gaia DR3 predicted position (teal dashed circle), measured centroid (amber cross), and trajectory over time.",
+    },
+    {
+      target: ".controls",
+      title: "Playback & Difference Map",
+      desc: "Play or pause the blink sequence, step through epochs, adjust playback speed, and toggle Difference Map (ΔI) to immediately expose fast-moving or variable infrared sources.",
+    },
+    {
+      target: ".band-row",
+      title: "Spectral Band Filter",
+      desc: "Filter observations across SPHEREx's 6 spectral detector bands (0.75 – 5.0 µm) to inspect identical wavelengths between different visits.",
+    },
+    {
+      target: ".timeline-wrap",
+      title: "Observation Timeline",
+      desc: "Interactive timeline tracking each observation visit and UTC date. Click any dot to directly jump to a specific observation epoch.",
+    },
+    {
+      target: ".panel",
+      title: "Astrometry & Scientific Data",
+      desc: "Detailed object metadata, proper motion displacement, astrometric offset against Gaia DR3, and scientific flags (e.g. saturated pixels or non-linear regimes).",
+    },
+  ];
+
+  let currentTourSteps = [];
+  let currentTourIndex = 0;
+  let isTourActive = false;
+
+  function initTour() {
+    const tourBtn = $("tour-open");
+    const modalTourBtn = $("modal-tour-open");
+    const dialog = $("tour-dialog");
+    const card = $("tour-card");
+    const skipBtn = $("tour-skip");
+    const prevBtn = $("tour-prev");
+    const nextBtn = $("tour-next");
+    let lastTriggerBtn = null;
+
+    if (!dialog || !card) return;
+
+    function startTour(triggerBtn) {
+      lastTriggerBtn = triggerBtn || tourBtn;
+      const modal = $("viewer-modal");
+      const isModalOpen = modal && modal.open && !modal.hidden;
+      currentTourSteps = isModalOpen ? VIEWER_TOUR_STEPS : SKY_TOUR_STEPS;
+      currentTourIndex = 0;
+      isTourActive = true;
+
+      // If search panel is collapsed in sky mode, expand it so it's visible
+      const journey = $("search");
+      const searchBody = $("search-body");
+      if (!isModalOpen && journey && searchBody && searchBody.hidden) {
+        searchBody.hidden = false;
+        journey.classList.remove("is-collapsed");
+        const toggle = $("search-toggle");
+        if (toggle) {
+          toggle.textContent = "Hide";
+          toggle.setAttribute("aria-expanded", "true");
+        }
+      }
+
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+      renderTourStep();
+    }
+
+    function closeTour() {
+      isTourActive = false;
+      if (dialog && dialog.open) {
+        dialog.close();
+      }
+      if (lastTriggerBtn && typeof lastTriggerBtn.focus === "function") {
+        lastTriggerBtn.focus();
+      }
+    }
+
+    function renderTourStep() {
+      if (currentTourIndex < 0 || currentTourIndex >= currentTourSteps.length) {
+        closeTour();
+        return;
+      }
+
+      const step = currentTourSteps[currentTourIndex];
+      const counter = $("tour-counter");
+      const title = $("tour-title");
+      const desc = $("tour-desc");
+
+      if (counter) counter.textContent = `${currentTourIndex + 1} / ${currentTourSteps.length} · GUIDED TOUR`;
+      if (title) title.textContent = step.title;
+      if (desc) desc.textContent = step.desc;
+
+      if (prevBtn) prevBtn.disabled = currentTourIndex === 0;
+      if (nextBtn) {
+        nextBtn.textContent = currentTourIndex === currentTourSteps.length - 1 ? "Finish" : "Next";
+        nextBtn.focus();
+      }
+
+      updateSpotlightAndCard(step);
+    }
+
+    function updateSpotlightAndCard(step) {
+      const spotlight = $("tour-spotlight");
+      if (!spotlight || !card) return;
+
+      const targetEl = document.querySelector(step.target);
+      if (targetEl && targetEl.scrollIntoView && !step.isCanvas) {
+        targetEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+
+      let top, left, width, height, radius = "16px";
+
+      if (step.isCanvas) {
+        // Full screen selection for 3D Sky canvas: no awkward inner box!
+        top = 0;
+        left = 0;
+        width = window.innerWidth;
+        height = window.innerHeight;
+        radius = "0px";
+        spotlight.style.border = "2px solid rgba(184, 212, 240, 0.45)";
+      } else if (!targetEl) {
+        const w = Math.min(window.innerWidth * 0.9, 640);
+        const h = 200;
+        top = Math.round((window.innerHeight - h) / 2);
+        left = Math.round((window.innerWidth - w) / 2);
+        width = w;
+        height = h;
+        radius = "16px";
+        spotlight.style.border = "1.5px solid rgba(184, 212, 240, 0.75)";
+      } else {
+        const rect = targetEl.getBoundingClientRect();
+        const pad = 8;
+        top = Math.max(4, Math.round(rect.top - pad));
+        left = Math.max(4, Math.round(rect.left - pad));
+        width = Math.round(rect.width + pad * 2);
+        height = Math.round(rect.height + pad * 2);
+
+        if (targetEl.classList.contains("tour-help-btn") || targetEl.classList.contains("icon-btn")) {
+          radius = "50%";
+        } else {
+          radius = "16px";
+        }
+        spotlight.style.border = "1.5px solid rgba(184, 212, 240, 0.75)";
+      }
+
+      spotlight.style.top = `${top}px`;
+      spotlight.style.left = `${left}px`;
+      spotlight.style.width = `${width}px`;
+      spotlight.style.height = `${height}px`;
+      spotlight.style.borderRadius = radius;
+
+      // Position card
+      const cardW = Math.min(380, window.innerWidth - 32);
+      const cardH = card.offsetHeight || 210;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      let cardTop, cardLeft;
+
+      if (step.isCanvas) {
+        cardTop = 80; // Top center below header
+        cardLeft = Math.round((vw - cardW) / 2);
+      } else if (top + height + cardH + 18 <= vh) {
+        // Fits below target
+        cardTop = top + height + 16;
+        cardLeft = left + (width - cardW) / 2;
+      } else if (top - cardH - 18 >= 0) {
+        // Fits above target
+        cardTop = top - cardH - 16;
+        cardLeft = left + (width - cardW) / 2;
+      } else if (left - cardW - 18 >= 0) {
+        // Fits to the left
+        cardLeft = left - cardW - 16;
+        cardTop = top;
+      } else {
+        // Fits to the right
+        cardLeft = left + width + 16;
+        cardTop = top;
+      }
+
+      // Clamping within viewport
+      cardLeft = Math.max(16, Math.min(vw - cardW - 16, cardLeft));
+      cardTop = Math.max(16, Math.min(vh - cardH - 16, cardTop));
+
+      card.style.top = `${cardTop}px`;
+      card.style.left = `${cardLeft}px`;
+      card.style.width = `${cardW}px`;
+    }
+
+    if (tourBtn) {
+      tourBtn.addEventListener("click", () => {
+        if (isTourActive) closeTour();
+        else startTour(tourBtn);
+      });
+    }
+
+    if (modalTourBtn) {
+      modalTourBtn.addEventListener("click", () => {
+        if (isTourActive) closeTour();
+        else startTour(modalTourBtn);
+      });
+    }
+
+    if (skipBtn) skipBtn.addEventListener("click", closeTour);
+    if (prevBtn) prevBtn.addEventListener("click", () => {
+      if (currentTourIndex > 0) {
+        currentTourIndex--;
+        renderTourStep();
+      }
+    });
+    if (nextBtn) nextBtn.addEventListener("click", () => {
+      if (currentTourIndex < currentTourSteps.length - 1) {
+        currentTourIndex++;
+        renderTourStep();
+      } else {
+        closeTour();
+      }
+    });
+
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) closeTour();
+    });
+
+    dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      closeTour();
+    });
+
+    window.addEventListener("resize", () => {
+      if (isTourActive) {
+        updateSpotlightAndCard(currentTourSteps[currentTourIndex]);
+      }
+    });
+
+    dialog.addEventListener("keydown", (e) => {
+      if (!isTourActive) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeTour();
+      } else if (e.key === "ArrowRight") {
+        if (currentTourIndex < currentTourSteps.length - 1) {
+          e.preventDefault();
+          currentTourIndex++;
+          renderTourStep();
+        }
+      } else if (e.key === "ArrowLeft") {
+        if (currentTourIndex > 0) {
+          e.preventDefault();
+          currentTourIndex--;
+          renderTourStep();
+        }
+      }
+    });
+  }
+
+  initTour();
+
   // The legacy Aladin page opens its inline Barnard viewer without a target event.
   if (!$("viewer-modal")) loadTarget("barnards_star");
 })();
