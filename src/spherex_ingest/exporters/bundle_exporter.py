@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import itertools
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -75,7 +76,9 @@ class FrontendBundleExporter:
             frames_by_band_dict[str(frame.detector_band)].append(dto)
 
         difference_maps = self._build_difference_maps(sorted_frames)
-        warnings = self._generate_scientific_warnings(target, sorted_frames)
+        warnings = self._generate_scientific_warnings(
+            target, sorted_frames, difference_maps=difference_maps
+        )
         available_bands = sorted({f.detector_band for f in sorted_frames})
 
         ny, nx = grid_shape
@@ -251,7 +254,12 @@ class FrontendBundleExporter:
         self,
         frames: Sequence[ProcessedBlinkFrame],
     ) -> list[DifferenceMapDTO]:
-        """Compute I(t_late) - I(t_early) difference maps within each spectral band."""
+        """Compute I(t_late) - I(t_early) difference maps within each spectral band.
+
+        Selects the frame pair separated by at least min_diff_baseline_days that
+        minimizes the wavelength variation |lambda_late - lambda_early| across the
+        Linear Variable Filter (LVF).
+        """
         by_band: dict[int, list[ProcessedBlinkFrame]] = defaultdict(list)
         for frame in frames:
             by_band[frame.detector_band].append(frame)
@@ -261,11 +269,24 @@ class FrontendBundleExporter:
             band_frames = sorted(by_band[band], key=lambda f: f.mjd_avg)
             if len(band_frames) < 2:
                 continue
-            early = band_frames[0]
-            late = band_frames[-1]
-            baseline_days = float(late.mjd_avg - early.mjd_avg)
-            if baseline_days < self._min_diff_baseline_days:
+
+            candidate_pairs = [
+                (f1, f2)
+                for f1, f2 in itertools.combinations(band_frames, 2)
+                if (f2.mjd_avg - f1.mjd_avg) >= self._min_diff_baseline_days
+            ]
+            if not candidate_pairs:
                 continue
+
+            early, late = min(
+                candidate_pairs,
+                key=lambda pair: (
+                    round(abs(pair[1].wavelength_um - pair[0].wavelength_um), 5),
+                    -abs(pair[1].mjd_avg - pair[0].mjd_avg),
+                ),
+            )
+
+            baseline_days = float(late.mjd_avg - early.mjd_avg)
 
             arr_early = (
                 early.repaired_image_mjy_sr
@@ -280,6 +301,11 @@ class FrontendBundleExporter:
             diff_arr = arr_late - arr_early
             png_b64 = self._render_diverging_png_base64(diff_arr)
 
+            early_lam = round(float(early.wavelength_um), 4)
+            late_lam = round(float(late.wavelength_um), 4)
+            delta_lam = round(float(abs(late.wavelength_um - early.wavelength_um)), 4)
+            mean_lam = round(0.5 * (early.wavelength_um + late.wavelength_um), 4)
+
             diffs.append(
                 DifferenceMapDTO(
                     detector_band=band,
@@ -288,9 +314,10 @@ class FrontendBundleExporter:
                     mjd_early=early.mjd_avg,
                     mjd_late=late.mjd_avg,
                     baseline_days=round(baseline_days, 4),
-                    mean_wavelength_um=round(
-                        0.5 * (early.wavelength_um + late.wavelength_um), 4
-                    ),
+                    mean_wavelength_um=mean_lam,
+                    early_wavelength_um=early_lam,
+                    late_wavelength_um=late_lam,
+                    delta_wavelength_um=delta_lam,
                     diff_matrix_mjy_sr=self._matrix_to_nullable_list(diff_arr),
                     png_base64=png_b64,
                 )
@@ -368,6 +395,7 @@ class FrontendBundleExporter:
     def _generate_scientific_warnings(
         target: TargetSpec,
         frames: Sequence[ProcessedBlinkFrame],
+        difference_maps: Sequence[DifferenceMapDTO] = (),
     ) -> list[str]:
         """Generate context-aware scientific warnings for the frontend UI."""
         warnings: list[str] = []
@@ -388,6 +416,15 @@ class FrontendBundleExporter:
                 "SPHEREx Linear Variable Filters sample a different wavelength per exposure. "
                 "Compare brightness strictly within the same detector band to distinguish true "
                 "variability from the star's spectral energy distribution (SED)."
+            )
+
+        large_delta_diffs = [d for d in difference_maps if d.delta_wavelength_um > 0.05]
+        if large_delta_diffs:
+            bands_str = ", ".join(str(d.detector_band) for d in large_delta_diffs)
+            warnings.append(
+                f"Wavelength difference delta_lambda > 0.05 um detected in difference maps "
+                f"for band(s) {bands_str}. Residual flux differences may include spectral energy "
+                "distribution (SED) variation across the Linear Variable Filter."
             )
 
         sat_frames = [f for f in frames if f.is_saturated_core or np.any(f.saturation_mask)]

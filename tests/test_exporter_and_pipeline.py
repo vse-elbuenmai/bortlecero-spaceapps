@@ -96,6 +96,9 @@ def test_end_to_end_pipeline_and_bundle_exporter(
     assert len(bundle.difference_maps) == 1
     assert bundle.difference_maps[0].detector_band == 2
     assert bundle.difference_maps[0].baseline_days == 185.0
+    assert bundle.difference_maps[0].early_wavelength_um > 0.0
+    assert bundle.difference_maps[0].late_wavelength_um > 0.0
+    assert bundle.difference_maps[0].delta_wavelength_um >= 0.0
     assert bundle.difference_maps[0].png_base64 is not None
     assert bundle.difference_maps[0].png_base64.startswith("data:image/png;base64,")
 
@@ -245,4 +248,70 @@ def test_bundle_exporter_north_up_orientation_and_coordinate_sync() -> None:
     # Bottom row should show negative color (blue: b > 200)
     assert int(diff_arr[0, 10, 0]) > 150
     assert int(diff_arr[ny - 1, 10, 2]) > 150
+
+
+def test_difference_map_wavelength_optimization_and_warning() -> None:
+    """Verify difference maps pair frames minimizing |delta_lambda| and warn if > 0.05 um."""
+    target = BENCHMARK_TARGETS["barnards_star"]
+    exporter = FrontendBundleExporter(min_diff_baseline_days=5.0, upscale_factor=1)
+
+    dummy_shape = (11, 11)
+    dummy_img = np.ones(dummy_shape, dtype=np.float32)
+    dummy_var = np.full(dummy_shape, 0.1, dtype=np.float32)
+    dummy_mask = np.zeros(dummy_shape, dtype=bool)
+
+    def make_frame(fid: str, mjd: float, lam: float) -> ProcessedBlinkFrame:
+        return ProcessedBlinkFrame(
+            frame_id=fid,
+            collection="spherex_dr1",
+            detector_band=3,
+            mjd_avg=mjd,
+            obs_time_iso="2025-01-01T00:00:00",
+            sps_epa_deg=0.0,
+            wavelength_um=lam,
+            bandwidth_um=0.04,
+            reprojected_image_mjy_sr=dummy_img,
+            reprojected_variance=dummy_var,
+            reprojected_zodi_mjy_sr=dummy_img,
+            saturation_mask=dummy_mask,
+            bad_pixel_mask=dummy_mask,
+            footprint_mask=~dummy_mask,
+            predicted_ra_deg=target.ra_deg,
+            predicted_dec_deg=target.dec_deg,
+            predicted_pixel_x=5.0,
+            predicted_pixel_y=5.0,
+        )
+
+    f1 = make_frame("frame_1", 60000.0, 2.10)
+    f2 = make_frame("frame_2", 60030.0, 2.25)
+    f3 = make_frame("frame_3", 60060.0, 2.12)
+
+    # Case A: 3 frames. Minimal delta_lambda pair is (f1, f3) with delta = 0.02 um
+    diffs_optimized = exporter._build_difference_maps([f1, f2, f3])
+    assert len(diffs_optimized) == 1
+    diff = diffs_optimized[0]
+    assert diff.frame_id_early == "frame_1"
+    assert diff.frame_id_late == "frame_3"
+    assert diff.early_wavelength_um == 2.10
+    assert diff.late_wavelength_um == 2.12
+    assert diff.delta_wavelength_um == 0.02
+    assert diff.baseline_days == 60.0
+
+    warnings_a = exporter._generate_scientific_warnings(
+        target, [f1, f2, f3], difference_maps=diffs_optimized
+    )
+    assert not any("delta_lambda > 0.05" in w for w in warnings_a)
+
+    # Case B: Only f1 and f2. delta_lambda = 0.15 um > 0.05 um
+    diffs_large_delta = exporter._build_difference_maps([f1, f2])
+    assert len(diffs_large_delta) == 1
+    diff_large = diffs_large_delta[0]
+    assert diff_large.delta_wavelength_um == 0.15
+    assert diff_large.early_wavelength_um == 2.10
+    assert diff_large.late_wavelength_um == 2.25
+
+    warnings_b = exporter._generate_scientific_warnings(
+        target, [f1, f2], difference_maps=diffs_large_delta
+    )
+    assert any("delta_lambda > 0.05 um" in w for w in warnings_b)
 

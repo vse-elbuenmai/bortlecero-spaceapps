@@ -39,21 +39,32 @@ class ZodiAndFlagCleaner:
 
         overflow_flagged = (flags & SPHERExFlagBits.saturation_mask()) != 0
         finite_mask = np.isfinite(clean_image)
+        is_transient = (flags & (SPHERExFlagBits.TRANSIENT | SPHERExFlagBits.SNOWBALL)) != 0
+
+        has_saturation = bool(np.any(overflow_flagged) or np.any(~finite_mask))
+
         if np.any(finite_mask):
             p95 = float(np.nanpercentile(clean_image[finite_mask], 95.0))
             med = float(np.nanmedian(clean_image[finite_mask]))
             mad = float(np.nanmedian(np.abs(clean_image[finite_mask] - med)))
             high_flux_thresh = max(p95, med + 10.0 * max(mad * 1.4826, 1e-3))
-            high_flux_seed = overflow_flagged | (finite_mask & (clean_image >= high_flux_thresh))
+            high_flux_seed = overflow_flagged | (
+                finite_mask & (~is_transient) & (clean_image >= high_flux_thresh)
+            )
         else:
             high_flux_seed = overflow_flagged
 
         dilated_halo = binary_dilation(high_flux_seed, iterations=2)
         nan_core_adjacent = (~finite_mask) & dilated_halo
-        saturation_mask = overflow_flagged | nan_core_adjacent
+
+        if has_saturation:
+            saturation_mask = overflow_flagged | nan_core_adjacent | dilated_halo
+        else:
+            saturation_mask = overflow_flagged | nan_core_adjacent
 
         raw_bad_mask = (flags & SPHERExFlagBits.bad_artifact_mask()) != 0
-        bad_pixel_mask = raw_bad_mask & (~saturation_mask)
+        protected_pixels = saturation_mask | (dilated_halo & (~is_transient))
+        bad_pixel_mask = raw_bad_mask & (~protected_pixels)
 
         residual_bg = 0.0
         valid_bg_mask = finite_mask & (~saturation_mask) & (~bad_pixel_mask)

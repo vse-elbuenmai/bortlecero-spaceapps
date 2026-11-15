@@ -21,15 +21,31 @@ class SPHERExFlagBits(IntFlag):
     TRANSIENT = 1 << 0          # Cosmic ray / energetic particle jump detected on board
     OVERFLOW = 1 << 1           # Pixel reached saturation / overflow threshold in SUR
     SUR_ERROR = 1 << 2          # Sample-up-the-ramp processing error
-    PHANTOM_ERROR = 1 << 4      # Reference/phantom pixel drift correction warning
     NONFUNC = 1 << 6            # Permanently nonfunctional / dead pixel
     DICHROIC = 1 << 7           # >= 50% flux attenuation from dichroic beam splitter edge
     MISSING_DATA = 1 << 9       # Telemetry packet missing in exposure
-    HOT_PIXEL = 1 << 10         # Abnormally high dark current pixel
-    COLD_PIXEL = 1 << 11        # Abnormally low responsivity pixel
-    OUTLIER = 1 << 14           # Ground pipeline sigma-clipped transient outlier
-    PERSISTENCE = 1 << 15       # Significant persistent charge from prior bright exposure
-    SOURCE_MASK = 1 << 19       # Pixel predicted to contain flux from reference catalog source
+    HOT = 1 << 10               # Abnormally high dark current pixel
+    COLD = 1 << 11              # Abnormally low responsivity pixel
+    FULLSAMPLE = 1 << 12        # Full sample history available (informational)
+    PHANMISS = 1 << 14          # Phantom drift correction not applied
+    NONLINEAR = 1 << 15         # Nonlinear regime (saturation warning)
+    PERSIST = 1 << 17           # Significant persistent charge from prior bright exposure
+    OUTLIER = 1 << 19           # Ground pipeline sigma-clipped transient outlier
+    CROSSTALK = 1 << 20         # Electronic crosstalk
+    SOURCE = 1 << 21            # Reference catalogue source (informational)
+    GHOST = 1 << 22             # Internal optical ghost
+    GHOST_FPA = 1 << 23         # Inter-detector ghost
+    GHOST_EXT = 1 << 24         # Out-of-FOV optical ghost
+    STREAK = 1 << 25            # Satellite / asteroid streak
+    BLOOM = 1 << 26             # Saturated star charge bloom
+    SNOWBALL = 1 << 27          # Large energetic cosmic ray hit
+    HALO = 1 << 28              # Transient / bloom halo
+
+    # Compatibility aliases
+    HOT_PIXEL = HOT
+    COLD_PIXEL = COLD
+    PERSISTENCE = PERSIST
+    SOURCE_MASK = SOURCE
 
     @classmethod
     def bad_artifact_mask(cls) -> int:
@@ -39,16 +55,17 @@ class SPHERExFlagBits(IntFlag):
             | cls.SUR_ERROR
             | cls.NONFUNC
             | cls.MISSING_DATA
-            | cls.HOT_PIXEL
-            | cls.COLD_PIXEL
+            | cls.HOT
+            | cls.COLD
+            | cls.PERSIST
             | cls.OUTLIER
-            | cls.PERSISTENCE
+            | cls.SNOWBALL
         )
 
     @classmethod
     def saturation_mask(cls) -> int:
         """Bitmask indicating detector saturation / nonlinear overflow."""
-        return int(cls.OVERFLOW)
+        return int(cls.OVERFLOW | cls.NONLINEAR | cls.BLOOM)
 
 
 class TargetSpec(BaseModel):
@@ -213,6 +230,9 @@ class DifferenceMapDTO(BaseModel):
     mjd_late: float
     baseline_days: float
     mean_wavelength_um: float
+    early_wavelength_um: float = 0.0
+    late_wavelength_um: float = 0.0
+    delta_wavelength_um: float = 0.0
     diff_matrix_mjy_sr: list[list[float | None]]
     png_base64: str | None = None
 

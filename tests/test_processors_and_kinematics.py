@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 
 import astropy.units as u
@@ -10,7 +11,7 @@ import pytest
 from astropy.coordinates import SkyCoord
 from photutils.centroids import centroid_com
 
-from spherex_ingest.domain.models import RawCutoutFrame, TargetSpec
+from spherex_ingest.domain.models import RawCutoutFrame, SPHERExFlagBits, TargetSpec
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.processors.cleaners import ZodiAndFlagCleaner
 from spherex_ingest.processors.kinematics import KinematicsAndPhotometryAnalyzer
@@ -277,3 +278,130 @@ def test_kinematics_measures_subpixel_centroid_and_aperture_flux(
     assert meas.aperture_flux_ujy is not None and meas.aperture_flux_ujy > 0.0
     assert meas.snr is not None and meas.snr > 10.0
     assert not meas.is_saturated_core
+
+
+def test_zodi_and_flag_cleaner_protects_stellar_halo_from_cosmic_ray_replacement(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+) -> None:
+    """Verify bright star halo pixels with OUTLIER/BLOOM are not wiped as cosmic rays."""
+    raw = raw_cutout_factory(
+        frame_id="halo_protection_test",
+        zodi_level_mjy_sr=50.0,
+        peak_flux_mjy_sr=500.0,
+        saturate_core=True,
+        transient_pixel=(3, 3),
+    )
+
+    # Inject OUTLIER / BLOOM flags into the stellar halo around the core (core is at ~16, 16)
+    # The halo pixels have legitimate bright stellar flux (~100-300 mJy/sr)
+    halo_coords = [(15, 14), (16, 14), (17, 14), (14, 15), (18, 15)]
+    flags_copy = np.array(raw.flags_bitmask, copy=True)
+    img_copy = np.array(raw.image_mjy_sr, copy=True)
+    zodi_copy = np.array(raw.zodi_mjy_sr, copy=True)
+
+    for hy, hx in halo_coords:
+        flags_copy[hy, hx] |= int(SPHERExFlagBits.OUTLIER)
+
+    raw_modified = dataclasses.replace(raw, flags_bitmask=flags_copy)
+
+    cleaner = ZodiAndFlagCleaner(subtract_residual_bg=True)
+    result = cleaner.clean(raw_modified)
+
+    # 1. The genuine isolated cosmic ray at (3, 3) must be marked as bad pixel and interpolated
+    assert result.bad_pixel_mask[3, 3]
+    assert abs(result.clean_image_mjy_sr[3, 3]) < 15.0
+
+    # 2. Stellar halo pixels with OUTLIER must NOT be marked in bad_pixel_mask
+    for hy, hx in halo_coords:
+        assert not result.bad_pixel_mask[hy, hx], (
+            f"Halo pixel at ({hy}, {hx}) falsely marked as bad"
+        )
+        # Flux must be preserved (not replaced with local background)
+        expected_flux = img_copy[hy, hx] - zodi_copy[hy, hx] - result.residual_bg_mjy_sr
+        assert abs(result.clean_image_mjy_sr[hy, hx] - expected_flux) < 1e-3
+
+
+def test_kinematics_centroid_rejection_on_empty_and_distant_fields(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+) -> None:
+    """Verify that centroids are rejected (None) on empty noise fields and distant sources."""
+    eps_indi = BENCHMARK_TARGETS["epsilon_indi_b"]
+    cleaner = ZodiAndFlagCleaner(subtract_residual_bg=True)
+    analyzer = KinematicsAndPhotometryAnalyzer(detection_sigma=3.5)
+    reprojector = NorthUpCommonReprojector(default_pixel_scale_arcsec=6.15)
+
+    mjd_obs = 60850.0
+    pred_ra, pred_dec = analyzer.propagate_position(eps_indi, mjd_obs)
+
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        cutout_size_arcsec=180.0,
+    )
+
+    # Case 1: Empty field with zero stellar flux (noise only, SNR < 3.5 sigma)
+    raw_empty = raw_cutout_factory(
+        frame_id="empty_field",
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        star_ra_deg=pred_ra,
+        star_dec_deg=pred_dec,
+        mjd_avg=mjd_obs,
+        peak_flux_mjy_sr=0.0,
+        saturate_core=False,
+    )
+    reproj_empty = reprojector.reproject_frame(
+        cleaned=cleaner.clean(raw_empty),
+        input_wcs=raw_empty.spatial_wcs,
+        variance_mjy2_sr2=raw_empty.variance_mjy2_sr2,
+        zodi_mjy_sr=raw_empty.zodi_mjy_sr,
+        common_wcs=common_wcs,
+        shape_out=shape_out,
+    )
+    meas_empty = analyzer.measure_centroid_and_photometry(
+        target=eps_indi,
+        mjd=mjd_obs,
+        reprojected=reproj_empty,
+        common_wcs=common_wcs,
+    )
+    assert meas_empty.measured_centroid_x is None
+    assert meas_empty.measured_centroid_y is None
+    assert meas_empty.measured_ra_deg is None
+    assert meas_empty.measured_dec_deg is None
+    assert meas_empty.centroid_offset_arcsec is None
+
+    # Case 2: Field with a bright source shifted 3.5 px away from predicted coordinates
+    # (Exceeds maximum allowed radius of 2.0 px / 15.0 arcsec)
+    distant_ra = pred_ra + (3.5 * 6.15 / 3600.0) / np.cos(np.radians(pred_dec))
+    distant_dec = pred_dec + (3.5 * 6.15 / 3600.0)
+
+    raw_distant = raw_cutout_factory(
+        frame_id="distant_source_field",
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        star_ra_deg=distant_ra,
+        star_dec_deg=distant_dec,
+        mjd_avg=mjd_obs,
+        peak_flux_mjy_sr=300.0,
+        saturate_core=False,
+    )
+    reproj_distant = reprojector.reproject_frame(
+        cleaned=cleaner.clean(raw_distant),
+        input_wcs=raw_distant.spatial_wcs,
+        variance_mjy2_sr2=raw_distant.variance_mjy2_sr2,
+        zodi_mjy_sr=raw_distant.zodi_mjy_sr,
+        common_wcs=common_wcs,
+        shape_out=shape_out,
+    )
+    meas_distant = analyzer.measure_centroid_and_photometry(
+        target=eps_indi,
+        mjd=mjd_obs,
+        reprojected=reproj_distant,
+        common_wcs=common_wcs,
+    )
+    # Centroid must be rejected to prevent locking onto the distant source
+    assert meas_distant.measured_centroid_x is None
+    assert meas_distant.measured_centroid_y is None
+    assert meas_distant.measured_ra_deg is None
+    assert meas_distant.measured_dec_deg is None
+    assert meas_distant.centroid_offset_arcsec is None
