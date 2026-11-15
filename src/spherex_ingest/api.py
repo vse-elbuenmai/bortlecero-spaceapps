@@ -114,7 +114,8 @@ class HealthResponseDTO(BaseModel):
 def get_default_service() -> SPHERExBlinkIngestionService:
     """Return a singleton default SPHERExBlinkIngestionService instance."""
     cache_dir = Path(os.environ.get("SPHEREX_CACHE_DIR", ".cache/fits"))
-    return SPHERExBlinkIngestionService.create_default(cache_dir=cache_dir)
+    disk_cache = os.getenv("SPHEREX_IRSA_DISK_CACHE_ENABLED", "true").lower() == "true"
+    return SPHERExBlinkIngestionService.create_default(cache_dir=cache_dir if disk_cache else None)
 
 
 def get_output_dir() -> Path:

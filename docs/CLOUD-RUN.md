@@ -59,9 +59,12 @@ Use the CI-published image digest when available.
 
 The service starts with 1 vCPU, 1 GiB memory, concurrency 1, a 300-second request timeout, `run.googleapis.com/cpu-throttling: "false"` (so background async job worker threads are not CPU-throttled between poll requests), and zero to two replicas. The offline container smoke measured 157 MiB after serving the fixture. The memory limit leaves room for the 256 MiB scratch volume and the Python process. These are staging settings. Measure peak memory, scratch use, and latency with representative ingestion inputs before raising concurrency. The request timeout allows for the previously reported cold benchmark latency of up to 212 seconds ([issue #13](https://github.com/vse-elbuenmai/bortlecero-spaceapps/issues/13)).
 
-The API uses `/scratch/fits` for raw caches and `/scratch/output` for local bundles. The
-memory-backed volume is scoped to one instance and erased with the instance. The container
-includes no benchmark assets. The static viewer owns public benchmark delivery. Synchronous live
+The container sets `SPHEREX_IRSA_DISK_CACHE_ENABLED=false` so raw FITS cutouts and IRSA discovery
+tables do not accumulate on the memory-backed scratch volume. IRSA responses are still downloaded
+and processed in memory. Staging uses a per-instance SQLite database at
+`/scratch/results/results.sqlite3` for processed bundles, capped at 128 MiB plus journal overhead.
+The private results bucket is provisioned but staging uses it only if `SPHEREX_RESULTS_BUCKET`
+and `SPHEREX_CODE_SHA` are configured. The scratch volume is erased with the instance. Synchronous live
 requests (`/api/v1/blink`) return HTTP 503 while `SPHEREX_LEGACY_SYNC_ENABLED=false`; arbitrary
 coordinate queries are served instead via the bounded async job queue (`POST /api/v1/jobs`, capped
 at 6 new jobs/min and 8 outstanding). The local Python command retains its development defaults.
@@ -79,7 +82,7 @@ Run revision, and the live-query setting without resolving targets or contacting
   (`SPHEREX_LEGACY_SYNC_ENABLED=false`), and arbitrary coordinate queries are served via the bounded
   async job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
 - **Static Viewer (GCS):** Hosted on the public GCS bucket `gs://bortle-cero-nasa-staging-26-viewer`
-  (`https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html`) and deployed
+  (`https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html`) and deployed
   automatically on every push to `main` by `.github/workflows/cd-deploy.yml`, with
   `Cache-Control: no-cache` on entrypoints/manifest (`index.html`, `*.js`, `*.css`, `*.json`,
   `sky/sky.json`) and `public, max-age=31536000, immutable` on `releases/**` (with Firebase Hosting

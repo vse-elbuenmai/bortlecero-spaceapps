@@ -48,7 +48,7 @@ class SPHERExBlinkIngestionService:
     @classmethod
     def create_default(
         cls,
-        cache_dir: Path = Path(".cache/fits"),
+        cache_dir: Path | None = Path(".cache/fits"),
     ) -> SPHERExBlinkIngestionService:
         """Factory wiring the default production infrastructure, processor, and exporter."""
         from spherex_ingest.exporters import FrontendBundleExporter
@@ -60,7 +60,7 @@ class SPHERExBlinkIngestionService:
 
         return cls(
             cutout_provider=IRSASiaCutoutProvider(
-                cache_dir=Path(cache_dir),
+                cache_dir=cache_dir,
                 cutout_workers=int(os.environ.get("SPHEREX_IRSA_CUTOUT_WORKERS", "3")),
                 sia_cache_ttl_sec=int(os.environ.get("SPHEREX_SIA_CACHE_TTL_SECONDS", "3600")),
             ),
