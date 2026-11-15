@@ -143,6 +143,78 @@ async function searchCoordinates(page, ra = "0", dec = "0") {
   await page.locator("#search-form button[type=submit]").click();
 }
 
+test("the optional grid brightens the celestial axes and the desktop readout reports a known sky position", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await serve(page, publicOrigin, staged);
+  const grid = page.getByRole("button", { name: "Coordinate grid" });
+  const readout = page.locator("#pointer-coords");
+  await expect(grid).toBeEnabled();
+  await expect(grid).toHaveAttribute("aria-pressed", "false");
+  await expect(readout).toBeHidden();
+
+  await page.mouse.move(720, 450);
+  await expect(readout).toHaveText("Pointer: RA 266.4000°, Dec −20.0000°");
+  // Use the existing sky-to-screen calculation to locate Barnard's catalog position.
+  const barnard = await page.evaluate(() => window.skyPrototype.project(269.4485, 4.7394));
+  await page.mouse.move(barnard.x, barnard.y);
+  await expect(readout).toHaveText(/^Pointer: RA 269\.448\d°, Dec \+4\.739\d°$/);
+  const beforeZoom = await readout.textContent();
+  await page.mouse.wheel(0, -160);
+  await expect(readout).not.toHaveText(beforeZoom);
+  await expect(readout).toContainText("Pointer: RA");
+  await page.mouse.move(720, 32);
+  await expect(readout).toBeHidden();
+
+  // Sample the actual WebGL output at the RA 0° / Dec 0° intersection and a point away from
+  // any grid line. The GPU buffer must be read in the same task as the draw.
+  await expect.poll(() => page.evaluate(() => window.skyPrototype.state.textures.visible?.width)).toBe(4096);
+  const sample = () => page.evaluate(() => {
+    const { state, project, redraw } = window.skyPrototype;
+    Object.assign(state, { ra: 0, dec: 0 });
+    redraw();
+    const gl = state.gl;
+    return [[0, 0], [12, 7]].map(([ra, dec]) => {
+      const point = project(ra, dec), rgb = new Uint8Array(4);
+      gl.readPixels(Math.floor(point.x), gl.drawingBufferHeight - 1 - Math.floor(point.y),
+        1, 1, gl.RGBA, gl.UNSIGNED_BYTE, rgb);
+      return [...rgb];
+    });
+  });
+  const off = await sample();
+  await grid.focus();
+  await grid.press("Space");
+  await expect(grid).toHaveAttribute("aria-pressed", "true");
+  const on = await sample();
+  expect(on[0][2]).toBeGreaterThan(off[0][2] + 35);
+  expect(on[1]).toEqual(off[1]);
+  await grid.click();
+  await expect(grid).toHaveAttribute("aria-pressed", "false");
+  expect(await sample()).toEqual(off);
+});
+
+test.describe("touch sky coordinates", () => {
+  test.use({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+
+  test("show the primary finger's position while dragging and keep the last touch after release", async ({ page, context }) => {
+    await serve(page, publicOrigin, staged);
+    await expect(page.getByRole("button", { name: "Coordinate grid" })).toBeEnabled();
+    await expect(page.locator(".sky-readout")).toBeHidden();
+    const readout = page.locator("#pointer-coords");
+    await expect(readout).toBeHidden();
+    const session = await context.newCDPSession(page);
+    const touch = (type, ...touchPoints) => session.send("Input.dispatchTouchEvent", { type, touchPoints });
+    await touch("touchStart", { x: 180, y: 400 });
+    await expect(readout).toHaveText("Touch: RA 266.4000°, Dec −20.0000°");
+    await touch("touchMove", { x: 224, y: 422 });
+    await expect(readout).not.toHaveText("Touch: RA 266.4000°, Dec −20.0000°");
+    const coords = (await readout.textContent()).replace("Touch:", "Last touch:");
+    await touch("touchEnd");
+    await expect(readout).toHaveText(coords);
+    await page.getByRole("button", { name: "Zoom in" }).tap();
+    await expect(readout).toHaveText(coords);
+  });
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 }]) {
   test(`HTTPS viewer opens all five benchmarks and coordinates via async IRSA jobs at ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);

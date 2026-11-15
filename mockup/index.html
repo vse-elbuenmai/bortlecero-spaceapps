@@ -53,6 +53,7 @@
       <button id="info-toggle" class="icon-btn info-toggle" type="button" aria-expanded="false"
         aria-controls="sky-credit" aria-label="About this sky layer">i</button>
     </div>
+    <p id="pointer-coords" class="sky-pointer mono" hidden></p>
     <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
     <p id="sky-credit" class="sky-caption"></p>
   </section>
@@ -74,6 +75,11 @@
         aria-hidden="true">
         <path d="M3.6 9.6a4.6 4.6 0 1 0 .9-4.7" />
         <path d="M4.6 2.2v2.9H1.7" />
+      </svg></button>
+    <button id="grid-toggle" class="icon-btn" type="button" aria-label="Coordinate grid"
+      title="Coordinate grid (RA and Dec)" aria-pressed="false" disabled><svg viewBox="0 0 16 16"
+        aria-hidden="true">
+        <path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12" />
       </svg></button>
   </div>
 
