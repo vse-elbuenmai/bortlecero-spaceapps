@@ -17,13 +17,15 @@ Tasks if existing queued work must stop dispatching too.
 
 These are starting values for staging. The previous cold custom search took 64 seconds and
 individual cutouts are about 4 MiB, so a 12-exposure request is expected to transfer about 48 MiB
-before discovery, retries, or cache hits. Run one worker and one simultaneous Cloud Tasks
-dispatch to start. Worker HTTP and dispatch deadlines must exceed the processing budget and
+before discovery, retries, or cache hits. An offline run with 12 cached R Draconis FITS files
+processed 45.8 MiB of input into a 521 KiB JSON bundle in 2.75 seconds and reached about 180 MiB
+peak process RSS, including Python startup. The profile measures the pipeline with a warm FITS
+cache. Use one worker and one simultaneous Cloud Tasks dispatch initially. Worker HTTP and dispatch deadlines must exceed the processing budget and
 leave time to record a terminal state. The deadline is checked between operations and during
 streaming. Native calls and a single blocking HTTP operation can finish after it.
 
 At a sustained one 120-second attempt at a time, the worker can consume up to 60 vCPU-minutes
-and 120 GiB-minutes of memory per wall-clock hour at 1 vCPU and 2 GiB. Each attempt can transfer
+and 60 GiB-minutes of memory per wall-clock hour at 1 vCPU and 1 GiB. Each attempt can transfer
 up to 96 MiB from IRSA. Cloud Tasks delivery and retries, Firestore admission and status
 operations, Cloud Storage reads/writes and retained bytes, and result egress are separate
 meters. Measure saved bundle bytes and actual reads per job before raising limits. Configure a
