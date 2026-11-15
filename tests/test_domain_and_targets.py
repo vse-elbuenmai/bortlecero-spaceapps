@@ -93,3 +93,40 @@ def test_barnards_star_gaia_dr3_epoch_2016_coordinates() -> None:
     assert barnard.dec_deg == pytest.approx(4.73942005, abs=1e-6)
     assert barnard.ref_epoch_jyear == 2016.0
 
+
+def test_r_draconis_gaia_dr3_astrometry() -> None:
+    """Verify R Draconis uses verified Gaia DR3 astrometric parameters (Finding 3)."""
+    r_dra = BENCHMARK_TARGETS["r_draconis"]
+    assert r_dra.ra_deg == pytest.approx(248.16737837, abs=1e-6)
+    assert r_dra.dec_deg == pytest.approx(66.75500675, abs=1e-6)
+    assert r_dra.ref_epoch_jyear == 2016.0
+    assert r_dra.pm_ra_cosdec_mas_yr == pytest.approx(-20.643, abs=1e-3)
+    assert r_dra.pm_dec_mas_yr == pytest.approx(6.149, abs=1e-3)
+    assert r_dra.parallax_mas == pytest.approx(1.2509, abs=1e-4)
+    assert r_dra.radial_velocity_km_s == pytest.approx(-132.8, abs=0.1)
+
+
+def test_epsilon_indi_b_gaia_dr3_astrometry() -> None:
+    """Verify Epsilon Indi B uses verified Gaia DR3 astrometric parameters (Finding 4)."""
+    eps_b = BENCHMARK_TARGETS["epsilon_indi_b"]
+    assert eps_b.ra_deg == pytest.approx(331.07645260, abs=1e-6)
+    assert eps_b.dec_deg == pytest.approx(-56.79381207, abs=1e-6)
+    assert eps_b.ref_epoch_jyear == 2016.0
+    assert eps_b.pm_ra_cosdec_mas_yr == pytest.approx(3981.98, abs=1e-2)
+    assert eps_b.pm_dec_mas_yr == pytest.approx(-2466.83, abs=1e-2)
+    assert eps_b.parallax_mas == pytest.approx(270.66, abs=1e-2)
+    assert eps_b.radial_velocity_km_s == pytest.approx(-40.4, abs=0.1)
+
+
+def test_rw_aurigae_gaia_dr3_astrometry() -> None:
+    """Verify RW Aurigae uses verified Gaia DR3 astrometric parameters (Finding 4)."""
+    rw_aur = BENCHMARK_TARGETS["rw_aurigae"]
+    assert rw_aur.ra_deg == pytest.approx(76.95608120, abs=1e-6)
+    assert rw_aur.dec_deg == pytest.approx(30.40120459, abs=1e-6)
+    assert rw_aur.ref_epoch_jyear == 2016.0
+    assert rw_aur.pm_ra_cosdec_mas_yr == pytest.approx(2.641, abs=1e-3)
+    assert rw_aur.pm_dec_mas_yr == pytest.approx(-27.398, abs=1e-3)
+    assert rw_aur.parallax_mas == pytest.approx(6.406, abs=1e-3)
+    assert rw_aur.radial_velocity_km_s == pytest.approx(-20.94, abs=0.1)
+
+

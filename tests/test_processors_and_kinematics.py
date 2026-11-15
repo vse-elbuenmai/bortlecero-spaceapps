@@ -10,7 +10,7 @@ import pytest
 from astropy.coordinates import SkyCoord
 from photutils.centroids import centroid_com
 
-from spherex_ingest.domain.models import RawCutoutFrame
+from spherex_ingest.domain.models import RawCutoutFrame, TargetSpec
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.processors.cleaners import ZodiAndFlagCleaner
 from spherex_ingest.processors.kinematics import KinematicsAndPhotometryAnalyzer
@@ -131,6 +131,98 @@ def test_kinematics_barnards_star_gaia_dr3_propagation() -> None:
 
     assert sep_arcsec == pytest.approx(10.39, abs=0.15)
     assert sep_pixels == pytest.approx(1.69, abs=0.05)
+
+
+def test_kinematics_annual_parallax_displacement() -> None:
+    """Verify annual parallax reflex displacement and seasonal scaling (Finding 5)."""
+    analyzer = KinematicsAndPhotometryAnalyzer(pixel_scale_arcsec=6.15)
+    barnard = BENCHMARK_TARGETS["barnards_star"]
+
+    mjd_obs = 60800.0  # Spring 2025
+    barnard_zero_plx = TargetSpec(
+        target_id="barnard_zero_plx",
+        name="Barnard Zero Parallax",
+        ra_deg=barnard.ra_deg,
+        dec_deg=barnard.dec_deg,
+        ref_epoch_jyear=barnard.ref_epoch_jyear,
+        pm_ra_cosdec_mas_yr=barnard.pm_ra_cosdec_mas_yr,
+        pm_dec_mas_yr=barnard.pm_dec_mas_yr,
+        parallax_mas=0.0,
+        radial_velocity_km_s=barnard.radial_velocity_km_s,
+    )
+
+    ra_with_plx, dec_with_plx = analyzer.propagate_position(barnard, mjd_obs)
+    ra_no_plx, dec_no_plx = analyzer.propagate_position(barnard_zero_plx, mjd_obs)
+
+    c_plx = SkyCoord(ra=ra_with_plx * u.deg, dec=dec_with_plx * u.deg, frame="icrs")
+    c_bary = SkyCoord(ra=ra_no_plx * u.deg, dec=dec_no_plx * u.deg, frame="icrs")
+    shift_arcsec = float(c_plx.separation(c_bary).arcsec)
+
+    # For Barnard's star (pi = 546.98 mas), reflex displacement is between 0.2 and 0.55 arcsec
+    assert 0.2 < shift_arcsec < 0.55
+
+    # Test that seasonal reflex motion scales linearly with parallax for zero-PM sources
+    # at the North Ecliptic Pole across 6 months (Earth moving 2 AU across the Sun)
+    mjd_t0 = 60800.0
+    mjd_t1 = mjd_t0 + 182.625  # exactly half year later
+
+    plx_1000 = TargetSpec(
+        target_id="nep_1000mas",
+        name="NEP 1000 mas",
+        ra_deg=270.0,
+        dec_deg=66.56,
+        ref_epoch_jyear=2016.0,
+        pm_ra_cosdec_mas_yr=0.0,
+        pm_dec_mas_yr=0.0,
+        parallax_mas=1000.0,
+    )
+    plx_500 = TargetSpec(
+        target_id="nep_500mas",
+        name="NEP 500 mas",
+        ra_deg=270.0,
+        dec_deg=66.56,
+        ref_epoch_jyear=2016.0,
+        pm_ra_cosdec_mas_yr=0.0,
+        pm_dec_mas_yr=0.0,
+        parallax_mas=500.0,
+    )
+
+    ra_1000_t0, dec_1000_t0 = analyzer.propagate_position(plx_1000, mjd_t0)
+    ra_1000_t1, dec_1000_t1 = analyzer.propagate_position(plx_1000, mjd_t1)
+    sep_1000 = float(
+        SkyCoord(ra=ra_1000_t0 * u.deg, dec=dec_1000_t0 * u.deg)
+        .separation(SkyCoord(ra=ra_1000_t1 * u.deg, dec=dec_1000_t1 * u.deg))
+        .arcsec
+    )
+
+    ra_500_t0, dec_500_t0 = analyzer.propagate_position(plx_500, mjd_t0)
+    ra_500_t1, dec_500_t1 = analyzer.propagate_position(plx_500, mjd_t1)
+    sep_500 = float(
+        SkyCoord(ra=ra_500_t0 * u.deg, dec=dec_500_t0 * u.deg)
+        .separation(SkyCoord(ra=ra_500_t1 * u.deg, dec=dec_500_t1 * u.deg))
+        .arcsec
+    )
+
+    # 1000 mas plx should shift by ~2.0 arcsec over 2 AU baseline
+    assert sep_1000 == pytest.approx(2.0, abs=0.05)
+    # 500 mas plx should shift by half as much (~1.0 arcsec)
+    assert sep_500 == pytest.approx(1.0, abs=0.05)
+    # Linear scaling: sep_1000 / sep_500 should be 2.0 within 1%
+    assert (sep_1000 / sep_500) == pytest.approx(2.0, rel=0.01)
+
+    # Static target with 0 PM and 0 parallax returns exact coordinates unchanged
+    static_target = TargetSpec(
+        target_id="static_distant",
+        name="Static Distant Star",
+        ra_deg=100.0,
+        dec_deg=20.0,
+        pm_ra_cosdec_mas_yr=0.0,
+        pm_dec_mas_yr=0.0,
+        parallax_mas=0.0,
+    )
+    stat_ra, stat_dec = analyzer.propagate_position(static_target, mjd_t1)
+    assert stat_ra == 100.0
+    assert stat_dec == 20.0
 
 
 def test_kinematics_measures_subpixel_centroid_and_aperture_flux(

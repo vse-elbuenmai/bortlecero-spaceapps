@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import astropy.units as u
 import numpy as np
-from astropy.coordinates import Distance, SkyCoord
+from astropy.coordinates import Distance, SkyCoord, get_body_barycentric
 from astropy.time import Time
 from astropy.wcs import WCS
 from photutils.aperture import CircularAperture, aperture_photometry
@@ -54,9 +54,10 @@ class KinematicsAndPhotometryAnalyzer:
         self._pixel_scale_arcsec = pixel_scale_arcsec
 
     def propagate_position(self, target: TargetSpec, mjd: float) -> tuple[float, float]:
-        """Propagate target catalog coordinates to epoch MJD using proper motion and parallax."""
+        """Propagate catalog coordinates to epoch MJD using proper motion and annual parallax."""
         has_pm = (abs(target.pm_ra_cosdec_mas_yr) > 1e-6) or (abs(target.pm_dec_mas_yr) > 1e-6)
-        if not has_pm:
+        has_plx = target.parallax_mas > 1e-4
+        if not has_pm and not has_plx:
             return float(target.ra_deg), float(target.dec_deg)
 
         ref_time = Time(target.ref_epoch_jyear, format="jyear", scale="tcb")
@@ -77,8 +78,21 @@ class KinematicsAndPhotometryAnalyzer:
             obstime=ref_time,
             frame="icrs",
         )
-        propagated = coord.apply_space_motion(new_obstime=obs_time)
-        return float(propagated.ra.deg), float(propagated.dec.deg)
+        bary = coord.apply_space_motion(new_obstime=obs_time)
+        if distance is not None:
+            earth_pos = get_body_barycentric("earth", obs_time)
+            # Reflex displacement: vector from Earth to star = star barycentric - Earth barycentric
+            geo_cart = bary.cartesian.xyz - earth_pos.xyz
+            geo_coord = SkyCoord(
+                geo_cart[0],
+                geo_cart[1],
+                geo_cart[2],
+                representation_type="cartesian",
+                frame="icrs",
+            ).represent_as("spherical")
+            return float(geo_coord.lon.deg), float(geo_coord.lat.deg)
+
+        return float(bary.ra.deg), float(bary.dec.deg)
 
     def measure_centroid_and_photometry(
         self,
