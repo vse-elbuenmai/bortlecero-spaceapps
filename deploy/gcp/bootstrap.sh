@@ -142,10 +142,12 @@ run gcloud storage buckets add-iam-policy-binding "gs://${GCS_BUCKET}" \
   --quiet
 if [[ "${DRY_RUN}" == "true" ]] || gcloud storage buckets describe "gs://${PROJECT_ID}-viewer" \
   --project="${PROJECT_ID}" >/dev/null 2>&1; then
-  run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}-viewer" \
-    --member="serviceAccount:${DEPLOY_SA_EMAIL}" \
-    --role="roles/storage.objectAdmin" \
-    --quiet
+  for viewer_role in roles/storage.objectAdmin roles/storage.legacyBucketReader; do
+    run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}-viewer" \
+      --member="serviceAccount:${DEPLOY_SA_EMAIL}" \
+      --role="${viewer_role}" \
+      --quiet
+  done
 fi
 
 echo "==> 7. Configuring GitHub OIDC Workload Identity Federation"
