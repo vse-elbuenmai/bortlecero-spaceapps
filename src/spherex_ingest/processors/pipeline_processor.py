@@ -8,6 +8,7 @@ import numpy as np
 from astropy.wcs import WCS
 
 from spherex_ingest.domain.models import ProcessedBlinkFrame, RawCutoutFrame, TargetSpec
+from spherex_ingest.limits import WorkLimitExceeded, active_budget
 from spherex_ingest.processors.cleaners import ZodiAndFlagCleaner
 from spherex_ingest.processors.kinematics import KinematicsAndPhotometryAnalyzer
 from spherex_ingest.processors.reprojector import NorthUpCommonReprojector
@@ -52,8 +53,14 @@ class SPHERExFrameProcessor:
             pixel_scale_arcsec=self._pixel_scale_arcsec,
         )
 
+        budget = active_budget.get()
+        if budget and grid_shape[0] * grid_shape[1] > budget.limits.max_grid_pixels:
+            raise WorkLimitExceeded("grid_limit")
+
         processed_frames: list[ProcessedBlinkFrame] = []
         for raw in sorted_raw:
+            if budget:
+                budget.remaining_time()
             cleaned = self._cleaner.clean(raw)
             reproj = self._reprojector.reproject_frame(
                 cleaned=cleaned,

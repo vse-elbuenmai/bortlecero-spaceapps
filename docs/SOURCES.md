@@ -71,3 +71,9 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Pytest (`pytest`)](https://docs.pytest.org/) & [Ruff (`ruff`)](https://docs.astral.sh/ruff/) | MIT | Automated unit/integration testing and static analysis | 2026-11-14 |
 | [GitHub Actions (`actions/checkout`, `actions/setup-python`)](https://github.com/actions) | MIT | Standard continuous integration workflow execution actions | 2026-11-14 |
 | [Astral `setup-uv` Action](https://github.com/astral-sh/setup-uv) | Apache-2.0 / MIT | GitHub Action to set up Astral `uv` binary and dependency cache in CI runners | 2026-11-14 |
+
+## Public ingestion operations
+
+- [Cloud Tasks queue limits and retries](https://docs.cloud.google.com/tasks/docs/configuring-queues).
+- [Google Cloud Free Tier and trial limits](https://docs.cloud.google.com/free/docs/free-cloud-features).
+- [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
