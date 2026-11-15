@@ -269,9 +269,19 @@ jobs:
             "gs://${VIEWER_BUCKET}/sky/sky.json" \
             --cache-control="no-cache"
 
+      - name: Deploy static viewer to Firebase Hosting
+        env:
+          FIREBASE_PROJECT: ${{ vars.FIREBASE_PROJECT_ID || 'starphere-earth-hosting' }}
+        run: |
+          npx --yes firebase-tools deploy \
+            --only hosting \
+            --project "${FIREBASE_PROJECT}" \
+            --non-interactive
+
       - name: Verify live public static viewer
         env:
           VIEWER_BUCKET: ${{ vars.GCP_VIEWER_BUCKET || format('{0}-viewer', vars.GCP_PROJECT_ID) }}
+          FIREBASE_PROJECT: ${{ vars.FIREBASE_PROJECT_ID || 'starphere-earth-hosting' }}
         run: |
           VIEWER_URL="https://${VIEWER_BUCKET}.storage.googleapis.com"
           HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${VIEWER_URL}/index.html")
@@ -280,6 +290,14 @@ jobs:
 
           curl -fsS "${VIEWER_URL}/benchmark-manifest.json" \
             | VIEWER_URL="${VIEWER_URL}" python3 -c "import json,os,sys,urllib.request; d=json.load(sys.stdin); assert d.get('version') and d.get('commit_sha'), d; bundles=d.get('bundles') or {}; [urllib.request.urlopen(f\"{os.environ['VIEWER_URL']}/{p}\").close() for p in bundles.values()]; print('Viewer manifest OK:', d['version'][:12], 'mode:', d.get('mode', 'live_irsa'))"
+
+          FIREBASE_URL="https://${FIREBASE_PROJECT}.web.app"
+          FB_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${FIREBASE_URL}/index.html")
+          echo "Firebase viewer index.html -> HTTP ${FB_CODE}"
+          test "${FB_CODE}" = "200"
+
+          curl -fsS "${FIREBASE_URL}/benchmark-manifest.json" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('version') and d.get('commit_sha') == '${GITHUB_SHA}', d; print('Firebase manifest OK:', d['version'][:12], 'sha:', d['commit_sha'][:7])"
 
   rollback:
     name: "Rollback Cloud Run Service"
