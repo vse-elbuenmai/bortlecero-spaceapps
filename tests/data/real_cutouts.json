@@ -1,0 +1,32 @@
+{
+  "barnard": {
+    "frame_id": "level2_2026W34_1A_0308_3D3_spx_l2b-v27-2026-243",
+    "collection": "spherex_qr3",
+    "obs_time_utc": "2026-08-18T14:21:44.326",
+    "detector": 3,
+    "wavelength_um": 1.9374,
+    "star_x": 13.96,
+    "star_y": 12.56,
+    "shape": [
+      29,
+      29
+    ],
+    "source_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/2026W34_1A/l2b-v27-2026-243/3/level2_2026W34_1A_0308_3D3_spx_l2b-v27-2026-243.fits?center=269.446215,4.767839d&size=180.0arcsec",
+    "units": "MJy/sr"
+  },
+  "epsilon_indi_b": {
+    "frame_id": "level2_2025W17_4B_0017_1D2_spx_l2b-v27-2026-196",
+    "collection": "spherex_dr1",
+    "obs_time_utc": "2025-04-24T20:32:54.640",
+    "detector": 2,
+    "wavelength_um": 1.5606,
+    "star_x": 14.42,
+    "star_y": 14.65,
+    "shape": [
+      29,
+      29
+    ],
+    "source_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W17_4B/l2b-v27-2026-196/2/level2_2025W17_4B_0017_1D2_spx_l2b-v27-2026-196.fits?center=331.096303,-56.800605d&size=180.0arcsec",
+    "units": "MJy/sr"
+  }
+}
