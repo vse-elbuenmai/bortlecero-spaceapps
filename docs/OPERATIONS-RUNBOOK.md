@@ -197,16 +197,9 @@ revision.
 
 1. Identify the last known-good commit on `main` (`git log --oneline -n 10`).
 2. Revert the offending frontend commit cleanly (`git revert <BAD_SHA>`) and open a PR to `main`; merging triggers `.github/workflows/cd-deploy.yml` (`deploy-viewer`), which rebuilds `dist/hosting/` via `scripts/build_hosting.py`, syncs to `gs://bortle-cero-nasa-staging-26-viewer`, and sets `Cache-Control: public, max-age=31536000, immutable` on `releases/**` and `Cache-Control: no-cache` on entrypoints/manifest (if using the optional Firebase Hosting target via `firebase.json`, redeploy from the checked-out good commit with `firebase deploy --only hosting`).
-3. Verify the viewer loads `benchmark-manifest.json` (including `commit_sha`) and `releases/<version>/<target>.json`, and renders blink frames without console errors.
+3. Verify the viewer loads the expected `commit_sha` in `benchmark-manifest.json` and renders the cached benchmark frames without console errors.
 
 ### C. Data Rollback (Benchmark Bundles & GCS)
-
-**In-Repo Static Bundles (`mockup/data/`):**
-1. Restore the previous bundle version from git:
-   ```bash
-   git checkout <LAST_GOOD_SHA> -- mockup/data/
-   ```
-2. Validate bundle integrity with `uv run pytest tests/test_mockup_integration.py` before pushing.
 
 **GCS Bucket Bundles (`gs://<project>-spherex-bundles-<env>`):**
 1. Object versioning is enabled by `deploy/gcp/bootstrap.sh`. List object generations:

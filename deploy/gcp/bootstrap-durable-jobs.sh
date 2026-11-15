@@ -31,6 +31,8 @@ run() {
 }
 
 project=(--project="${PROJECT_ID}" --quiet)
+run gcloud services enable cloudresourcemanager.googleapis.com firestore.googleapis.com \
+  cloudtasks.googleapis.com "${project[@]}"
 if "${DRY_RUN}"; then
   project_number=PROJECT_NUMBER
 else
@@ -43,7 +45,6 @@ if [[ -z "${project_number}" || ${#worker_label} -gt 63 ]]; then
 fi
 worker_host="${worker_label}.${REGION}.run.app"
 
-run gcloud services enable firestore.googleapis.com cloudtasks.googleapis.com "${project[@]}"
 if "${DRY_RUN}" || ! gcloud firestore databases describe --database='(default)' "${project[@]}" >/dev/null 2>&1; then
   run gcloud firestore databases create --database='(default)' --location="${REGION}" \
     --type=firestore-native "${project[@]}"

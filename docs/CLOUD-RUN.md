@@ -37,9 +37,10 @@ PROJECT_ID=bortle-cero-nasa-staging-26 bash deploy/gcp/bootstrap-durable-jobs.sh
 PROJECT_ID=bortle-cero-nasa-staging-26 bash deploy/gcp/bootstrap-durable-jobs.sh
 ```
 
-The bootstrap enables Firestore and Cloud Tasks, creates the default Firestore
-database when missing, adds TTL for jobs and deduplication pointers, and configures
-the regional queue and scoped service account permissions. The API runtime account
+The bootstrap enables Cloud Resource Manager, Firestore, and Cloud Tasks. It
+creates the default Firestore database when missing, adds TTL for jobs and
+deduplication pointers, and configures the regional queue and scoped service
+account permissions. The API runtime account
 enqueues tasks and reads results. The worker runtime account claims jobs and writes
 results. The task identity can invoke only the worker delivery endpoint. The
 GitHub deployment identity uses Workload Identity Federation and can mint a token

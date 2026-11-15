@@ -19,7 +19,7 @@ This guide explains how the Bortle Cero SPHEREx web viewer (`mockup/`) and inges
 - **Compute** uses request-based Cloud Run billing, zero minimum instances, and maximums of two API instances and one worker. The previous instance-based configuration billed the full lifetime of an instance, including idle time before shutdown.
 - **Public demo IAM & async ingestion**: `spherex-ingest-staging` is publicly invokable (`allUsers` `roles/run.invoker`, `GCP_REQUIRE_INVOKER_IAM=false` default in `cd-deploy.yml`) with synchronous ingestion disabled (`SPHEREX_LEGACY_SYNC_ENABLED=false`) and arbitrary coordinate queries served via the bounded async job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
 - **Bucket lifecycle**: `gs://bortle-cero-nasa-staging-26-spherex-bundles-staging` deletes noncurrent versions after 7 days (keeping up to 3 newer versions) and `queries/` objects after 30 days.
-- **Budget alert**: A `20 MXN` monthly budget alert (`50% / 90% / 100%`) is configured on `bortle-cero-nasa-staging-26` and was verified on November 15, 2026. It sends notifications as spend reaches the thresholds. Compute limits and the budget alert serve different purposes.
+- **Budget alert**: A `20 MXN` monthly budget alert (`50% / 90% / 100%`) is configured on `bortle-cero-nasa-staging-26` and was verified on November 15, 2026. It sends notifications as spend reaches the thresholds. Usage can continue after an alert.
 
 ---
 
@@ -30,7 +30,7 @@ The static viewer in `mockup/` is packaged by `scripts/build_hosting.py` into `d
 ### When `mockup/` Changes
 
 1. **Added new static files?** Update `PUBLIC_FILES` in `scripts/build_hosting.py` so the new HTML/CSS/JS/image assets are included in `dist/hosting/`.
-2. **Updated benchmark bundles?** Regenerate bundles into `mockup/data/<target_id>/bundle.json` and run `scripts/build_hosting.py` to compute a new content-addressed `releases/<sha256>/` directory and `benchmark-manifest.json` (which records `version`, `commit_sha`, and `bundles`).
+2. **Updated benchmark bundles?** Follow [benchmark result storage](RESULT-STORAGE.md#durable-nasa-benchmark-cache) to seed the private bucket. The viewer validates its static release using `benchmark-manifest.json`.
 3. **Connecting to the Cloud Run backend:**
    - `mockup/viewer-config.json` controls `apiBaseUrl` and `liveQueries`.
    - Keep `liveQueries: false` until you intend to expose live coordinate queries publicly.
