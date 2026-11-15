@@ -117,9 +117,20 @@
 .modal .stage { width: min(100%, calc(100dvh - 330px), 640px); }
 .modal-how { margin-top: var(--bc-sp-s); padding-top: var(--bc-sp-s); border-top: 1px solid var(--bc-border-soft);
   font-size: var(--bc-fs-base); line-height: 1.6; }
-.modal-how summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--bc-estrella);
+.modal-how summary { min-height: 44px; display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--bc-estrella);
   font-weight: 500; }
 .modal-how ol { max-width: 820px; margin: 0; padding-left: 1.2em; }
+/* Disclosures look like buttons: a chevron that turns when open, so it is clear there is more below */
+.disclosure summary { list-style: none; width: fit-content; padding: 0 16px 0 14px; border: 1px solid var(--bc-border);
+  border-radius: var(--bc-radius-pill); background: rgba(13, 22, 37, 0.6); transition: border-color var(--bc-transition), color var(--bc-transition); }
+.disclosure summary::-webkit-details-marker { display: none; }
+.disclosure summary::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: -4px;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg);
+  transition: transform var(--bc-transition); }
+.disclosure[open] summary::before { transform: rotate(225deg); margin-top: 4px; }
+.disclosure summary:hover { border-color: var(--bc-acento); color: var(--bc-blanco); }
+.disclosure summary:focus-visible { outline-offset: 2px; }
+.modal-how[open] summary { margin-bottom: 12px; }
 /* The frames viewer fills the screen (DESIGN §7.11): it is the main tool, not a pop-up. Its head stays
    at the top while the page scrolls, so Minimize and Close are always at hand; the sections keep their
    reading widths and sit centred, up to 1680 px. */
@@ -130,15 +141,24 @@
 .modal-full .modal-head { position: sticky; top: 0; z-index: 5; margin: 0 calc(-1 * var(--mf-pad));
   padding: 16px var(--mf-pad); background: rgba(8, 12, 20, 0.94); backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--bc-border-soft); }
-.modal-full .viewer, .modal-full .modal-how, .modal-full .modal-empty { max-width: 1680px; margin-inline: auto; }
-.modal-full .viewer { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); padding-top: var(--bc-sp-s); }
-/* The image grows with the screen, by height first: the controls and the dates under it stay on screen */
-.modal-full .stage { width: min(100%, calc(100dvh - 390px), 900px); }
-.modal-full .controls, .modal-full .band-row, .modal-full .timeline-wrap, .modal-full .viewer-notes {
-  max-width: max(min(100%, 320px), min(100%, calc(100dvh - 390px), 900px)); }
+/* Its tooltips open downwards: upwards they would leave the screen */
+.modal-full .modal-head [data-tip]::after { bottom: auto; top: calc(100% + 8px); transform: translate(-50%, -4px); }
+.modal-full .modal-head [data-tip]:hover::after, .modal-full .modal-head [data-tip]:focus-visible::after { transform: translate(-50%, 0); }
+.modal-full .modal-how, .modal-full .modal-empty { max-width: 1680px; margin-inline: auto; }
+/* Two columns sized to their content, centred as a pair: the image column is as wide as the image
+   (which grows with the screen, by height first, so the controls and the dates under it stay on
+   screen) and the panel takes a similar width, so no gap opens between them on a wide screen. */
+.modal-full { --stage: min(calc(100dvh - 390px), 900px, calc(100vw - 2 * var(--mf-pad) - 420px)); }
+.modal-full .viewer { grid-template-columns: var(--stage) minmax(360px, 600px); justify-content: center;
+  column-gap: clamp(32px, 4vw, 64px); padding-top: var(--bc-sp-s); }
+.modal-full .stage { width: var(--stage); min-width: 0; }
+.modal-full .controls, .modal-full .band-row, .modal-full .timeline-wrap, .modal-full .viewer-notes { max-width: var(--stage); }
 .modal-full .modal-loading { padding-top: var(--bc-sp-m); }
 @media (max-width: 1100px) {
-  .modal-full .viewer { grid-template-columns: 1fr; }
+  .modal-full .viewer { grid-template-columns: minmax(0, 1fr); max-width: 760px; margin-inline: auto; }
+  .modal-full .stage { width: min(100%, calc(100dvh - 390px), 900px); }
+  .modal-full .controls, .modal-full .band-row, .modal-full .timeline-wrap, .modal-full .viewer-notes {
+    max-width: max(min(100%, 320px), min(100%, calc(100dvh - 390px), 900px)); }
 }
 @media (max-width: 760px) {
   .modal-full { padding: 0 16px 16px; --mf-pad: 16px; }

@@ -464,16 +464,24 @@ Sale de la prueba de `mockup/sky.js`.
   se vea el aterrizaje, y al cerrarlo el anillo repite los pulsos para volver a señalar el sitio.
 - **Diálogo del visor:** `<dialog>` modal **a pantalla completa** (clase `modal-full`; decidido por
   Miguel el 15 nov: el visor es la herramienta principal, no una ventana emergente). Fondo
-  `--bc-cosmos`, sin borde ni radio, margen lateral `clamp(16px, 3vw, 48px)`. Las secciones
-  conservan su ancho de lectura y se centran hasta 1680 px: imagen y controles a la izquierda, el
-  panel en una columna de 320 a 420 px a la derecha (debajo en ≤ 1100 px). El lienzo crece con la
-  pantalla, primero por alto (`min(100%, 100dvh − 390px, 900px)`), para que los controles y la línea
-  de fechas quepan sin desplazar; controles, banda, fechas y avisos toman el mismo ancho que el
-  lienzo. La cabecera se queda arriba al desplazar (`position: sticky`, fondo
-  `rgba(8, 12, 20, 0.94)` con desenfoque y borde inferior `--bc-border-soft`) con el nombre, la
-  posición de hoy, el selector de nivel de detalle (§7.13), la guía, **minimizar** y **cerrar**,
-  botones de 44 × 44. Por debajo de 520 px esos controles pasan a su propia fila, sin encogerse.
-  Si no hay fotos para esa posición, lo dice y ofrece ir a un objeto que sí las tiene (§7.6).
+  `--bc-cosmos`, sin borde ni radio, margen lateral `clamp(16px, 3vw, 48px)`. Dos columnas del
+  ancho de su contenido, centradas como pareja para que no se abra un hueco entre ellas en una
+  pantalla ancha: la imagen con sus controles a la izquierda, en una columna tan ancha como la
+  imagen, y el panel a la derecha en una columna de 360 a 600 px, separadas `clamp(32px, 4vw,
+  64px)`. El lienzo crece con la pantalla, primero por alto (`--stage: min(100dvh − 390px, 900px,
+  100vw − márgenes − 420px)`), para que los controles y la línea de fechas quepan sin desplazar;
+  controles, banda, fechas y avisos toman el mismo ancho que el lienzo. En ≤ 1100 px es una sola
+  columna de hasta 760 px, con el panel debajo. La cabecera se queda arriba al desplazar
+  (`position: sticky`, fondo `rgba(8, 12, 20, 0.94)` con desenfoque y borde inferior
+  `--bc-border-soft`) con el nombre, la posición de hoy, el selector de nivel de detalle (§7.13),
+  la guía, **minimizar** y **cerrar**, botones de 44 × 44; sus tooltips (§7.7) se abren hacia
+  abajo, porque hacia arriba saldrían de la pantalla. Por debajo de 520 px esos controles pasan a
+  su propia fila, sin encogerse. Si no hay fotos para esa posición, lo dice y ofrece ir a un
+  objeto que sí las tiene (§7.6).
+- **Desplegables de texto (`<details>`):** «How these frames were made» y la tabla de bandas de la
+  guía llevan la clase `disclosure`: el `summary` es una pill como el botón «Search» (§7.11), con
+  un ángulo de 8 px a la izquierda que apunta abajo cerrado y arriba abierto, para que se vea que
+  es un botón. «How these frames were made» empieza cerrado.
 - **Minimizar y cerrar:** *minimizar* (una raya baja) esconde el diálogo sin olvidar nada: una
   descarga en curso sigue, y la foto, la banda, el zoom y el nivel quedan como estaban. En la barra
   plegada de búsqueda aparece una pill con borde `--bc-estrella` y el nombre del objeto («· loading…»
@@ -536,7 +544,7 @@ Cada banda de SPHEREx ve otro tramo de colores; comparar dos bandas no prueba qu
   banda de mayor longitud de onda que tenga dos o más (sin parpadeo no hay herramienta).
 - **El desplegable** dice el rango de cada banda (`Band 6 · 4.42–5.00 µm · 3 frames`); «All bands,
   mixed colours» va al final y avisa de que mezcla colores.
-- **Barra de espectro:** a la derecha del desplegable (debajo, en ≤ 520 px), una barra de 6 px y
+- **Barra de espectro:** a la derecha del desplegable (debajo, a 14 px, en ≤ 520 px), una barra de 6 px y
   radio 3 en `--bc-horizonte` que representa todo el rango de SPHEREx, de 0.75 a 5.0 µm, con el
   tramo de la banda encendido en `--bc-estrella`; debajo, el rango en `--bc-font-mono` y
   `--bc-muted`. Con «All bands» la barra entera va en `--bc-acento`. No usa colores de arcoíris: el
@@ -544,7 +552,9 @@ Cada banda de SPHEREx ve otro tramo de colores; comparar dos bandas no prueba qu
 - **Tabla de bandas en la guía:** el paso «Spectral Band Filter» de la guía lleva una tabla de seis
   filas (banda, rango con su barra, qué muestra), con la fila de la banda inicial sobre
   `rgba(123, 168, 212, 0.1)`. Ese paso usa una tarjeta de 560 px, que se desplaza por dentro si la
-  pantalla es baja. Rangos: los de IRSA para el instrumento en vuelo (Bock et al. 2026).
+  pantalla es baja. La tabla va en un desplegable «The six bands» (`disclosure`), abierto en
+  escritorio y **cerrado en ≤ 760 px**, para que la tarjeta deje a la vista el selector de banda
+  que señala. Rangos: los de IRSA para el instrumento en vuelo (Bock et al. 2026).
 
 ---
 

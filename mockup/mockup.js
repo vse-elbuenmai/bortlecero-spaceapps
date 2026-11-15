@@ -1112,9 +1112,16 @@
     const scale = document.createElement("p");
     scale.className = "band-table-note";
     scale.textContent = "Each bar is SPHEREx's whole range, 0.75 to 5.0 µm; the lit part is the band. Visible light ends at about 0.75 µm.";
-    const wrap = document.createDocumentFragment();
-    wrap.append(table, scale);
-    return wrap;
+    // Folded on a phone, so the card stays short enough to leave the band select in view
+    const details = document.createElement("details");
+    details.className = "band-details disclosure";
+    details.open = window.innerWidth > 760;
+    const summary = document.createElement("summary");
+    summary.textContent = "The six bands";
+    details.append(summary, table, scale);
+    // Opening or closing it changes the card's height: place the card again
+    details.addEventListener("toggle", () => window.dispatchEvent(new Event("resize")));
+    return details;
   }
 
   let currentTourSteps = [];

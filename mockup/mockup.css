@@ -322,7 +322,7 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .spec-bar.is-all { background: var(--bc-acento); }
 .spec-label { color: var(--bc-muted); white-space: nowrap; line-height: 1.4; }
 @media (max-width: 520px) {
-  .band-row { flex-wrap: wrap; row-gap: 8px; }
+  .band-row { flex-wrap: wrap; row-gap: 14px; }
   .band-spectrum { flex: 1 0 100%; width: auto; }
 }
 
@@ -555,7 +555,11 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .tour-desc p { margin: 0; }
 /* A step with a table (the bands) is wider, and scrolls inside the card on a short screen */
 .tour-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
-.band-table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: var(--bc-fs-xs); line-height: 1.45; }
+/* The band table folds: open on a desktop, closed on a phone so the card leaves the band select in view */
+.band-details { margin-top: 12px; }
+.band-details summary { min-height: 36px; display: flex; align-items: center; gap: 10px; cursor: pointer;
+  font-size: var(--bc-fs-xs); font-weight: 500; color: var(--bc-estrella); }
+.band-table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: var(--bc-fs-xs); line-height: 1.45; }
 .band-table th, .band-table td { padding: 7px 8px; text-align: left; vertical-align: top;
   border-bottom: 1px solid var(--bc-border-soft); }
 .band-table thead th { padding-top: 0; font-size: var(--bc-fs-micro); font-weight: 500; letter-spacing: 0.14em;
