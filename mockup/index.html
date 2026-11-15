@@ -5,7 +5,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SPHEREx Blink Viewer · Bortle Cero</title>
-  <meta name="description" content="The whole sky seen from inside, a search that travels to any position, and a blink viewer for the SPHEREx frames of that patch of sky.">
+  <meta name="description"
+    content="The whole sky seen from inside, a search that travels to any position, and a blink viewer for the SPHEREx frames of that patch of sky.">
   <link rel="stylesheet" href="mockup.css">
   <link rel="stylesheet" href="sky.css">
 </head>
@@ -31,11 +32,12 @@
       <div class="brand">
         <span class="brand-name"><a href="#" style="text-decoration: none;">BORTLE CERO</a></span>
         <span class="brand-sep" aria-hidden="true"></span>
-        <span class="brand-project">Project name TBD</span>
+        <span class="brand-project">STARPHERE</span>
       </div>
       <div class="header-actions">
         <button id="credits-open" class="link-btn" type="button">Credits</button>
-        <button id="tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help" title="Tour &amp; Help">?</button>
+        <button id="tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
+          title="Tour &amp; Help">?</button>
       </div>
     </div>
   </header>
@@ -58,18 +60,40 @@
   </section>
 
   <div class="sky-tools" role="group" aria-label="Sky controls">
-    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
-    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
-    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" data-tip="Pause rotation" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg></button>
-    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky" data-tip="Whole sky"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
-    <button id="grid-toggle" class="icon-btn" type="button" aria-label="Coordinate grid" data-tip="Coordinate grid (RA and Dec)" aria-pressed="false" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12"/></svg></button>
+    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"><svg
+        viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 3v10M3 8h10" />
+      </svg></button>
+    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg
+        viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 8h10" />
+      </svg></button>
+    <button id="spin-toggle" class="icon-btn" type="button" aria-label="Pause rotation" data-tip="Pause rotation"
+      aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M5.5 3.5v9M10.5 3.5v9" />
+      </svg></button>
+    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky" data-tip="Whole sky"><svg
+        viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />
+      </svg></button>
+    <button id="grid-toggle" class="icon-btn" type="button" aria-label="Coordinate grid"
+      data-tip="Coordinate grid (RA and Dec)" aria-pressed="false" disabled><svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12" />
+      </svg></button>
   </div>
 
   <section id="search" class="journey glass" aria-labelledby="search-title">
     <div class="journey-head">
       <p class="eyebrow">01 / Your patch of sky</p>
-      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
-        aria-controls="search-body">Hide</button>
+      <div class="journey-actions">
+        <!-- Shown while the frames viewer is minimized: reopens it as it was, with no trip and no new download -->
+        <button id="viewer-restore" class="pill-btn restore-btn" type="button" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5.5V3h10v10H3v-2.5"/><path d="M1.5 8h7M6 5.5L8.5 8 6 10.5"/></svg>
+          <span id="viewer-restore-label" class="restore-label"></span>
+        </button>
+        <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
+          aria-controls="search-body">Hide</button>
+      </div>
     </div>
     <div id="search-body">
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
@@ -113,7 +137,7 @@
     </div>
   </section>
 
-  <dialog id="viewer-modal" class="modal" aria-labelledby="modal-title" data-mode="basic">
+  <dialog id="viewer-modal" class="modal modal-full" aria-labelledby="modal-title" data-mode="basic">
     <div class="modal-head">
       <div>
         <p class="eyebrow">SPHEREx frames</p>
@@ -126,8 +150,17 @@
           <button type="button" role="radio" aria-checked="true" data-mode="basic">Basic</button>
           <button type="button" role="radio" aria-checked="false" data-mode="advanced">Advanced</button>
         </div>
-        <button id="modal-tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help" title="Tour &amp; Help" data-tip="Guide">?</button>
-        <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky" data-tip="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+        <button id="modal-tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
+          title="Tour &amp; Help" data-tip="Guide">?</button>
+        <button id="modal-minimize" class="icon-btn" type="button"
+          aria-label="Minimize: back to the sky, keeping these frames ready" data-tip="Minimize"><svg viewBox="0 0 16 16"
+            aria-hidden="true">
+            <path d="M3.5 12.5h9" />
+          </svg></button>
+        <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky"
+          data-tip="Close"><svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg></button>
       </div>
     </div>
 
@@ -141,55 +174,80 @@
     <section id="modal-loading" class="modal-loading" data-step="1" aria-label="Fetching the frames" hidden>
       <svg class="ld-scene" viewBox="0 0 640 240" aria-hidden="true">
         <!-- light from a star to the telescope -->
-        <path class="ld-line" d="M70 52 L150 142"/>
-        <g class="ld-star"><path class="ld-shape ld-star-shape" d="M56 36v16M48 44h16M50.3 38.3l11.4 11.4M61.7 38.3L50.3 49.7"/></g>
-        <circle class="ld-photon" r="3" style="--d: 0s"/>
-        <circle class="ld-photon" r="3" style="--d: 0.8s"/>
-        <circle class="ld-photon" r="3" style="--d: 1.6s"/>
+        <path class="ld-line" d="M70 52 L150 142" />
+        <g class="ld-star">
+          <path class="ld-shape ld-star-shape" d="M56 36v16M48 44h16M50.3 38.3l11.4 11.4M61.7 38.3L50.3 49.7" />
+        </g>
+        <circle class="ld-photon" r="3" style="--d: 0s" />
+        <circle class="ld-photon" r="3" style="--d: 0.8s" />
+        <circle class="ld-photon" r="3" style="--d: 1.6s" />
         <!-- SPHEREx: three nested cone shields and a small bus -->
         <g class="ld-node ld-sat">
           <g class="ld-bob">
-            <path class="ld-shape" d="M128 118 L160 184 L192 118"/>
-            <path class="ld-shape" d="M138 124 L160 170 L182 124"/>
-            <path class="ld-shape" d="M148 130 L160 156 L172 130"/>
-            <rect class="ld-shape" x="151" y="184" width="18" height="14" rx="2"/>
-            <path class="ld-shape" d="M120 192h31M169 192h31"/>
+            <path class="ld-shape" d="M128 118 L160 184 L192 118" />
+            <path class="ld-shape" d="M138 124 L160 170 L182 124" />
+            <path class="ld-shape" d="M148 130 L160 156 L172 130" />
+            <rect class="ld-shape" x="151" y="184" width="18" height="14" rx="2" />
+            <path class="ld-shape" d="M120 192h31M169 192h31" />
           </g>
           <text class="ld-label" x="160" y="226">SPHEREx</text>
         </g>
-        <path class="ld-line" d="M200 160 L272 160"/>
+        <path class="ld-line" d="M200 160 L272 160" />
         <!-- the archive: a wall of tiles that lights up as it is searched -->
         <g class="ld-node ld-archive">
           <g class="ld-tiles">
-            <rect class="ld-tile" x="272" y="122" width="16" height="16" style="--i: 0"/><rect class="ld-tile" x="292" y="122" width="16" height="16" style="--i: 1"/><rect class="ld-tile is-hit" x="312" y="122" width="16" height="16" style="--i: 2"/><rect class="ld-tile" x="332" y="122" width="16" height="16" style="--i: 3"/><rect class="ld-tile" x="352" y="122" width="16" height="16" style="--i: 4"/>
-            <rect class="ld-tile" x="272" y="142" width="16" height="16" style="--i: 5"/><rect class="ld-tile" x="292" y="142" width="16" height="16" style="--i: 6"/><rect class="ld-tile" x="312" y="142" width="16" height="16" style="--i: 7"/><rect class="ld-tile is-hit" x="332" y="142" width="16" height="16" style="--i: 8"/><rect class="ld-tile" x="352" y="142" width="16" height="16" style="--i: 9"/>
-            <rect class="ld-tile is-hit" x="272" y="162" width="16" height="16" style="--i: 10"/><rect class="ld-tile" x="292" y="162" width="16" height="16" style="--i: 11"/><rect class="ld-tile" x="312" y="162" width="16" height="16" style="--i: 12"/><rect class="ld-tile" x="332" y="162" width="16" height="16" style="--i: 13"/><rect class="ld-tile is-hit" x="352" y="162" width="16" height="16" style="--i: 14"/>
-            <rect class="ld-tile" x="272" y="182" width="16" height="16" style="--i: 15"/><rect class="ld-tile is-hit" x="292" y="182" width="16" height="16" style="--i: 16"/><rect class="ld-tile" x="312" y="182" width="16" height="16" style="--i: 17"/><rect class="ld-tile" x="332" y="182" width="16" height="16" style="--i: 18"/><rect class="ld-tile" x="352" y="182" width="16" height="16" style="--i: 19"/>
+            <rect class="ld-tile" x="272" y="122" width="16" height="16" style="--i: 0" />
+            <rect class="ld-tile" x="292" y="122" width="16" height="16" style="--i: 1" />
+            <rect class="ld-tile is-hit" x="312" y="122" width="16" height="16" style="--i: 2" />
+            <rect class="ld-tile" x="332" y="122" width="16" height="16" style="--i: 3" />
+            <rect class="ld-tile" x="352" y="122" width="16" height="16" style="--i: 4" />
+            <rect class="ld-tile" x="272" y="142" width="16" height="16" style="--i: 5" />
+            <rect class="ld-tile" x="292" y="142" width="16" height="16" style="--i: 6" />
+            <rect class="ld-tile" x="312" y="142" width="16" height="16" style="--i: 7" />
+            <rect class="ld-tile is-hit" x="332" y="142" width="16" height="16" style="--i: 8" />
+            <rect class="ld-tile" x="352" y="142" width="16" height="16" style="--i: 9" />
+            <rect class="ld-tile is-hit" x="272" y="162" width="16" height="16" style="--i: 10" />
+            <rect class="ld-tile" x="292" y="162" width="16" height="16" style="--i: 11" />
+            <rect class="ld-tile" x="312" y="162" width="16" height="16" style="--i: 12" />
+            <rect class="ld-tile" x="332" y="162" width="16" height="16" style="--i: 13" />
+            <rect class="ld-tile is-hit" x="352" y="162" width="16" height="16" style="--i: 14" />
+            <rect class="ld-tile" x="272" y="182" width="16" height="16" style="--i: 15" />
+            <rect class="ld-tile is-hit" x="292" y="182" width="16" height="16" style="--i: 16" />
+            <rect class="ld-tile" x="312" y="182" width="16" height="16" style="--i: 17" />
+            <rect class="ld-tile" x="332" y="182" width="16" height="16" style="--i: 18" />
+            <rect class="ld-tile" x="352" y="182" width="16" height="16" style="--i: 19" />
           </g>
           <text class="ld-label" x="320" y="226">IRSA archive</text>
         </g>
-        <path class="ld-line" d="M376 160 L484 160"/>
+        <path class="ld-line" d="M376 160 L484 160" />
         <!-- cutouts on their way: one of them arrives upside down and is turned north-up -->
-        <rect class="ld-packet" x="-5" y="-5" width="10" height="10" style="--d: 0s"/>
-        <rect class="ld-packet" x="-5" y="-5" width="10" height="10" style="--d: 0.8s"/>
-        <rect class="ld-packet ld-packet-flipped" x="-5" y="-5" width="10" height="10" style="--d: 1.6s"/>
+        <rect class="ld-packet" x="-5" y="-5" width="10" height="10" style="--d: 0s" />
+        <rect class="ld-packet" x="-5" y="-5" width="10" height="10" style="--d: 0.8s" />
+        <rect class="ld-packet ld-packet-flipped" x="-5" y="-5" width="10" height="10" style="--d: 1.6s" />
         <g class="ld-node ld-screen">
-          <rect class="ld-shape" x="488" y="112" width="104" height="80" rx="6"/>
-          <path class="ld-shape" d="M524 198h32M540 192v6"/>
-          <rect class="ld-frame" x="512" y="130" width="40" height="40"/>
-          <rect class="ld-frame" x="518" y="136" width="40" height="40"/>
-          <g class="ld-flip"><path class="ld-frame ld-frame-top" d="M524 142h40v40h-40z M526 144l12 0 0 12"/></g>
-          <circle class="ld-ring" cx="544" cy="162" r="11"/>
+          <rect class="ld-shape" x="488" y="112" width="104" height="80" rx="6" />
+          <path class="ld-shape" d="M524 198h32M540 192v6" />
+          <rect class="ld-frame" x="512" y="130" width="40" height="40" />
+          <rect class="ld-frame" x="518" y="136" width="40" height="40" />
+          <g class="ld-flip">
+            <path class="ld-frame ld-frame-top" d="M524 142h40v40h-40z M526 144l12 0 0 12" />
+          </g>
+          <circle class="ld-ring" cx="544" cy="162" r="11" />
           <text class="ld-label" x="540" y="226">Your screen</text>
         </g>
       </svg>
       <ol class="ld-steps">
-        <li data-step="1" aria-current="step"><span class="ld-num" aria-hidden="true">1</span><span>Asking IRSA which SPHEREx images saw this patch of sky.</span></li>
-        <li data-step="2"><span class="ld-num" aria-hidden="true">2</span><span>Downloading a cutout of every visit (about 4 MB each) and turning them all north up.</span></li>
-        <li data-step="3"><span class="ld-num" aria-hidden="true">3</span><span>Placing Gaia's predicted position on every date.</span></li>
+        <li data-step="1" aria-current="step"><span class="ld-num" aria-hidden="true">1</span><span>Asking IRSA which
+            SPHEREx images saw this patch of sky.</span></li>
+        <li data-step="2"><span class="ld-num" aria-hidden="true">2</span><span>Downloading a cutout of every visit
+            (about 4 MB each) and turning them all north up.</span></li>
+        <li data-step="3"><span class="ld-num" aria-hidden="true">3</span><span>Placing Gaia's predicted position on
+            every date.</span></li>
       </ol>
-      <p class="ld-note"><span id="loading-note">The first time for a patch of sky this takes a few minutes. Next time it opens in seconds.</span>
-        <span class="ld-elapsed">Elapsed <output id="loading-elapsed" class="mono">0:00</output></span></p>
+      <p class="ld-note"><span id="loading-note">The first time for a patch of sky this takes a few minutes. Next time
+          it opens in seconds.</span>
+        <span class="ld-elapsed">Elapsed <output id="loading-elapsed" class="mono">0:00</output></span>
+      </p>
     </section>
 
     <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
@@ -212,7 +270,7 @@
           </div>
         </div>
 
-        <!-- Single frames or the deep stack (DESIGN §7.14). Hidden for bundles without a stack block -->
+        <!-- Single frames or the deep stack (DESIGN §7.15). Hidden for bundles without a stack block -->
         <div id="view-row" class="view-row" hidden>
           <div id="view-switch" class="mode-switch view-switch" role="radiogroup" aria-label="Image"
             aria-describedby="view-note">
@@ -224,27 +282,50 @@
 
         <div class="controls" role="group" aria-label="Playback">
           <div class="transport">
-            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame" data-tip="Previous frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 3.6v8.8"/><path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z"/></svg></button>
-            <button id="play" class="icon-btn" type="button" aria-label="Play" data-tip="Play" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg></button>
-            <button id="next" class="icon-btn" type="button" aria-label="Next frame" data-tip="Next frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M3.6 3.6L9.8 8l-6.2 4.4z"/><path d="M12.4 3.6v8.8"/></svg></button>
+            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame" data-tip="Previous frame"><svg
+                viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.6 3.6v8.8" />
+                <path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z" />
+              </svg></button>
+            <button id="play" class="icon-btn" type="button" aria-label="Play" data-tip="Play" aria-pressed="false"><svg
+                viewBox="0 0 16 16" aria-hidden="true">
+                <path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z" />
+              </svg></button>
+            <button id="next" class="icon-btn" type="button" aria-label="Next frame" data-tip="Next frame"><svg
+                viewBox="0 0 16 16" aria-hidden="true">
+                <path class="ico-fill" d="M3.6 3.6L9.8 8l-6.2 4.4z" />
+                <path d="M12.4 3.6v8.8" />
+              </svg></button>
           </div>
           <label class="speed">
             <span class="speed-label">Speed</span>
             <input id="speed" type="range" min="0.5" max="3" step="0.5" value="1">
             <output id="speed-out" for="speed">1 fps</output>
           </label>
-          <button id="diff-toggle" class="chip diff-toggle adv" type="button" aria-pressed="false" title="Toggle difference map between epochs">Difference Map</button>
+          <button id="diff-toggle" class="chip diff-toggle adv" type="button" aria-pressed="false"
+            title="Toggle difference map between epochs">Difference Map</button>
           <div class="zoom-group">
-            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg
+                viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10" />
+              </svg></button>
             <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
-            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
-            <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom" data-tip="Whole image (1×)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"><svg
+                viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 3v10M3 8h10" />
+              </svg></button>
+            <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom"
+              data-tip="Whole image (1×)"><svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />
+              </svg></button>
           </div>
         </div>
 
         <div class="band-row">
           <label class="select-inline" for="band-select">Band</label>
           <span class="select"><select id="band-select"></select></span>
+          <!-- Where the chosen band sits in SPHEREx's 0.75–5.0 µm range; mockup.js fills it -->
+          <span id="band-spectrum" class="band-spectrum" aria-hidden="true"></span>
         </div>
 
         <div class="timeline-wrap">
@@ -272,20 +353,37 @@
           </div>
           <ul class="legend">
             <li style="--lg: var(--viz-predicha)">
-              <label class="lg"><input type="checkbox" data-overlay="predicted" checked><span class="lg-box" aria-hidden="true"></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" class="mk-pred-halo"/><circle cx="12" cy="12" r="7" class="mk-pred"/></svg>Predicted (Gaia DR3)</label>
+              <label class="lg"><input type="checkbox" data-overlay="predicted" checked><span class="lg-box"
+                  aria-hidden="true"></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="7" class="mk-pred-halo" />
+                  <circle cx="12" cy="12" r="7" class="mk-pred" />
+                </svg>Predicted (Gaia DR3)</label>
             </li>
             <li style="--lg: var(--viz-medida)">
-              <label class="lg"><input type="checkbox" data-overlay="measured" checked><span class="lg-box" aria-hidden="true"></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas-halo"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas"/></svg>Measured centroid</label>
+              <label class="lg"><input type="checkbox" data-overlay="measured" checked><span class="lg-box"
+                  aria-hidden="true"></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas-halo" />
+                  <path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas" />
+                </svg>Measured centroid</label>
             </li>
             <li style="--lg: var(--viz-trayectoria)">
-              <label class="lg"><input type="checkbox" data-overlay="path" checked><span class="lg-box" aria-hidden="true"></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18L21 6" class="mk-traj"/><circle cx="3" cy="18" r="2" class="mk-dot"/><circle cx="21" cy="6" r="2" class="mk-dot"/></svg>Path between dates</label>
+              <label class="lg"><input type="checkbox" data-overlay="path" checked><span class="lg-box"
+                  aria-hidden="true"></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 18L21 6" class="mk-traj" />
+                  <circle cx="3" cy="18" r="2" class="mk-dot" />
+                  <circle cx="21" cy="6" r="2" class="mk-dot" />
+                </svg>Path between dates</label>
             </li>
             <li style="--lg: var(--bc-error)">
-              <label class="lg"><input id="flags-toggle" type="checkbox" data-overlay="flags"><span class="lg-box" aria-hidden="true"></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" class="mk-flag-bad"/><rect x="13" y="13" width="7" height="7" class="mk-flag-sat"/></svg>Flagged pixels</label>
+              <label class="lg"><input id="flags-toggle" type="checkbox" data-overlay="flags"><span class="lg-box"
+                  aria-hidden="true"></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="4" width="7" height="7" class="mk-flag-bad" />
+                  <rect x="13" y="13" width="7" height="7" class="mk-flag-sat" />
+                </svg>Flagged pixels</label>
             </li>
           </ul>
         </div>
@@ -293,12 +391,30 @@
         <div class="panel-block" id="frame-meta" aria-live="off">
           <p class="eyebrow" id="frame-count">Frame</p>
           <dl class="meta">
-            <div><dt>Date</dt><dd id="m-date"></dd></div>
-            <div><dt>Wavelength</dt><dd id="m-wave"></dd></div>
-            <div><dt>Detector</dt><dd id="m-det"></dd></div>
-            <div class="adv"><dt>Release</dt><dd id="m-rel"></dd></div>
-            <div class="adv"><dt>Position angle</dt><dd id="m-pa"></dd></div>
-            <div class="adv"><dt>Measured vs Gaia</dt><dd id="m-off"></dd></div>
+            <div>
+              <dt>Date</dt>
+              <dd id="m-date"></dd>
+            </div>
+            <div>
+              <dt>Wavelength</dt>
+              <dd id="m-wave"></dd>
+            </div>
+            <div>
+              <dt>Detector</dt>
+              <dd id="m-det"></dd>
+            </div>
+            <div class="adv">
+              <dt>Release</dt>
+              <dd id="m-rel"></dd>
+            </div>
+            <div class="adv">
+              <dt>Position angle</dt>
+              <dd id="m-pa"></dd>
+            </div>
+            <div class="adv">
+              <dt>Measured vs Gaia</dt>
+              <dd id="m-off"></dd>
+            </div>
           </dl>
           <!-- Four fixed cells, so the panel keeps its height from one frame to the next -->
           <ul id="status" class="status" aria-label="Frame checks">
@@ -342,16 +458,22 @@
       </section>
     </section>
 
-    <details class="modal-how">
+    <details class="modal-how disclosure">
       <summary>How these frames were made</summary>
       <ol>
-        <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover the star (DR1 + QR3).</li>
-        <li>Kept one image per visit, all seeing the star at nearly the same wavelength.</li>
-        <li>Removed the zodiacal light model and put every image on one grid with north up.
-          Two visits saw the sky rotated 180°; this undoes it.</li>
-        <li>Applied the same brightness stretch (asinh) to every frame, so blinking stays fair.</li>
+        <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover this position (DR1 + QR3).</li>
+        <li>SPHEREx photographs each patch of sky dozens of times during every visit, each image in a
+          slightly different colour. We keep up to 12 images per release, spread across the six bands
+          and across the dates.</li>
+        <li>Removed the zodiacal light model and put every image on one grid with north up. Between
+          visits the spacecraft sees the sky rotated 180°; this undoes it.</li>
+        <li>Applied the same brightness stretch to every image of a band, so blinking within a band
+          stays fair.</li>
         <li>Moved Gaia DR3's position to each date (proper motion + parallax) and compared it
-          with the measured center of the star.</li>
+          with the measured centre of the star.</li>
+        <li>The viewer opens on Band 6 (4.42–5.00 µm), or on the nearest band that has at least two
+          images to blink. Images in different bands see different colours, so to judge a change in
+          brightness, compare frames of one band.</li>
       </ol>
     </details>
   </dialog>
@@ -384,7 +506,7 @@
         <button id="tour-skip" class="tour-skip-btn" type="button" aria-label="Skip tour">Skip tour ×</button>
       </div>
       <h3 id="tour-title" class="tour-title"></h3>
-      <p id="tour-desc" class="tour-desc"></p>
+      <div id="tour-desc" class="tour-desc"></div>
       <div class="tour-card-foot">
         <button id="tour-prev" class="tour-btn-prev" type="button">Previous</button>
         <button id="tour-next" class="tour-btn-next" type="button">Next</button>

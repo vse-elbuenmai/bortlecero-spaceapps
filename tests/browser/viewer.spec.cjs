@@ -256,6 +256,81 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 
   });
 }
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 }]) {
+  test(`minimize keeps the frames and reopens them without a new job at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const bundle = makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 });
+    let jobs = 0;
+    await serve(page, publicOrigin, staged, {
+      "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+      "/api/v1/jobs": (route) => {
+        jobs += 1;
+        return route.fulfill({ status: 200, json: { job_id: `job-${jobs}`, status: "succeeded", result: bundle } });
+      },
+    });
+
+    await pickTarget(page, "barnard");
+    await expect(page.locator("#viewer")).toBeVisible();
+    // The dialog fills the screen, without a horizontal scroll
+    const box = await page.locator("#viewer-modal").boundingBox();
+    expect(Math.round(box.width)).toBe(viewport.width);
+    expect(await page.locator("#viewer-modal").evaluate((d) => d.scrollWidth <= d.clientWidth)).toBeTruthy();
+    // No Band 6 in this series: it opens on the longest band with two frames, and says its range
+    await expect(page.locator("#band-select option:checked")).toHaveText("Band 2 · 1.10–1.62 µm · 2 frames");
+    await expect(page.locator("#band-spectrum")).toContainText("1.10–1.62 µm");
+    await page.locator("#next").click();
+    await expect(page.locator("#frame-count")).toHaveText("Frame 2 / 2");
+
+    await page.locator("#modal-minimize").click();
+    await expect(page.locator("#viewer-modal")).toBeHidden();
+    const restore = page.locator("#viewer-restore");
+    await expect(restore).toBeVisible();
+    await expect(restore).toContainText("Barnard's Star");
+    await restore.click();
+    await expect(page.locator("#viewer")).toBeVisible();
+    await expect(page.locator("#frame-count")).toHaveText("Frame 2 / 2");
+
+    // Escape minimizes too, and searching the same object reopens it with no new job
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#viewer-modal")).toBeHidden();
+    await page.locator("#search-toggle").click();
+    await pickTarget(page, "barnard");
+    await expect(page.locator("#viewer")).toBeVisible();
+    expect(jobs).toBe(1);
+
+    // Close forgets: the pill goes, and the next search loads the series again (from the browser's
+    // own bundle cache here, so still one job)
+    await page.evaluate(() => { window.__kept = window.viewerState.bundle; });
+    await page.locator("#modal-close").click();
+    await expect(restore).toBeHidden();
+    await pickTarget(page, "barnard");
+    await expect(page.locator("#viewer")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Boolean(window.viewerState.bundle) && window.viewerState.bundle !== window.__kept))
+      .toBeTruthy();
+    await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
+  });
+}
+
+test("the guided tour explains the six bands with their ranges", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const bundle = makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 });
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+    "/api/v1/jobs": (route) => route.fulfill({ status: 200, json: { job_id: "job-1", status: "succeeded", result: bundle } }),
+  });
+  await pickTarget(page, "barnard");
+  await expect(page.locator("#viewer")).toBeVisible();
+  await page.locator("#modal-tour-open").click();
+  await page.locator("#tour-next").click();
+  await page.locator("#tour-next").click();
+  await expect(page.locator("#tour-title")).toHaveText("Spectral Band Filter");
+  const rows = page.locator(".band-table tbody tr");
+  await expect(rows).toHaveCount(6);
+  await expect(rows.nth(5)).toContainText("4.42–5.00 µm");
+  await expect(rows.nth(5)).toHaveClass(/is-default/);
+  await expect(page.locator(".band-table .spec-seg")).toHaveCount(6);
+});
+
 test("a slow benchmark search keeps the loading scene in sync with the server", async ({ page }) => {
   let phase = "queued";
   const bundle = makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 });
