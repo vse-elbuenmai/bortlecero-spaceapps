@@ -107,6 +107,10 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
 - **How close it gets.** One map pixel covers 5.3′ of sky, so the view stops where one screen pixel
   would show less than half a map pixel: about 60° across on a laptop, never closer than 30°. The
   trip ends there, with a ring on the position; the dialog is where the real pixels are.
+- **Looking around.** Drag with the mouse or a finger. When the sky is let go it keeps turning the
+  way it was thrown and slows down; if it was spinning by itself before the drag, it settles back
+  into that slow spin, now in the direction of the drag. The buttons on the right say what they do
+  on hover and go dim when they would change nothing (zoom at its limit, whole sky already shown).
 - **Coordinate grid and readout.** Switch on **Coordinate grid** in the sky controls to show
   lines every 30° of right ascension (RA) and 15° of declination (Dec). Brighter lines mark RA 0°
   and the celestial equator (Dec 0°). Move the pointer over the map or touch it to read the sky
@@ -124,6 +128,30 @@ and closes in; on arrival a dialog opens with the SPHEREx frames of that positio
   object names open the blink viewer by querying live SPHEREx data from IRSA through the ingestion
   API configured in `viewer-config.json`.
 - `window.skyPrototype` in the browser console gives the view's state.
+
+### While the server works
+
+A position the server has not seen takes a while (it asks IRSA, downloads a cutout per visit and
+aligns them; Barnard's Star took 31 s and 52 s in two runs on 15 Nov, a random empty position
+71 s). If the answer is not back within 1.2 s the dialog shows the journey of the data: a star,
+the telescope, the IRSA archive and your screen, with three numbered stations that follow the
+job's real phases (`queued`, `running`, result) and an elapsed-time counter. `viewer-data.js`
+reports each phase through the `onProgress` callback of `viewerData.load`. A cached answer opens
+the viewer directly. The server keeps a result for 24 hours, but in the memory of a Cloud Run
+instance that scales to zero when idle, so the first visitor after a quiet spell waits again.
+`DESIGN.md` §7.6 has the drawing's rules.
+
+### The viewer's two levels of detail
+
+The dialog opens in **Basic**: image, playback, band, timeline, the legend (each line switches its
+marks on and off; All / None do the four at once), the frame's date, wavelength and detector, four
+fixed check cells (roll, core, distance to Gaia, wavelength against the previous frame) and "What
+moved". **Advanced**, the other position of the switch in the dialog's header, adds the difference
+map, release, position angle, the measured distance to Gaia, the filter's half-width, the Gaia
+position of the object, the scientific notes (under the timeline on a wide screen) and the
+citations. The choice is remembered in the browser. The four cells are always there, so the panel
+keeps its height from one frame to the next while playing. `DESIGN.md` §7.4 and §7.13 have the
+details.
 
 ### Rebuilding the sky maps
 

@@ -256,6 +256,27 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 
   });
 }
 
+test("a slow benchmark search keeps the loading scene in sync with the server", async ({ page }) => {
+  let phase = "queued";
+  const bundle = makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 });
+  await serve(page, publicOrigin, staged, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: publicOrigin } }),
+    "/api/v1/jobs": (route) => route.fulfill({ json: { status: "queued", job_id: "benchmark" } }),
+    "/api/v1/jobs/benchmark": (route) => route.fulfill({ json: { status: phase, job_id: "benchmark" } }),
+    "/api/v1/jobs/benchmark/result": (route) => route.fulfill({ json: bundle }),
+  });
+
+  await pickTarget(page, "barnard");
+  const loading = page.locator("#modal-loading");
+  await expect(loading).toBeVisible();
+  await expect(loading).toHaveAttribute("data-step", "1");
+  phase = "running";
+  await expect(loading).toHaveAttribute("data-step", "2");
+  phase = "succeeded";
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(loading).toBeHidden();
+});
+
 test("exact coordinates reuse rendered frames after reload until the browser cache expires", async ({ page }) => {
   const jobs = [];
   await serve(page, publicOrigin, staged, {

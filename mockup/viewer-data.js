@@ -160,7 +160,9 @@
     return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
   }
 
-  async function runAsyncJob(baseHref, payload, fallbackFn, signal) {
+  // onProgress hears each phase the server reports: submitting, queued, running, result.
+  async function runAsyncJob(baseHref, payload, fallbackFn, signal, onProgress = () => {}) {
+    onProgress({ phase: "submitting" });
     const jobResp = await fetchData(
       new URL("api/v1/jobs", baseHref),
       signal,
@@ -172,6 +174,7 @@
       },
     );
     if (jobResp.status === 404 || jobResp.status === 405) {
+      onProgress({ phase: "running" });
       return fallbackFn();
     }
     if (jobResp.status === 422) {
@@ -181,6 +184,7 @@
     if (!jobResp.ok) return { status: "unavailable" };
 
     let job = await jobResp.json();
+    onProgress({ phase: job.status, cached: job.cached === true });
     const pollIntervalMs = local ? 150 : 1500;
     while (job.status === "queued" || job.status === "running") {
       if (!job.job_id) return { status: "unavailable" };
@@ -192,9 +196,11 @@
       );
       if (!pollResp.ok) return { status: "unavailable" };
       job = await pollResp.json();
+      onProgress({ phase: job.status });
     }
 
     if (job.status === "succeeded") {
+      onProgress({ phase: "result" });
       let bundle = job.result && Array.isArray(job.result.frames_chronological) ? job.result : null;
       if (!bundle) {
         if (!job.job_id) return { status: "unavailable" };
@@ -211,7 +217,9 @@
         bundle = await resultResp.json();
       }
       if (!bundle || !Array.isArray(bundle.frames_chronological)) return { status: "unavailable" };
-      return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
+      return bundle.frames_chronological.length
+        ? { status: "ready", bundle, cached: job.cached === true }
+        : { status: "no-observations" };
     }
 
     if (job.status === "failed") {
@@ -220,22 +228,24 @@
     return { status: "unavailable" };
   }
 
-  async function loadBundle(payload, fallbackFn, signal) {
+  async function loadBundle(payload, fallbackFn, signal, onProgress) {
     const config = await readConfig(signal);
     if (!config.liveQueries) throw liveDisabledError();
     // Bump the key version when old bundles are incompatible with the viewer.
     const key = JSON.stringify([1, config.baseHref, payload]);
     const cached = await readCachedBundle(key).catch(() => null);
     signal.throwIfAborted();
-    if (cached) return { status: "ready", bundle: cached };
-    const result = await runAsyncJob(config.baseHref, payload, () => fallbackFn(config.baseHref), signal);
+    if (cached) return { status: "ready", bundle: cached, cached: true };
+    const result = await runAsyncJob(
+      config.baseHref, payload, () => fallbackFn(config.baseHref), signal, onProgress,
+    );
     if (!signal.aborted && result.status === "ready") {
       saveCachedBundle(key, result.bundle).catch(() => {});
     }
     return result;
   }
 
-  async function readBenchmark(targetId, signal) {
+  async function readBenchmark(targetId, signal, onProgress) {
     const id = BENCHMARK_ID[targetId] || targetId;
     return loadBundle(
       { query: id, size_arcsec: 180, max_frames: 12 },
@@ -244,10 +254,11 @@
         return parseBundleResponse(await fetchData(url, signal, 120000));
       },
       signal,
+      onProgress,
     );
   }
 
-  async function readCustomPosition(ra, dec, signal) {
+  async function readCustomPosition(ra, dec, signal, onProgress) {
     if (!Number.isFinite(ra) || !Number.isFinite(dec)) {
       return { status: "unavailable" };
     }
@@ -259,13 +270,16 @@
         return parseBundleResponse(await fetchData(url, signal, 120000));
       },
       signal,
+      onProgress,
     );
   }
 
   window.viewerData = {
-    async load({ targetId, ra, dec }, signal) {
+    async load({ targetId, ra, dec }, signal, onProgress) {
       try {
-        return targetId ? await readBenchmark(targetId, signal) : await readCustomPosition(ra, dec, signal);
+        return targetId
+          ? await readBenchmark(targetId, signal, onProgress)
+          : await readCustomPosition(ra, dec, signal, onProgress);
       } catch (error) {
         if (signal.aborted) throw error;
         if (error?.code === "live_disabled") return { status: "live-disabled" };

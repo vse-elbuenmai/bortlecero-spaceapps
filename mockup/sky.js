@@ -39,7 +39,7 @@ let activePointer = null, lastTouch = null, pointerDirty = false;
 const state = {
   ra: 266.4, dec: -20, fov: REST_FOV, // view centre (degrees) and field of view across the screen
   layer: "visible", fade: null, // fade: { from, start } while two layers cross-fade
-  spinning: !reduceMotion, trip: null, target: null, grid: false,
+  spinning: !reduceMotion, spinDir: 1, inertia: null, trip: null, target: null, grid: false,
   gl: null, uniforms: null, textures: {}, mapWidth: 2048, meta: null, dirty: true, last: 0,
 };
 // Handy in the browser console, and used to check that stars land where the maths says they do.
@@ -250,7 +250,8 @@ function frame(now) {
   const dt = Math.min(0.5, (now - (state.last || now)) / 1000);
   state.last = now;
   if (state.trip) stepTrip(now);
-  else if (state.spinning && !modal.open) { state.ra = (state.ra + SPIN_DEG_PER_S * dt) % 360; state.dirty = true; }
+  else if (state.inertia) glide(dt);
+  else if (state.spinning && !modal.open) { state.ra = (state.ra + state.spinDir * SPIN_DEG_PER_S * dt + 360) % 360; state.dirty = true; }
   if (state.dirty || pointerDirty) updatePointerReadout();
   if (state.dirty) {
     state.dirty = false;
@@ -258,6 +259,23 @@ function frame(now) {
     updateOverlay();
   }
   requestAnimationFrame(frame);
+}
+
+// After a drag the sky keeps turning the way it was thrown and slows down. If it was spinning
+// before the drag, it settles into the idle spin in that same direction instead of stopping.
+const GLIDE_DAMPING = 2.5; // per second: a throw loses 1/e of its extra speed every 0.4 s
+function glide(dt) {
+  const g = state.inertia, k = Math.exp(-GLIDE_DAMPING * dt);
+  const target = g.resume ? state.spinDir * SPIN_DEG_PER_S : 0;
+  g.vra = target + (g.vra - target) * k;
+  g.vdec *= k;
+  state.ra = (state.ra + g.vra * dt + 360) % 360;
+  state.dec = clamp(state.dec + g.vdec * dt, -89.5, 89.5);
+  state.dirty = true;
+  if (Math.abs(g.vra - target) < 0.3 && Math.abs(g.vdec) < 0.3) {
+    state.inertia = null;
+    if (g.resume) setSpinning(true);
+  }
 }
 
 function updatePointerReadout() {
@@ -277,6 +295,10 @@ function updateOverlay() {
   const closest = state.fov <= minFov() + 0.05;
   $("sky-coords").textContent =
     `${fmtRa(state.ra)}, ${fmtDec(state.dec)} · FOV ${state.fov.toFixed(0)}°${closest ? " · closest view" : ""}`;
+  // A button that would change nothing is shown disabled
+  $("zoom-sky-in").disabled = closest;
+  $("zoom-sky-out").disabled = state.fov >= MAX_FOV - 0.05;
+  $("whole-sky").disabled = !state.target && !state.trip && !modal.open && Math.abs(state.fov - REST_FOV) < 0.5;
   const reticle = $("reticle"), p = state.target && project(state.target.ra, state.target.dec);
   reticle.hidden = !p;
   if (p) reticle.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`;
@@ -284,9 +306,11 @@ function updateOverlay() {
 
 function setSpinning(on) {
   state.spinning = on && !reduceMotion;
+  if (state.inertia) state.inertia.resume = state.spinning; // a glide in progress ends the way the button says
   const btn = $("spin-toggle");
   btn.setAttribute("aria-pressed", String(state.spinning));
   btn.setAttribute("aria-label", state.spinning ? "Pause rotation" : "Rotate the sky");
+  btn.dataset.tip = state.spinning ? "Pause rotation" : "Rotate the sky";
   btn.innerHTML = state.spinning ? ICON_PAUSE : ICON_PLAY;
 }
 
@@ -435,6 +459,7 @@ function travel(target) {
   setSpinning(false);
   setSearchOpen(false);
   state.target = null;
+  state.inertia = null;
   $("ra").value = target.ra.toFixed(4);
   $("dec").value = (target.dec >= 0 ? "+" : "") + target.dec.toFixed(4);
   $("reticle-label").textContent = target.name || `${fmtRa(target.ra)}, ${fmtDec(target.dec)}`;
@@ -530,6 +555,7 @@ function wholeSky() {
   if (modal.open) modal.close();
   state.target = null;
   state.trip = null;
+  state.inertia = null;
   setObject(null);
   say("");
   setSearchOpen(true);
@@ -659,15 +685,38 @@ function bindEvents() {
     activePointer = null;
     pointerDirty = true;
   };
-  const hold = () => { state.trip = null; if (state.spinning) setSpinning(false); };
+  // A drag: whether the sky was spinning when it started, which way it went, and the last moves
+  // (to measure the speed at which it was let go).
+  let resumeSpin = false, dragDx = 0, samples = [];
+  const hold = () => { state.trip = null; state.inertia = null; if (state.spinning) setSpinning(false); };
+  const degPerPx = () => (2 * planeHalfWidth()) / canvas.clientWidth / RAD;
   const turn = (dx, dy) => {
-    const degPerPx = (2 * planeHalfWidth()) / canvas.clientWidth / RAD;
-    state.dec = clamp(state.dec + dy * degPerPx, -89.5, 89.5);
-    state.ra = (state.ra + (dx * degPerPx) / Math.max(0.05, Math.cos(state.dec * RAD)) + 360) % 360;
+    const k = degPerPx();
+    state.dec = clamp(state.dec + dy * k, -89.5, 89.5);
+    state.ra = (state.ra + (dx * k) / Math.max(0.05, Math.cos(state.dec * RAD)) + 360) % 360;
     state.dirty = true;
+  };
+  // The drag is over: a flick throws the sky, a plain drag sets the direction of the idle spin.
+  const release = (e) => {
+    const last = { t: performance.now(), x: e.clientX, y: e.clientY };
+    const first = samples.find((s) => last.t - s.t <= 120); // the oldest move of the last 120 ms
+    samples = [];
+    if (Math.abs(dragDx) > 20) state.spinDir = Math.sign(dragDx);
+    const dt = first ? (last.t - first.t) / 1000 : 0;
+    if (reduceMotion || !state.gl || dt < 0.02) { if (resumeSpin) setSpinning(true); return; }
+    const k = degPerPx();
+    const vra = clamp(((last.x - first.x) / dt) * k / Math.max(0.05, Math.cos(state.dec * RAD)), -90, 90);
+    const vdec = clamp(((last.y - first.y) / dt) * k, -90, 90);
+    if (Math.hypot(vra, vdec) < 1) { if (resumeSpin) setSpinning(true); return; }
+    state.inertia = { vra, vdec, resume: resumeSpin };
   };
   canvas.addEventListener("pointerdown", (e) => {
     trackPointer(e);
+    if (pointers.size === 0) {
+      resumeSpin = state.spinning || Boolean(state.inertia && state.inertia.resume);
+      dragDx = 0;
+      samples = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+    }
     hold();
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -679,7 +728,12 @@ function bindEvents() {
     if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
     p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size === 1) return turn(dx, dy);
+    if (pointers.size === 1) {
+      dragDx += dx;
+      samples.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+      if (samples.length > 8) samples.shift();
+      return turn(dx, dy);
+    }
     const [a, b] = [...pointers.values()], dist = Math.hypot(a.x - b.x, a.y - b.y);
     if (pinch) setFov(state.fov * (pinch / dist));
     pinch = dist;
@@ -693,6 +747,7 @@ function bindEvents() {
         lastTouch = skyAtPointer({ x: e.clientX, y: e.clientY }, axes());
         clearPointer(e);
       } else if (type !== "pointerup") clearPointer(e);
+      if (pointers.size === 0) release(e);
     });
   }
   canvas.addEventListener("wheel", (e) => { e.preventDefault(); hold(); setFov(state.fov * Math.exp(e.deltaY * 0.0015)); }, { passive: false });
