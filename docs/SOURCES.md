@@ -91,6 +91,8 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 |---|---|---|
 | [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification, HTTP probes, and bounded scratch volume | 2026-11-15 |
 | [Astral uv Docker guide](https://docs.astral.sh/uv/guides/integration/docker/) | Multi-stage container build with locked runtime dependencies | 2026-11-15 |
+| [`google-github-actions/auth`](https://github.com/google-github-actions/auth) | Keyless OIDC/Workload Identity Federation authentication from GitHub Actions to Google Cloud | 2026-11-15 |
+| [Google Cloud Workload Identity Federation with GitHub Actions](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines) | Least-privilege OIDC pool/provider attribute mapping and repository conditions | 2026-11-15 |
 
 ## Public ingestion operations
 

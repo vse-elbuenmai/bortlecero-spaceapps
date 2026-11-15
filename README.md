@@ -95,9 +95,9 @@ uv run ruff check src/ tests/
 
 ---
 
-## Cloud Run staging
+## Cloud Run staging & keyless delivery
 
-See the [container and staging guide](docs/CLOUD-RUN.md) for local smoke tests and private deployment.
+See the [container and staging guide](docs/CLOUD-RUN.md) for local smoke tests and private deployment, [GCP bootstrap guide](deploy/gcp/README.md) for OIDC/WIF provisioning, and the [operations runbook](docs/OPERATIONS-RUNBOOK.md) for monitoring, alerts, and rollback procedures.
 
 ## License & Citations
 
