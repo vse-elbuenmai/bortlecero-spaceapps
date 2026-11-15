@@ -246,12 +246,11 @@
     state.i = (i + frames.length) % frames.length;
     const f = frames[state.i];
 
-    // Image source: handle png_base64 Data URI or relative path
+    // Image source: handle png_base64 Data URI or URL
     if (f.png_base64) {
       img.src = f.png_base64;
     } else if (f.image) {
-      const path = f.image.startsWith("data:") ? f.image : (f.image.includes("/") ? f.image : `data/barnard/${f.image}`);
-      img.src = path;
+      img.src = f.image;
     }
 
     const dateStr = f.obs_time_iso || f.date_utc || "";
@@ -259,8 +258,7 @@
 
     state.legacyFlags = Boolean(f.flags);
     if (f.flags) {
-      const fPath = f.flags.startsWith("data:") ? f.flags : (f.flags.includes("/") ? f.flags : `data/barnard/${f.flags}`);
-      flagsImg.src = fPath;
+      flagsImg.src = f.flags;
     }
     flagsImg.hidden = !(state.overlays.flags && state.legacyFlags);
 
@@ -482,6 +480,18 @@
   }
 
   // ---------- summary ----------
+  const COMPASS_DIRS = [
+    "north", "northeast", "east", "southeast",
+    "south", "southwest", "west", "northwest",
+  ];
+
+  // Display coordinates have East to the left (dx < 0) and North up (dy < 0).
+  function compassBearing(dx, dy) {
+    if (dx === 0 && dy === 0) return "north";
+    const angleDeg = (Math.atan2(-dx, -dy) * (180 / Math.PI) + 360) % 360;
+    return COMPASS_DIRS[Math.round(angleDeg / 45) % 8];
+  }
+
   function summary() {
     if (!state.bundle) return;
     const s = state.bundle.summary;
@@ -491,8 +501,9 @@
 
     if (s && s.measured_motion_arcsec !== undefined) {
       const first = frames[0], last = frames[frames.length - 1];
-      const dir = (last.predicted_pixel_y ?? last.predicted.y) < (first.predicted_pixel_y ?? first.predicted.y)
-        ? "north" : "south";
+      const dx = (last.predicted_pixel_x ?? last.predicted.x) - (first.predicted_pixel_x ?? first.predicted.x);
+      const dy = (last.predicted_pixel_y ?? last.predicted.y) - (first.predicted_pixel_y ?? first.predicted.y);
+      const dir = compassBearing(dx, dy);
       $("summary").innerHTML =
         `The object moved <strong>${s.measured_motion_arcsec.toFixed(1)}″ ${dir}</strong> in ${Math.round(s.days)} days ` +
         `(${(s.measured_motion_arcsec / pixScale).toFixed(1)} pixels). ` +
@@ -515,8 +526,10 @@
     const x0 = first.predicted_pixel_x ?? (first.predicted ? first.predicted.x : 0);
     const x1 = last.predicted_pixel_x ?? (last.predicted ? last.predicted.x : 0);
 
-    const dir = y1 < y0 ? "north" : "south";
-    const predDispPx = Math.hypot(x1 - x0, y1 - y0);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const dir = compassBearing(dx, dy);
+    const predDispPx = Math.hypot(dx, dy);
     const predDispArcsec = predDispPx * pixScale;
 
     // Measured motion if centroids are available
@@ -525,9 +538,16 @@
     const mx1 = last.measured_centroid_x ?? (last.measured ? last.measured.x : null);
     const my1 = last.measured_centroid_y ?? (last.measured ? last.measured.y : null);
 
-    if (mx0 !== null && my0 !== null && mx1 !== null && my1 !== null) {
-      const measDispPx = Math.hypot(mx1 - mx0, my1 - my0);
-      const measDispArcsec = measDispPx * pixScale;
+    const hasMeasured = mx0 !== null && my0 !== null && mx1 !== null && my1 !== null;
+    const measDispPx = hasMeasured ? Math.hypot(mx1 - mx0, my1 - my0) : null;
+    const measDispArcsec = measDispPx !== null ? measDispPx * pixScale : null;
+
+    if (predDispArcsec < 0.5 && measDispPx !== null && measDispPx < 0.35) {
+      $("summary").innerHTML =
+        `Position is stationary within the ${pixScale.toFixed(2)}″ pixel scale over ${days} days ` +
+        `(centroid offset ${measDispArcsec.toFixed(1)}″, ${measDispPx.toFixed(2)} pixels; ` +
+        `Gaia predicts <strong>${predDispArcsec.toFixed(1)}″</strong>).`;
+    } else if (measDispPx !== null) {
       $("summary").innerHTML =
         `The object moved <strong>${measDispArcsec.toFixed(1)}″ ${dir}</strong> in ${days} days ` +
         `(${measDispPx.toFixed(1)} pixels). ` +
@@ -649,7 +669,7 @@
 
   // ---------- target loader ----------
   const messages = {
-    "benchmark-only": "Only the five prepared benchmark targets are available. Choose a benchmark to see its SPHEREx frames.",
+    "live-disabled": "Live SPHEREx IRSA queries are currently disabled in the viewer configuration.",
     "no-observations": "No SPHEREx observations cover this position in the requested collections.",
     unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
   };

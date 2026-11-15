@@ -223,6 +223,17 @@ jobs:
             --recursive \
             --delete-unmatched-destination-objects \
             dist/hosting "gs://${VIEWER_BUCKET}"
+          if [ -d dist/hosting/releases ]; then
+            gcloud storage objects update "gs://${VIEWER_BUCKET}/releases/**" \
+              --cache-control="public, max-age=31536000, immutable"
+          fi
+          gcloud storage objects update \
+            "gs://${VIEWER_BUCKET}/index.html" \
+            "gs://${VIEWER_BUCKET}/*.js" \
+            "gs://${VIEWER_BUCKET}/*.css" \
+            "gs://${VIEWER_BUCKET}/*.json" \
+            "gs://${VIEWER_BUCKET}/sky/sky.json" \
+            --cache-control="no-cache"
 
       - name: Verify live public static viewer
         env:
@@ -234,7 +245,7 @@ jobs:
           test "${HTTP_CODE}" = "200"
 
           curl -fsS "${VIEWER_URL}/benchmark-manifest.json" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('version') and len(d.get('bundles', {}))==5, d; print('Viewer manifest OK:', d['version'][:12])"
+            | VIEWER_URL="${VIEWER_URL}" python3 -c "import json,os,sys,urllib.request; d=json.load(sys.stdin); assert d.get('version') and d.get('commit_sha'), d; bundles=d.get('bundles') or {}; [urllib.request.urlopen(f\"{os.environ['VIEWER_URL']}/{p}\").close() for p in bundles.values()]; print('Viewer manifest OK:', d['version'][:12], 'mode:', d.get('mode', 'live_irsa'))"
 
   rollback:
     name: "Rollback Cloud Run Service"

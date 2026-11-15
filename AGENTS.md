@@ -10,16 +10,19 @@ imágenes de SPHEREx de ese trozo de cielo como un parpadeo, para notar lo que s
 brillo. Objetos de prueba: Estrella de Barnard, Epsilon Indi B, WISE 0855−0714, RW Aurigae y
 R Draconis.
 
-## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
+## Estado (dom 15 nov 2026, demo desplegada en GCS y Cloud Run)
 
-- **`mockup/`** (rama `claude/esfera-viaje`): prototipo de la interfaz, sin compilación. El cielo
-  entero a pantalla completa visto desde dentro (mapas propios hechos con `prepare_sky.py`: NASA SVS
-  para la luz visible y el cubo de SPHEREx de IRSA), un buscador (los cinco objetos de prueba en un
-  desplegable, un nombre de objeto, o RA/Dec) que viaja a la posición, y el visor de parpadeo en un diálogo, con tres fotos reales de Barnard. Todavía no usa
-  la pipeline de ingesta. La versión anterior con Aladin Lite queda como plan B (`aladin.html`).
-  Cómo correrlo y qué se comprobó: [mockup/README.md](mockup/README.md).
+- **`mockup/`** (en `main`): visor público sin compilación que consulta datos actuales de IRSA en vivo
+  a través de la API de `spherex_ingest` (`POST /api/v1/jobs` con respaldo local a `/api/v1/blink`),
+  sin depender de paquetes locales en `mockup/data/` ni de `prepare_barnard.py`. Incluye
+  el cielo entero a pantalla completa visto desde dentro (mapas propios hechos con `prepare_sky.py`:
+  NASA SVS para la luz visible y el cubo de SPHEREx de IRSA), buscador (los cinco objetos de prueba
+  en un desplegable, un nombre de objeto vía SIMBAD/Sesame o RA/Dec) y visor de parpadeo en un
+  diálogo. El empaquetado estático del visor (#16 / #25 con `scripts/build_hosting.py`) está activo
+  en `gs://bortle-cero-nasa-staging-26-viewer`. La versión anterior con Aladin Lite queda como plan B
+  (`aladin.html`). Cómo correrlo y qué se comprobó: [mockup/README.md](mockup/README.md).
 - **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
-  - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
+  - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ vía la cola asíncrona `/api/v1/jobs` (topada a 6 trabajos nuevos/min y 8 pendientes) o en desarrollo local con caché en `.cache/fits/`.
   - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
 - **Comandos con Astral `uv`:**
   ```bash
@@ -38,13 +41,16 @@ R Draconis.
   # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
   uv run spherex-ingest serve --host 0.0.0.0 --port 8000
 
-  # 5. Correr script de preparación y servidor de mockup
-  uv run python mockup/prepare_barnard.py
+  # 5. Levantar servidor estático de mockup
   uv run python -m http.server 8765 --directory mockup
   ```
-- **Ingestion API deployment:** Cloud Run container and private staging configuration in
-  [docs/CLOUD-RUN.md](docs/CLOUD-RUN.md), with commands to run, test, and deploy. Live
-  ingestion starts disabled. Track the static viewer release separately in issue #16.
+- **Ingestion API & viewer delivery:** Automated GCS + Cloud Run delivery (#29 / #34 / #35) is
+  live via `.github/workflows/cd-deploy.yml`: `spherex-ingest-staging` on Cloud Run (publicly
+  invokable for the demo with `GCP_REQUIRE_INVOKER_IAM=false`, `SPHEREX_LEGACY_SYNC_ENABLED=false`,
+  and arbitrary coordinate queries served via `POST /api/v1/jobs`) and the static viewer on
+  `gs://bortle-cero-nasa-staging-26-viewer`. See [docs/CLOUD-RUN.md](docs/CLOUD-RUN.md),
+  [docs/DEPLOYMENT-GUIDE.md](docs/DEPLOYMENT-GUIDE.md), and
+  [docs/OPERATIONS-RUNBOOK.md](docs/OPERATIONS-RUNBOOK.md).
 - Prioridad acordada: **una demo desplegada que funcione antes que más funciones.**
 
 ## Reloj (hora de Guadalajara)
@@ -162,7 +168,8 @@ vivo antes de apoyarte en él.
   jurado. Explica la ciencia con analogías de desarrollo web o de astrofotografía.
 - **Ramas:** `main` siempre funciona y está pusheado; nadie commitea directo a `main`. Cada persona
   trabaja en su rama (`<nombre>/<tema>`; los agentes en `claude/<tema>`, `codex/<tema>` o
-  `wip/<tema>`) y entra a `main` por pull request, fusionando con `--no-ff`.
+  `wip/<tema>`) y entra a `main` por pull request, fusionando con squash merge por pull request
+  (la configuración del repositorio en GitHub exige squash merge).
 - **Windows y Linux:** el equipo usa los dos. Todo comando que se documente aquí tiene que correr en
   ambos (o venir en sus dos versiones); en el código, rutas relativas con `/` o `pathlib`, nunca
   rutas absolutas de una máquina. `.gitattributes` guarda el texto con finales LF; no cambies

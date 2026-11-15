@@ -8,10 +8,10 @@ This runbook defines observability, alerting, ownership, and rollback procedures
 
 | Component | Runtime / Hosting | Identity / Access | Primary Owner |
 |---|---|---|---|
-| **Ingestion API** (`spherex-ingest`) | Google Cloud Run (`gen2`, `us-central1`) | `spherex-runtime-<env>` (private invoker IAM in staging) | Backend / Cloud Delivery Lead |
+| **Ingestion API** (`spherex-ingest`) | Google Cloud Run (`gen2`, `us-central1`) | `spherex-runtime-<env>` (`allUsers` `roles/run.invoker` public demo in staging, `GCP_REQUIRE_INVOKER_IAM=false`; async queue `POST /api/v1/jobs`) | Backend / Cloud Delivery Lead |
 | **Container Registry** | Google Artifact Registry (`spherex-ingest`) | `spherex-deploy-<env>` via GitHub OIDC/WIF | Cloud Delivery Lead |
 | **Data Bundles** | GCS (`<project>-spherex-bundles-<env>`, versioned) + `mockup/data/` | Uniform bucket-level access, public access prevented | Data Pipeline Lead |
-| **Static Viewer** (`mockup/`) | Static web hosting (GitHub Pages / Vercel / GCS) | Public read-only static assets | Frontend Lead |
+| **Static Viewer** (`mockup/`) | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`) via `.github/workflows/cd-deploy.yml` (Firebase Hosting via `firebase.json` optional) | Public read-only static assets (`no-cache` on entrypoints/manifest, `immutable` on `releases/**`) | Frontend Lead |
 
 - **Keyless CI/CD:** GitHub Actions (`.github/workflows/cd-deploy.yml`) authenticates via `google-github-actions/auth@v2` and OIDC Workload Identity Federation. Long-lived JSON keys are prohibited.
 - **Untrusted PR Isolation:** Pull requests run only CI (`ci-pr-*.yml`, `ci-cloud-run-container.yml`) with `contents: read` and never receive deployment credentials.
@@ -63,7 +63,7 @@ Cloud Run automatically captures stdout/stderr from `uvicorn` and enriches each 
 |---|---|---|
 | `run.googleapis.com/request_count` (`response_code_class="5xx"`) | `< 1%` 5xx rate | `> 5%` over 5 minutes |
 | `run.googleapis.com/request_latencies` (p95 on `/api/v1/health`) | `< 500 ms` | `> 2000 ms` over 5 minutes |
-| `run.googleapis.com/request_latencies` (p95 on `/api/v1/blink`) | `< 215 s` (cold IRSA) | `> 270 s` (near 300 s timeout) |
+| `run.googleapis.com/request_latencies` (p95 on `/api/v1/jobs` & `/api/v1/benchmarks`) | `< 500 ms` enqueue/read (`POST /api/v1/jobs` capped at 6 new jobs/min, 8 outstanding; sync `/api/v1/blink` returns `503` while `SPHEREX_LEGACY_SYNC_ENABLED=false`) | `> 270 s` background worker execution (near 300 s timeout) |
 | `run.googleapis.com/container/memory/utilizations` (p95) | `< 75%` of 1 GiB | `> 85%` over 5 minutes |
 | `run.googleapis.com/container/billable_instance_time` | Scale to zero (`minScale=0`) | Unexpected sustained `maxScale=2` |
 
@@ -89,7 +89,7 @@ gcloud monitoring uptime create spherex-api-health \
   --project="<PROJECT_ID>"
 ```
 
-> **Note:** Private staging (`invoker-iam-disabled: "false"`) rejects unauthenticated requests with HTTP 401/403 by design; verify staging health via `cd-deploy.yml` OIDC smoke checks or `gcloud run services proxy`.
+> **Note:** In `bortle-cero-nasa-staging-26`, `spherex-ingest-staging` is publicly invokable (`allUsers` `roles/run.invoker`) for the NASA Space Apps demo (`GCP_REQUIRE_INVOKER_IAM=false` default in `cd-deploy.yml`), with synchronous ingestion disabled (`SPHEREX_LEGACY_SYNC_ENABLED=false`) and arbitrary coordinate queries served via the bounded async job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding). When private IAM is enabled (`GCP_REQUIRE_INVOKER_IAM=true`), unauthenticated requests return HTTP 401/403 and checks run via `cd-deploy.yml` OIDC tokens or `gcloud run services proxy`.
 
 ### Notification Channel & Alert Policy
 
@@ -136,11 +136,11 @@ Recommended alert policies to keep enabled in Cloud Monitoring:
    ```
 2. Trigger **CD / Cloud Run Keyless Delivery** with `action: rollback` and `image_digest: <REGION>-docker.pkg.dev/<PROJECT>/<REPO>/spherex-ingest@sha256:<DIGEST>`.
 
-### B. Frontend Rollback (Static Viewer)
+### B. Frontend Rollback (Static Viewer on GCS)
 
 1. Identify the last known-good commit on `main` (`git log --oneline -n 10`).
-2. Revert the offending frontend commit cleanly (`git revert <BAD_SHA>`) and open a PR to `main`, **or** redeploy the previous static build artifact from CI/hosting dashboard (Vercel/GitHub Pages deployment history -> **Promote to Production**).
-3. Verify the viewer loads `mockup/data/<target>.json` and renders blink frames without console errors.
+2. Revert the offending frontend commit cleanly (`git revert <BAD_SHA>`) and open a PR to `main`; merging triggers `.github/workflows/cd-deploy.yml` (`deploy-viewer`), which rebuilds `dist/hosting/` via `scripts/build_hosting.py`, syncs to `gs://bortle-cero-nasa-staging-26-viewer`, and sets `Cache-Control: public, max-age=31536000, immutable` on `releases/**` and `Cache-Control: no-cache` on entrypoints/manifest (if using the optional Firebase Hosting target via `firebase.json`, redeploy from the checked-out good commit with `firebase deploy --only hosting`).
+3. Verify the viewer loads `benchmark-manifest.json` (including `commit_sha`) and `releases/<version>/<target>.json`, and renders blink frames without console errors.
 
 ### C. Data Rollback (Benchmark Bundles & GCS)
 
