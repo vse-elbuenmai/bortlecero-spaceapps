@@ -45,7 +45,7 @@ class KinematicsAndPhotometryAnalyzer:
         self,
         stamp_half_size_px: int = 3,
         aperture_radius_px: float = 2.0,
-        detection_sigma: float = 2.5,
+        detection_sigma: float = 3.5,
         pixel_scale_arcsec: float = 6.15,
     ) -> None:
         self._stamp_half_size_px = stamp_half_size_px
@@ -163,20 +163,42 @@ class KinematicsAndPhotometryAnalyzer:
         offset_arcsec: float | None = None
 
         if peak_val >= self._detection_sigma * noise_sigma and np.sum(stamp_positive) > 0.0:
+            local_peak_y, local_peak_x = np.unravel_index(
+                np.argmax(stamp_positive), stamp_positive.shape
+            )
+            peak_x = float(x0 + local_peak_x)
+            peak_y = float(y0 + local_peak_y)
+            peak_dist_px = float(np.hypot(peak_x - pred_x, peak_y - pred_y))
+
             local_cx, local_cy = centroid_com(stamp_positive)
             if np.isfinite(local_cx) and np.isfinite(local_cy):
-                measured_x = float(x0 + local_cx)
-                measured_y = float(y0 + local_cy)
-                ra_val, dec_val = common_wcs.pixel_to_world_values(measured_x, measured_y)
-                measured_ra = float(ra_val)
-                measured_dec = float(dec_val)
+                candidate_x = float(x0 + local_cx)
+                candidate_y = float(y0 + local_cy)
+                cand_dist_px = float(np.hypot(candidate_x - pred_x, candidate_y - pred_y))
+
+                ra_val, dec_val = common_wcs.pixel_to_world_values(candidate_x, candidate_y)
+                cand_ra = float(ra_val)
+                cand_dec = float(dec_val)
                 pred_coord = SkyCoord(ra=pred_ra * u.deg, dec=pred_dec * u.deg, frame="icrs")
                 meas_coord = SkyCoord(
-                    ra=measured_ra * u.deg,
-                    dec=measured_dec * u.deg,
+                    ra=cand_ra * u.deg,
+                    dec=cand_dec * u.deg,
                     frame="icrs",
                 )
-                offset_arcsec = float(pred_coord.separation(meas_coord).arcsec)
+                cand_offset_arcsec = float(pred_coord.separation(meas_coord).arcsec)
+
+                max_offset_px = 2.0
+                max_offset_arcsec = 15.0
+                if (
+                    peak_dist_px <= max_offset_px
+                    and cand_dist_px <= max_offset_px
+                    and cand_offset_arcsec < max_offset_arcsec
+                ):
+                    measured_x = candidate_x
+                    measured_y = candidate_y
+                    measured_ra = cand_ra
+                    measured_dec = cand_dec
+                    offset_arcsec = cand_offset_arcsec
 
         ap_center_x = measured_x if measured_x is not None else pred_x
         ap_center_y = measured_y if measured_y is not None else pred_y

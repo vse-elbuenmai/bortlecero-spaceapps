@@ -56,20 +56,62 @@ def test_get_benchmark_target_lookup_variations() -> None:
 
 
 def test_spherex_flag_bits_masks() -> None:
-    """Verify SPHEREx Level 2b bitmask definitions match the Explanatory Supplement."""
+    """Verify SPHEREx Level 2b bitmask definitions match mission Level 2b FITS headers."""
     assert int(SPHERExFlagBits.TRANSIENT) == (1 << 0)
     assert int(SPHERExFlagBits.OVERFLOW) == (1 << 1)
     assert int(SPHERExFlagBits.SUR_ERROR) == (1 << 2)
     assert int(SPHERExFlagBits.NONFUNC) == (1 << 6)
-    assert int(SPHERExFlagBits.OUTLIER) == (1 << 14)
-    assert int(SPHERExFlagBits.SOURCE_MASK) == (1 << 19)
+    assert int(SPHERExFlagBits.DICHROIC) == (1 << 7)
+    assert int(SPHERExFlagBits.MISSING_DATA) == (1 << 9)
+    assert int(SPHERExFlagBits.HOT) == (1 << 10)
+    assert int(SPHERExFlagBits.COLD) == (1 << 11)
+    assert int(SPHERExFlagBits.FULLSAMPLE) == (1 << 12)
+    assert int(SPHERExFlagBits.PHANMISS) == (1 << 14)
+    assert int(SPHERExFlagBits.NONLINEAR) == (1 << 15)
+    assert int(SPHERExFlagBits.PERSIST) == (1 << 17)
+    assert int(SPHERExFlagBits.OUTLIER) == (1 << 19)
+    assert int(SPHERExFlagBits.CROSSTALK) == (1 << 20)
+    assert int(SPHERExFlagBits.SOURCE) == (1 << 21)
+    assert int(SPHERExFlagBits.GHOST) == (1 << 22)
+    assert int(SPHERExFlagBits.GHOST_FPA) == (1 << 23)
+    assert int(SPHERExFlagBits.GHOST_EXT) == (1 << 24)
+    assert int(SPHERExFlagBits.STREAK) == (1 << 25)
+    assert int(SPHERExFlagBits.BLOOM) == (1 << 26)
+    assert int(SPHERExFlagBits.SNOWBALL) == (1 << 27)
+    assert int(SPHERExFlagBits.HALO) == (1 << 28)
+
+    # Compatibility aliases
+    assert SPHERExFlagBits.HOT_PIXEL == SPHERExFlagBits.HOT
+    assert SPHERExFlagBits.COLD_PIXEL == SPHERExFlagBits.COLD
+    assert SPHERExFlagBits.PERSISTENCE == SPHERExFlagBits.PERSIST
+    assert SPHERExFlagBits.SOURCE_MASK == SPHERExFlagBits.SOURCE
 
     bad_mask = SPHERExFlagBits.bad_artifact_mask()
     sat_mask = SPHERExFlagBits.saturation_mask()
 
-    # Saturation and source mask are not treated as dead/corrupt transient artifacts
+    expected_sat = (
+        int(SPHERExFlagBits.OVERFLOW)
+        | int(SPHERExFlagBits.NONLINEAR)
+        | int(SPHERExFlagBits.BLOOM)
+    )
+    assert sat_mask == expected_sat
+
+    expected_bad = (
+        int(SPHERExFlagBits.TRANSIENT)
+        | int(SPHERExFlagBits.SUR_ERROR)
+        | int(SPHERExFlagBits.NONFUNC)
+        | int(SPHERExFlagBits.MISSING_DATA)
+        | int(SPHERExFlagBits.HOT)
+        | int(SPHERExFlagBits.COLD)
+        | int(SPHERExFlagBits.PERSIST)
+        | int(SPHERExFlagBits.OUTLIER)
+        | int(SPHERExFlagBits.SNOWBALL)
+    )
+    assert bad_mask == expected_bad
+
+    # Saturation and source mask are mutually exclusive with bad artifact mask
     assert (bad_mask & sat_mask) == 0
-    assert (bad_mask & int(SPHERExFlagBits.SOURCE_MASK)) == 0
+    assert (bad_mask & int(SPHERExFlagBits.SOURCE)) == 0
     assert (bad_mask & int(SPHERExFlagBits.TRANSIENT)) != 0
 
 
