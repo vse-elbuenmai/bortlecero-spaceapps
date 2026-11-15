@@ -462,11 +462,25 @@ Sale de la prueba de `mockup/sky.js`.
   anillo «aterriza» (entra un poco grande y se asienta en 0.6 s) y suelta tres pulsos lentos que se
   abren y se apagan; después se queda quieto. El diálogo se abre 0.9 s después de llegar, para que
   se vea el aterrizaje, y al cerrarlo el anillo repite los pulsos para volver a señalar el sitio.
-- **Diálogo del visor:** `<dialog>` modal de 1180 px como máximo, fondo `--bc-cosmos`, borde
-  `--bc-border`, radio 16 px, fondo oscurecido `rgba(4, 7, 11, 0.72)`. Cabecera con el nombre, la
-  posición de hoy, el selector de nivel de detalle (§7.13) y un botón de cerrar de 44 × 44; por
-  debajo de 520 px el selector y el cierre pasan a su propia fila, encima del nombre. Si no hay
-  fotos para esa posición, lo dice y ofrece ir a un objeto que sí las tiene (§7.6).
+- **Diálogo del visor:** `<dialog>` modal **a pantalla completa** (clase `modal-full`; decidido por
+  Miguel el 15 nov: el visor es la herramienta principal, no una ventana emergente). Fondo
+  `--bc-cosmos`, sin borde ni radio, margen lateral `clamp(16px, 3vw, 48px)`. Las secciones
+  conservan su ancho de lectura y se centran hasta 1680 px: imagen y controles a la izquierda, el
+  panel en una columna de 320 a 420 px a la derecha (debajo en ≤ 1100 px). El lienzo crece con la
+  pantalla, primero por alto (`min(100%, 100dvh − 390px, 900px)`), para que los controles y la línea
+  de fechas quepan sin desplazar; controles, banda, fechas y avisos toman el mismo ancho que el
+  lienzo. La cabecera se queda arriba al desplazar (`position: sticky`, fondo
+  `rgba(8, 12, 20, 0.94)` con desenfoque y borde inferior `--bc-border-soft`) con el nombre, la
+  posición de hoy, el selector de nivel de detalle (§7.13), la guía, **minimizar** y **cerrar**,
+  botones de 44 × 44. Por debajo de 520 px esos controles pasan a su propia fila, sin encogerse.
+  Si no hay fotos para esa posición, lo dice y ofrece ir a un objeto que sí las tiene (§7.6).
+- **Minimizar y cerrar:** *minimizar* (una raya baja) esconde el diálogo sin olvidar nada: una
+  descarga en curso sigue, y la foto, la banda, el zoom y el nivel quedan como estaban. En la barra
+  plegada de búsqueda aparece una pill con borde `--bc-estrella` y el nombre del objeto («· loading…»
+  mientras carga) que lo reabre al instante, sin viaje ni descarga; en el teléfono la pill ocupa el
+  sitio de la etiqueta «01 / Your patch of sky». Buscar otra vez la misma posición (a menos de 1″)
+  también reabre lo minimizado. **Escape minimiza**, para que una tecla no tire una carga de
+  minutos. *Cerrar* (la X) sí olvida: cancela la carga y vuelve al cielo con la búsqueda abierta.
 - **Créditos:** como no hay pie de página, el botón «Credits» de la cabecera abre un diálogo con el
   texto del §7.10.
 - **Enlace de salto:** «Skip to search».
@@ -510,6 +524,27 @@ se recuerda en el navegador (`localStorage`, clave `viewer-detail`).
 | Número de foto, fecha, longitud de onda, detector | Bloque «Object» (nombre y posición de Gaia, que la cabecera ya da) |
 | Las cuatro comprobaciones (§7.4) | «Scientific Warnings & Notes» |
 | «What moved» y «How these frames were made» | «Data & Astrometry Citations» |
+
+### 7.14 Banda y su lugar en el espectro
+
+Cada banda de SPHEREx ve otro tramo de colores; comparar dos bandas no prueba que la estrella varíe
+(AGENTS.md, trampa 2). Por eso:
+
+- **Banda inicial: la 6** (4.42–5.00 µm), decidido por Miguel el 15 nov. Es la más cercana a la W2
+  de WISE, con la que Backyard Worlds busca enanas marrones; es donde se ve WISE 0855; y es el color
+  de la capa «SPHEREx 4.77 µm» del cielo. Si la serie tiene menos de dos fotos en la 6, abre en la
+  banda de mayor longitud de onda que tenga dos o más (sin parpadeo no hay herramienta).
+- **El desplegable** dice el rango de cada banda (`Band 6 · 4.42–5.00 µm · 3 frames`); «All bands,
+  mixed colours» va al final y avisa de que mezcla colores.
+- **Barra de espectro:** a la derecha del desplegable (debajo, en ≤ 520 px), una barra de 6 px y
+  radio 3 en `--bc-horizonte` que representa todo el rango de SPHEREx, de 0.75 a 5.0 µm, con el
+  tramo de la banda encendido en `--bc-estrella`; debajo, el rango en `--bc-font-mono` y
+  `--bc-muted`. Con «All bands» la barra entera va en `--bc-acento`. No usa colores de arcoíris: el
+  infrarrojo no tiene color propio y no inventamos uno.
+- **Tabla de bandas en la guía:** el paso «Spectral Band Filter» de la guía lleva una tabla de seis
+  filas (banda, rango con su barra, qué muestra), con la fila de la banda inicial sobre
+  `rgba(123, 168, 212, 0.1)`. Ese paso usa una tarjeta de 560 px, que se desplaza por dentro si la
+  pantalla es baja. Rangos: los de IRSA para el instrumento en vuelo (Bock et al. 2026).
 
 ---
 

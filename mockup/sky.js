@@ -529,10 +529,56 @@ function isPrepared(target) {
   return findPreparedBenchmark(target) !== null;
 }
 
+// ---------- the viewer: open, minimized or closed ----------
+// Minimized, the dialog is hidden but its frames stay loaded (or keep loading), and a button in the
+// search panel brings it back as it was: no trip, no new download. Closed, it forgets them.
+let parked = null;      // { target, name } of the minimized viewer
+let minimizing = false; // the next "close" of the dialog is a minimize
+
+function sameTarget(a, b) {
+  if (!a || !b) return false;
+  return Math.hypot((a.ra - b.ra) * Math.cos(b.dec * RAD), a.dec - b.dec) < 1 / 3600; // within 1″
+}
+
+function setRestore(entry, { loading = false } = {}) {
+  const btn = $("viewer-restore");
+  btn.hidden = !entry;
+  if (!entry) return;
+  $("viewer-restore-label").textContent = loading ? `${entry.name} · loading…` : entry.name;
+  btn.setAttribute("aria-label", `Reopen the SPHEREx frames of ${entry.name}${loading ? ", still loading" : ""}`);
+}
+
+function minimizeViewer() {
+  if (!modal.open) return;
+  minimizing = true;
+  modal.close();
+}
+
+function restoreViewer() {
+  if (!parked) return;
+  const { target } = parked;
+  parked = null;
+  setRestore(null);
+  setSpinning(false);
+  setSearchOpen(false);
+  modal.showModal();
+  viewerTarget = target;
+  document.dispatchEvent(new CustomEvent("viewer:open"));
+}
+
+let viewerTarget = null; // what the dialog shows (or is loading)
+
 function openModal(target) {
+  // The same position as the minimized viewer: reopen it instead of downloading again
+  if (parked && sameTarget(target, parked.target)) return restoreViewer();
+  parked = null;
+  setRestore(null);
+  viewerTarget = target;
+
   const bench = findPreparedBenchmark(target);
   const targetId = bench ? bench.key : (target.target_id || null);
   const targetName = bench ? bench.name : (target.name || "Your position");
+  target.viewerName = targetName;
 
   $("modal-title").textContent = targetName;
   $("modal-coords").textContent = `${fmtRa(target.ra)}, ${fmtDec(target.dec)} · position for today` +
@@ -658,6 +704,15 @@ function bindEvents() {
   $("whole-sky").addEventListener("click", wholeSky);
   $("search-toggle").addEventListener("click", () => setSearchOpen($("search-body").hidden));
   $("modal-close").addEventListener("click", () => modal.close());
+  $("modal-minimize").addEventListener("click", minimizeViewer);
+  $("viewer-restore").addEventListener("click", restoreViewer);
+  // Escape minimizes rather than closes: nothing loaded is lost by pressing it
+  modal.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    minimizeViewer();
+  });
+  // A series that finishes loading while minimized: the button stops saying "loading"
+  document.addEventListener("viewer:ready", () => { if (parked) setRestore(parked); });
   $("open-barnard").addEventListener("click", () => {
     $("name").value = "";
     setObject("barnard");
@@ -666,6 +721,21 @@ function bindEvents() {
   $("credits-open").addEventListener("click", () => $("credits").showModal());
   $("credits-close").addEventListener("click", () => $("credits").close());
   modal.addEventListener("close", () => {
+    if (minimizing) {
+      minimizing = false;
+      const target = viewerTarget;
+      parked = target ? { target, name: target.viewerName || target.name || "Your position" } : null;
+      document.dispatchEvent(new CustomEvent("viewer:minimize"));
+      const stillLoading = !window.viewerState || !window.viewerState.bundle;
+      setRestore(parked, { loading: stillLoading });
+      setSearchOpen(false); // the collapsed bar shows the reopen button next to "Search"
+      if (state.target) pingReticle();
+      $("viewer-restore").focus();
+      return;
+    }
+    viewerTarget = null;
+    parked = null;
+    setRestore(null);
     document.dispatchEvent(new CustomEvent("viewer:close"));
     setSearchOpen(true);
     if (state.target) pingReticle(); // back on the sky: point at the place again

@@ -36,6 +36,40 @@
     { target_id: "r_draconis", ra: 248.1674, dec: 66.7550, name: "R Draconis" },
   ];
 
+  // The six SPHEREx bands (µm), as IRSA gives them for the instrument in flight (Bock et al. 2026).
+  // "shows" is what each one is good for in this tool; it feeds the band table of the guided tour.
+  const SPECTRUM_UM = [0.75, 5.0];
+  const BANDS = {
+    1: { lo: 0.75, hi: 1.09, shows: "Just past visible red. Ordinary stars shine brightest here." },
+    2: { lo: 1.10, hi: 1.62, shows: "Near infrared. Cool red dwarfs such as Barnard's Star stand out." },
+    3: { lo: 1.63, hi: 2.41, shows: "Sees through interstellar dust far better than visible light." },
+    4: { lo: 2.42, hi: 3.82, shows: "Water ice in cold clouds; methane absorbs here in brown dwarfs." },
+    5: { lo: 3.83, hi: 4.41, shows: "Ices (CO₂). The coldest brown dwarfs start to show: WISE 0855 only appears in Bands 5 and 6." },
+    6: { lo: 4.42, hi: 5.00, shows: "Ices (CO). Closest to WISE's W2, the band Backyard Worlds uses to find brown dwarfs." },
+  };
+  // The viewer opens on Band 6: the one WISE and Backyard Worlds use to find cold, moving objects, the
+  // one where WISE 0855 is visible, and the colour of the "SPHEREx 4.77 µm" sky behind the dialog.
+  const DEFAULT_BAND = 6;
+  const fmtRange = (b) => `${BANDS[b].lo.toFixed(2)}–${BANDS[b].hi.toFixed(2)} µm`;
+
+  // A thin bar for SPHEREx's whole range with the band's stretch lit: the "where is this band" legend.
+  function bandSpectrumBar(band) {
+    const bar = document.createElement("span");
+    bar.className = "spec-bar";
+    const info = BANDS[band];
+    if (info) {
+      const span = SPECTRUM_UM[1] - SPECTRUM_UM[0];
+      const seg = document.createElement("span");
+      seg.className = "spec-seg";
+      seg.style.left = `${((info.lo - SPECTRUM_UM[0]) / span) * 100}%`;
+      seg.style.width = `${((info.hi - info.lo) / span) * 100}%`;
+      bar.append(seg);
+    } else {
+      bar.classList.add("is-all"); // all bands: the whole bar is lit
+    }
+    return bar;
+  }
+
   const $ = (id) => document.getElementById(id);
   const stage = $("stage"), plate = $("plate"), img = $("frame-img"), flagsImg = $("flags-img");
   const overlay = $("overlay"), live = $("frame-meta");
@@ -460,16 +494,44 @@
       o.textContent = label;
       return o;
     };
-    select.append(option("", `All bands · ${count(bundle.frames_chronological.length)}`));
-    bands.forEach((b) => select.append(option(String(b), `Band ${b} · ${count(framesOfBand(bundle, b).length)}`)));
+    // Each band says its range; "All bands" warns that it mixes colours (AGENTS.md, trap 2)
+    bands.forEach((b) => {
+      const range = BANDS[b] ? ` · ${fmtRange(b)}` : "";
+      select.append(option(String(b), `Band ${b}${range} · ${count(framesOfBand(bundle, b).length)}`));
+    });
+    select.append(option("", `All bands, mixed colours · ${count(bundle.frames_chronological.length)}`));
     select.value = state.activeBand === null ? "" : String(state.activeBand);
     select.closest(".band-row").hidden = bands.length === 0;
+    showBandSpectrum(state.activeBand);
+  }
+
+  // The legend beside the select: where the chosen band sits between 0.75 and 5.0 µm
+  function showBandSpectrum(band) {
+    const holder = $("band-spectrum");
+    if (!holder) return;
+    const label = document.createElement("span");
+    label.className = "spec-label mono";
+    label.textContent = BANDS[band] ? fmtRange(band) : `${SPECTRUM_UM[0].toFixed(2)}–${SPECTRUM_UM[1].toFixed(2)} µm`;
+    holder.replaceChildren(bandSpectrumBar(band), label);
+  }
+
+  // Band 6 when it has two frames or more to blink. Otherwise the longest-wavelength band that does
+  // (the nearest in colour to Band 6), then any band with a frame, then all of them.
+  function defaultBand(bundle) {
+    const bands = (bundle.available_bands || []).map(Number);
+    const count = (b) => framesOfBand(bundle, b).length;
+    if (count(DEFAULT_BAND) >= 2) return DEFAULT_BAND;
+    const blinkable = bands.filter((b) => count(b) >= 2);
+    if (blinkable.length) return Math.max(...blinkable);
+    const any = bands.filter((b) => count(b) > 0);
+    return any.length ? Math.max(...any) : null;
   }
 
   function selectBand(band) {
     if (state.diffMode) setDiffMode(false);
     state.activeBand = band;
     $("band-select").value = band === null ? "" : String(band);
+    showBandSpectrum(band);
 
     state.activeFrames = band === null ? state.bundle.frames_chronological : framesOfBand(state.bundle, band);
 
@@ -762,14 +824,15 @@
 
     if (result.status !== "ready") {
       setTargetStatus(messages[result.status] || messages.unavailable);
+      document.dispatchEvent(new CustomEvent("viewer:ready", { detail: { status: result.status } }));
       return;
     }
     const bundle = normalizeBundle(result.bundle);
 
     // Set bundle into viewer
     state.bundle = bundle;
-    state.activeBand = null;
-    state.activeFrames = bundle.frames_chronological;
+    state.activeBand = defaultBand(bundle);
+    state.activeFrames = state.activeBand === null ? bundle.frames_chronological : framesOfBand(bundle, state.activeBand);
     state.diffMode = false;
     state.activeDiffMap = null;
     state.i = 0;
@@ -799,7 +862,10 @@
     show(0);
     layout();
 
-    if (!reduceMotion && !$("viewer").hidden) setPlaying(true);
+    // A series that finishes loading while the viewer is minimized waits, paused, to be reopened
+    const dialog = $("viewer-modal");
+    if (!reduceMotion && !$("viewer").hidden && (!dialog || dialog.open)) setPlaying(true);
+    document.dispatchEvent(new CustomEvent("viewer:ready", { detail: { name: bundle.target.name } }));
   }
 
   // ---------- events ----------
@@ -936,6 +1002,10 @@
     setPlaying(false);
   });
 
+  // Minimized: hidden but not forgotten. A download in progress keeps going, and the frame, band,
+  // zoom and detail level stay as they were for when it is reopened.
+  document.addEventListener("viewer:minimize", () => setPlaying(false));
+
   document.addEventListener("viewer:load-target", (e) => {
     if (e.detail) loadTarget(e.detail);
   });
@@ -993,7 +1063,9 @@
     {
       target: ".band-row",
       title: "Spectral Band Filter",
-      desc: "Filter observations across SPHEREx's 6 spectral detector bands (0.75 – 5.0 µm) to inspect identical wavelengths between different visits.",
+      desc: "SPHEREx sees the sky through six detectors, each one a band of infrared colours. Compare frames of one band, so a change in brightness is not just a change of colour. The viewer opens on Band 6, or on the nearest band with two images or more.",
+      wide: true,
+      build: buildBandTable,
     },
     {
       target: ".timeline-wrap",
@@ -1006,6 +1078,44 @@
       desc: "Detailed object metadata, proper motion displacement, astrometric offset against Gaia DR3, and scientific flags (e.g. saturated pixels or non-linear regimes).",
     },
   ];
+
+  // The band table of the tour: band, its range with the "where in the spectrum" bar, what it shows
+  function buildBandTable() {
+    const table = document.createElement("table");
+    table.className = "band-table";
+    const caption = document.createElement("caption");
+    caption.className = "visually-hidden";
+    caption.textContent = "The six SPHEREx bands, their wavelength range and what each one shows";
+    const head = table.createTHead().insertRow();
+    ["Band", "Range", "What it shows"].forEach((t) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = t;
+      head.append(th);
+    });
+    const body = table.createTBody();
+    Object.keys(BANDS).forEach((b) => {
+      const row = body.insertRow();
+      if (Number(b) === DEFAULT_BAND) row.className = "is-default";
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = b;
+      row.append(th);
+      const range = row.insertCell();
+      range.className = "band-range";
+      const text = document.createElement("span");
+      text.className = "mono";
+      text.textContent = fmtRange(b);
+      range.append(text, bandSpectrumBar(Number(b)));
+      row.insertCell().textContent = BANDS[b].shows;
+    });
+    const scale = document.createElement("p");
+    scale.className = "band-table-note";
+    scale.textContent = "Each bar is SPHEREx's whole range, 0.75 to 5.0 µm; the lit part is the band. Visible light ends at about 0.75 µm.";
+    const wrap = document.createDocumentFragment();
+    wrap.append(table, scale);
+    return wrap;
+  }
 
   let currentTourSteps = [];
   let currentTourIndex = 0;
@@ -1073,7 +1183,13 @@
 
       if (counter) counter.textContent = `${currentTourIndex + 1} / ${currentTourSteps.length} · GUIDED TOUR`;
       if (title) title.textContent = step.title;
-      if (desc) desc.textContent = step.desc;
+      if (desc) {
+        const intro = document.createElement("p");
+        intro.textContent = step.desc;
+        desc.replaceChildren(intro);
+        if (step.build) desc.append(step.build());
+      }
+      card.classList.toggle("is-wide", Boolean(step.wide));
 
       if (prevBtn) prevBtn.disabled = currentTourIndex === 0;
       if (nextBtn) {
@@ -1135,7 +1251,8 @@
       spotlight.style.borderRadius = radius;
 
       // Position card
-      const cardW = Math.min(380, window.innerWidth - 32);
+      const cardW = Math.min(step.wide ? 560 : 380, window.innerWidth - 32);
+      card.style.width = `${cardW}px`; // before measuring: the band table changes height with the width
       const cardH = card.offsetHeight || 210;
       const vw = window.innerWidth;
       const vh = window.innerHeight;

@@ -152,6 +152,16 @@ citations. The choice is remembered in the browser. The four cells are always th
 keeps its height from one frame to the next while playing. `DESIGN.md` §7.4 and §7.13 have the
 details.
 
+### Full screen, minimize, and the band it opens on
+
+The viewer fills the screen. **Minimize** (or Escape) hides it without forgetting anything: a
+download in progress goes on, and a pill with the object's name in the collapsed search bar reopens
+it as it was, with no trip and no new download; searching the same position again does the same.
+**Close** forgets it. The viewer opens on **Band 6** (4.42–5.00 µm), the closest to WISE's W2, or,
+when a series has fewer than two Band 6 images, on the longest-wavelength band that has two. The
+band select gives each band's range, with a bar beside it showing where the band sits between 0.75
+and 5.0 µm, and the guided tour has a table of the six bands. `DESIGN.md` §7.11 and §7.14.
+
 ### Rebuilding the sky maps
 
 ```sh
