@@ -347,6 +347,15 @@ class FirestoreJobStore:
             return None
         return JobRecord.model_validate(data)
 
+    @staticmethod
+    def _job_data(job: JobRecord) -> dict[str, Any]:
+        # Firestore's TTL policy requires a native timestamp.
+        return {**job.model_dump(mode="json"), "expires_at": job.expires_at}
+
+    @staticmethod
+    def _key_data(job: JobRecord) -> dict[str, Any]:
+        return {"job_id": job.job_id, "expires_at": job.expires_at}
+
     def get_job(self, job_id: str) -> JobRecord | None:
         return self._from_snapshot(self._job_ref(job_id).get())
 
@@ -414,8 +423,8 @@ class FirestoreJobStore:
             still_active.append(job.job_id)
             recent_ts.append(now_ts)
 
-            tx.set(job_ref, job.model_dump(mode="json"))
-            tx.set(key_ref, {"job_id": job.job_id, "updated_at": now.isoformat()})
+            tx.set(job_ref, self._job_data(job))
+            tx.set(key_ref, self._key_data(job))
             tx.set(
                 admission_ref,
                 {"active_job_ids": still_active, "recent_timestamps": recent_ts},
@@ -425,10 +434,10 @@ class FirestoreJobStore:
         return self._run_transaction(transaction, _tx)
 
     def save_cached_job(self, job: JobRecord) -> None:
-        self._job_ref(job.job_id).set(job.model_dump(mode="json"))
-        self._key_ref(job.request_key).set(
-            {"job_id": job.job_id, "updated_at": job.updated_at.isoformat()}
-        )
+        batch = self.client.batch()
+        batch.set(self._job_ref(job.job_id), self._job_data(job))
+        batch.set(self._key_ref(job.request_key), self._key_data(job))
+        batch.commit()
 
     def claim_for_execution(
         self,
@@ -449,7 +458,7 @@ class FirestoreJobStore:
 
             expired = _expire_if_needed(record, now)
             if expired.status == "expired" and record.status != "expired":
-                tx.set(job_ref, expired.model_dump(mode="json"))
+                tx.set(job_ref, self._job_data(expired))
                 return ClaimOutcome(status="expired", record=expired)
 
             if record.status == "succeeded":
@@ -475,7 +484,7 @@ class FirestoreJobStore:
                         or "Job exceeded maximum retry attempts.",
                     }
                 )
-                tx.set(job_ref, failed.model_dump(mode="json"))
+                tx.set(job_ref, self._job_data(failed))
                 return ClaimOutcome(status="exhausted", record=failed)
 
             claimed = record.model_copy(
@@ -487,7 +496,7 @@ class FirestoreJobStore:
                     "lease_expires_at": now + timedelta(seconds=lease_seconds),
                 }
             )
-            tx.set(job_ref, claimed.model_dump(mode="json"))
+            tx.set(job_ref, self._job_data(claimed))
             return ClaimOutcome(status="claimed", record=claimed)
 
         return self._run_transaction(transaction, _tx)
@@ -503,7 +512,7 @@ class FirestoreJobStore:
             if record is None:
                 raise KeyError(f"Unknown job_id '{job_id}'")
             updated = updater(record, now)
-            tx.set(job_ref, updated.model_dump(mode="json"))
+            tx.set(job_ref, self._job_data(updated))
             return updated
 
         return self._run_transaction(transaction, _tx)
@@ -573,10 +582,6 @@ class FirestoreJobStore:
 
     @staticmethod
     def _run_transaction(transaction: Any, fn: Any) -> Any:
-        try:
-            from google.cloud import firestore
+        from google.cloud import firestore
 
-            return firestore.transactional(fn)(transaction)
-        except ImportError:
-            # Allows unit tests with an in-memory fake Firestore transaction.
-            return fn(transaction)
+        return firestore.transactional(fn)(transaction)

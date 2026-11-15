@@ -633,3 +633,103 @@ test("summary reports 8-direction compass bearing and stationary threshold for R
   await expect(page.locator("#viewer")).toBeVisible();
   await expect(page.locator("#summary")).toContainText("west");
 });
+
+test("transient status and result errors retry the same accepted job", async ({ page }) => {
+  let posts = 0;
+  let polls = 0;
+  let results = 0;
+  const bundle = makeBundle({ targetId: "coord_retry", name: "Retry", ra: 10, dec: 20 });
+  await serve(page, localOrigin, source, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true } }),
+    "/api/v1/jobs": (route) => {
+      posts++;
+      return route.fulfill({ status: 202, json: { status: "queued", job_id: "retry" } });
+    },
+    "/api/v1/jobs/retry": (route) => {
+      polls++;
+      if (polls === 1) return route.fulfill({ status: 404 });
+      if (polls === 2) return route.fulfill({ status: 503 });
+      return route.fulfill({ json: { status: "succeeded", job_id: "retry" } });
+    },
+    "/api/v1/jobs/retry/result": (route) => {
+      results++;
+      return results === 1
+        ? route.fulfill({ status: 502 })
+        : route.fulfill({ json: bundle });
+    },
+  });
+  const response = await page.evaluate(() => (
+    window.viewerData.load({ ra: 10, dec: 20 }, new AbortController().signal)
+  ));
+  expect(response.status).toBe("ready");
+  expect(posts).toBe(1);
+  expect(polls).toBe(3);
+  expect(results).toBe(2);
+});
+
+test("viewer distinguishes queue admission, lost jobs, and archive failure", async ({ page }) => {
+  const jobIds = ["lost", "upstream", "empty"];
+  let posts = 0;
+  let lostPolls = 0;
+  await serve(page, localOrigin, source, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true } }),
+    "/api/v1/jobs": (route) => {
+      if (posts++ === 0) {
+        return route.fulfill({ status: 429, headers: { "Retry-After": "27" } });
+      }
+      return route.fulfill({ status: 202, json: { status: "queued", job_id: jobIds[posts - 2] } });
+    },
+    "/api/v1/jobs/lost": (route) => {
+      lostPolls++;
+      return route.fulfill({ status: 404 });
+    },
+    "/api/v1/jobs/upstream": (route) => route.fulfill({
+      json: { status: "failed", error_code: "upstream_unavailable" },
+    }),
+    "/api/v1/jobs/empty": (route) => route.fulfill({
+      json: { status: "failed", error_code: "no_observations" },
+    }),
+  });
+  const search = () => page.evaluate(() => (
+    window.viewerData.load({ ra: 21, dec: 22 }, new AbortController().signal)
+  ));
+  expect(await search()).toEqual({ status: "queue-busy", retryAfter: 27 });
+  expect(posts).toBe(1);
+  expect(await search()).toEqual({ status: "job-lost" });
+  expect(lostPolls).toBe(3);
+  expect(await search()).toEqual({ status: "upstream-unavailable" });
+  expect(await search()).toEqual({ status: "no-observations" });
+  expect(posts).toBe(4);
+});
+
+test("viewer stops polling when the overall search deadline expires", async ({ page }) => {
+  let polls = 0;
+  await page.addInitScript(() => {
+    const deadline = new AbortController();
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    AbortSignal.timeout = (delay) => delay === 300000 ? deadline.signal : timeout(delay);
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (url, options) => {
+      const response = await fetch(url, options);
+      if (new URL(url, location.href).pathname === "/api/v1/jobs/pending") {
+        deadline.abort(new DOMException("Search deadline elapsed", "TimeoutError"));
+      }
+      return response;
+    };
+  });
+  await serve(page, localOrigin, source, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true } }),
+    "/api/v1/jobs": (route) => route.fulfill({
+      status: 202, json: { status: "queued", job_id: "pending" },
+    }),
+    "/api/v1/jobs/pending": (route) => {
+      polls++;
+      return route.fulfill({ json: { status: "running", job_id: "pending" } });
+    },
+  });
+  const response = await page.evaluate(() => (
+    window.viewerData.load({ ra: 10, dec: 20 }, new AbortController().signal)
+  ));
+  expect(response).toEqual({ status: "search-timeout" });
+  expect(polls).toBe(1);
+});

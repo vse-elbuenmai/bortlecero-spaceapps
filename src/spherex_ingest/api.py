@@ -161,12 +161,17 @@ def get_api_result_store() -> ResultStore:
     return get_result_store()
 
 
+@lru_cache(maxsize=4)
+def _firestore_job_store(project: str | None, collection: str) -> FirestoreJobStore:
+    return FirestoreJobStore.from_project(project_id=project, collection_name=collection)
+
+
 def get_job_store() -> JobStoreProtocol:
     """Provide durable Firestore or local SQLite job state storage."""
     if os.environ.get("SPHEREX_JOBS_BACKEND", "sqlite").lower() == "firestore":
-        return FirestoreJobStore.from_project(
-            project_id=os.environ.get("SPHEREX_FIRESTORE_PROJECT"),
-            collection_name=os.environ.get("SPHEREX_JOBS_COLLECTION", "spherex_jobs"),
+        return _firestore_job_store(
+            os.environ.get("SPHEREX_FIRESTORE_PROJECT"),
+            os.environ.get("SPHEREX_JOBS_COLLECTION", "spherex_jobs"),
         )
     scratch = Path(os.getenv("SPHEREX_CACHE_DIR", ".cache/fits")).parent
     jobs_dir = Path(os.environ.get("SPHEREX_JOBS_DIR", scratch / "jobs")).resolve()
@@ -299,6 +304,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After"],
 )
 
 
@@ -755,6 +761,8 @@ def run_internal_worker_ingest(
     authorization: Annotated[str | None, Header()] = None,
 ) -> JSONResponse:
     """Authenticate worker invocation via OIDC and execute the job idempotently."""
+    if os.getenv("SPHEREX_WORKER_ENABLED", "true").lower() != "true":
+        raise HTTPException(status_code=404, detail="Worker endpoint disabled.")
     try:
         auth_verifier.verify(authorization, request.headers)
     except WorkerAuthError as exc:

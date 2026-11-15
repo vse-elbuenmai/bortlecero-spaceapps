@@ -45,6 +45,11 @@ use generation preconditions, so both receive the published result.
 
 ## Settings
 
+Cloud Run staging shares the private bundle bucket across the public API and
+worker. Successful live results are eligible for reuse for 24 hours, with atomic
+publication through the existing manifest and immutable bundle objects. SQLite
+remains the default for local development.
+
 | Environment variable | Default | Purpose |
 |---|---|---|
 | `SPHEREX_BENCHMARK_BUCKET` | Unset | Private Cloud Storage bucket for the five default viewer bundles. |
@@ -67,9 +72,10 @@ readable. Successful retries can switch the manifest to a new complete bundle.
   `storage.objects.create` and `storage.objects.delete` to upload immutable bundles
   and replace manifests with generation preconditions. Use Application Default
   Credentials from the runtime service accounts.
-- Apply a Cloud Storage Delete lifecycle rule at eight days or later to
-  `queries/v1/`. Review bucket soft-delete and versioning settings when estimating
-  retained storage.
+- The bootstrap preserves staging's existing 30-day Delete rule for `queries/`.
+  If neither that rule nor an equivalent shorter rule exists, it adds an eight-day
+  Delete rule for `queries/v1/`. Benchmark snapshots remain under `benchmarks/v1/`.
+  Versioning and soft delete can retain storage beyond the lifecycle deletion date.
 - The local SQLite data file is capped at 128 MiB and removes entries older than
   eight days on writes. Allow space for the transaction journal. Clear the local
   results directory while the service is stopped when a full cache needs immediate

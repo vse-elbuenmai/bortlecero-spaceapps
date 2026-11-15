@@ -22,7 +22,7 @@ on:
           - rollback
         default: deploy
       image_digest:
-        description: "Full Artifact Registry image@sha256:... (required for promote; optional for rollback)"
+        description: "Full immutable image digest to reuse (required for promote)"
         type: string
         required: false
         default: ""
@@ -66,7 +66,7 @@ jobs:
   build-and-push:
     name: "Build & Push (SHA-tagged image)"
     needs: verify
-    if: ${{ github.event_name == 'push' || (github.event.inputs.action || 'deploy') == 'deploy' }}
+    if: ${{ github.event_name == 'push' || ((github.event.inputs.action || 'deploy') == 'deploy' && github.event.inputs.image_digest == '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ github.event.inputs.environment || 'staging' }}
@@ -106,7 +106,7 @@ jobs:
       !cancelled() &&
       needs.verify.result == 'success' &&
       (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
-      (github.event.inputs.action || 'deploy') != 'rollback'
+      ((github.event.inputs.action || 'deploy') != 'rollback' || (github.event.inputs.image_digest != '' && github.event.inputs.revision == ''))
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: ${{ github.event.inputs.environment || 'staging' }}
@@ -123,15 +123,18 @@ jobs:
           ACTION: ${{ github.event.inputs.action || 'deploy' }}
           BUILT_DIGEST: ${{ needs.build-and-push.outputs.image_digest }}
           INPUT_DIGEST: ${{ github.event.inputs.image_digest }}
+          INPUT_CODE_SHA: ${{ github.event.inputs.code_sha }}
         run: |
-          if [ "${ACTION}" = "promote" ]; then
-            if [ -z "${INPUT_DIGEST}" ]; then
-              echo "::error::image_digest input is required for promote action"
+          if [[ "${ACTION}" == "deploy" && -z "${INPUT_DIGEST}" ]]; then
+            echo "digest=${BUILT_DIGEST}" >> "${GITHUB_OUTPUT}"
+            echo "code_sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          else
+            if [[ -z "${INPUT_DIGEST}" || ! "${INPUT_CODE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::image_digest and its full code_sha are required"
               exit 1
             fi
             echo "digest=${INPUT_DIGEST}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "digest=${BUILT_DIGEST}" >> "${GITHUB_OUTPUT}"
+            echo "code_sha=${INPUT_CODE_SHA}" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Authenticate to Google Cloud via OIDC/WIF
@@ -156,24 +159,19 @@ jobs:
           OMP_NUM_THREADS: "1"
         run: uv run --frozen --no-dev python scripts/seed_benchmark_cache.py "${BENCHMARK_BUCKET}"
 
-      - name: Render Cloud Run service manifest and deploy
+      - name: Deploy and verify the private worker, then deploy the API
         env:
           SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
           RUNTIME_SA: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          WORKER_SA: ${{ format('spherex-worker-{0}@{1}.iam.gserviceaccount.com', github.event.inputs.environment || 'staging', vars.GCP_PROJECT_ID) }}
+          TASKS_SA: ${{ format('spherex-tasks-{0}@{1}.iam.gserviceaccount.com', github.event.inputs.environment || 'staging', vars.GCP_PROJECT_ID) }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-          BENCHMARK_BUCKET: ${{ vars.GCP_GCS_BUCKET || format('{0}-spherex-bundles-{1}', vars.GCP_PROJECT_ID, github.event.inputs.environment || 'staging') }}
+          CODE_SHA: ${{ steps.image.outputs.code_sha }}
+          BUNDLE_BUCKET: ${{ vars.GCP_GCS_BUCKET || format('{0}-spherex-bundles-{1}', vars.GCP_PROJECT_ID, github.event.inputs.environment || 'staging') }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION }}
-        run: |
-          sed \
-            -e "s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
-            -e "s|__BENCHMARK_BUCKET__|${BENCHMARK_BUCKET}|g" \
-            -e "s|__RUNTIME_SERVICE_ACCOUNT__|${RUNTIME_SA}|g" \
-            -e "s|__IMAGE_DIGEST__|${IMAGE_DIGEST}|g" \
-            deploy/cloud-run/service.yaml > /tmp/service.rendered.yaml
-          gcloud run services replace /tmp/service.rendered.yaml \
-            --project "${PROJECT_ID}" \
-            --region "${REGION}"
+        run: bash deploy/gcp/deploy-services.sh
 
       - name: Verify live Cloud Run service (auth + health + benchmarks + gate)
         env:
@@ -210,7 +208,6 @@ jobs:
           test "${GATE_CODE}" = "503"
 
       - name: Verify server cache for all five viewer requests
-        if: ${{ (github.event.inputs.action || 'deploy') == 'deploy' }}
         env:
           SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -231,7 +228,7 @@ jobs:
 
   deploy-viewer:
     name: "Deploy Static Viewer (GCS)"
-    needs: verify
+    needs: deploy-or-promote
     if: ${{ github.event_name == 'push' || (github.event.inputs.action || 'deploy') == 'deploy' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -287,7 +284,7 @@ jobs:
   rollback:
     name: "Rollback Cloud Run Service"
     needs: [verify]
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'rollback' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'rollback' && (github.event.inputs.revision != '' || github.event.inputs.image_digest == '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: ${{ github.event.inputs.environment || 'staging' }}
@@ -304,47 +301,40 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
-      - name: Rollback by revision or image digest
+      - name: Rollback by revision
         env:
           SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
-          RUNTIME_SA: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION }}
           TARGET_REVISION: ${{ github.event.inputs.revision }}
-          TARGET_DIGEST: ${{ github.event.inputs.image_digest }}
-          BENCHMARK_BUCKET: ${{ vars.GCP_GCS_BUCKET || format('{0}-spherex-bundles-{1}', vars.GCP_PROJECT_ID, github.event.inputs.environment || 'staging') }}
+          WORKER_REVISION: ${{ github.event.inputs.worker_revision }}
         run: |
-          if [ -n "${TARGET_REVISION}" ]; then
-            gcloud run services update-traffic "${SERVICE_NAME}" \
-              --project "${PROJECT_ID}" \
-              --region "${REGION}" \
-              --to-revisions="${TARGET_REVISION}=100"
-          elif [ -n "${TARGET_DIGEST}" ]; then
-            sed \
-              -e "s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
-              -e "s|__BENCHMARK_BUCKET__|${BENCHMARK_BUCKET}|g" \
-              -e "s|__RUNTIME_SERVICE_ACCOUNT__|${RUNTIME_SA}|g" \
-              -e "s|__IMAGE_DIGEST__|${TARGET_DIGEST}|g" \
-              deploy/cloud-run/service.yaml > /tmp/service.rollback.yaml
-            gcloud run services replace /tmp/service.rollback.yaml \
-              --project "${PROJECT_ID}" \
-              --region "${REGION}"
-          else
-            echo "::error::Provide either revision or image_digest for rollback"
+          if [ -z "${TARGET_REVISION}" ]; then
+            echo "::error::Provide an API revision or an image digest with its code SHA"
             exit 1
           fi
+          if [ -n "${WORKER_REVISION}" ]; then
+            gcloud run services update-traffic "${SERVICE_NAME}-worker" \
+              --project "${PROJECT_ID}" --region "${REGION}" \
+              --to-revisions="${WORKER_REVISION}=100"
+          fi
+          gcloud run services update-traffic "${SERVICE_NAME}" \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --to-revisions="${TARGET_REVISION}=100"
 
       - name: Verify post-rollback health
         env:
           SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
         run: |
           SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --format='value(status.url)')
-          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+          ID_TOKEN=$(gcloud auth print-identity-token \
+            --impersonate-service-account="${DEPLOY_SA}" --audiences="${SERVICE_URL}")
           curl --fail --silent --show-error \
             -H "Authorization: Bearer ${ID_TOKEN}" \
             "${SERVICE_URL}/api/v1/health"
