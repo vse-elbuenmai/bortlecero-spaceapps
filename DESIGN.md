@@ -338,6 +338,43 @@ borde `--bc-acento` y `translateY(-3px)`.
 - Enlaces a «Sources», «AI usage», la licencia (Apache 2.0) y el repositorio.
 - «Built by team Bortle Cero for the NASA Space Apps Challenge 2026».
 
+### 7.11 Vista del cielo (prototipo, pendiente de que el equipo lo confirme)
+
+La portada: el cielo entero a pantalla completa, visto desde dentro, girando despacio. Encima flotan
+el buscador y los controles; al llegar a una posición se abre el visor del §7.1 en un diálogo.
+Sale de la prueba de `mockup/sky.js`.
+
+- **Lienzo:** ocupa toda la ventana, fondo `--bc-abismo`. El este queda a la izquierda, como en
+  cualquier carta del cielo. Aquí la imagen sí se suaviza al ampliar: es un telón de fondo, no el
+  dato. La regla de píxeles nítidos del §7.1 sigue valiendo para las fotos del visor.
+- **Hasta dónde acerca:** hasta que un píxel de pantalla muestre medio píxel del mapa, y nunca a
+  menos de 30° de campo. El lector de coordenadas avisa con «closest view».
+- **Superficie flotante («glass»):** fondo `rgba(8, 12, 20, 0.78)`, borde de 1 px
+  `rgba(123, 168, 212, 0.23)`, radio 16 px, `backdrop-filter: blur(14px)` y la sombra de diálogo
+  del §5. Sólo para lo que flota sobre el cielo, nunca sobre una foto de SPHEREx.
+- **Buscador:** panel «glass» abajo al centro (880 px como máximo), con etiqueta pequeña, la pregunta
+  como título, una fila con nombre, RA, Dec y el botón principal, y los cinco objetos de prueba como
+  chips. Lleva un botón «Hide» / «Search». Se pliega solo durante el viaje. Nombre y coordenadas son
+  dos formas de decir lo mismo: escribir en uno vacía el otro.
+- **Capas del cielo:** chips arriba a la izquierda, uno activo, con un pie que dice siempre qué mapa
+  se ve, de qué fechas y si es un dibujo o un promedio. El cambio de capa es un fundido de 0.4 s
+  (aquí sí, porque no se comparan fechas). El falso color es la única imagen a color del sistema
+  (excepción al §2.6) y su pie dice qué longitud de onda va en cada canal.
+- **Controles:** columna de botones de icono de 44 × 44 a la derecha (acercar, alejar, pausa y
+  volver al cielo completo); en móvil, arriba a la derecha.
+- **Giro en reposo:** 1.5° por segundo, con botón de pausa (WCAG 2.2.2). Se detiene al tocar el
+  cielo, durante el viaje y mientras el diálogo está abierto. Con `prefers-reduced-motion` no gira
+  y el viaje es un salto.
+- **Viaje:** 5 s: gira por el camino más corto mientras se aleja y después se acerca. Al llegar,
+  un anillo discontinuo en `--bc-estrella` con halo marca la posición, con su nombre debajo.
+- **Diálogo del visor:** `<dialog>` modal de 1180 px como máximo, fondo `--bc-cosmos`, borde
+  `--bc-border`, radio 16 px, fondo oscurecido `rgba(4, 7, 11, 0.72)`. Cabecera con el nombre, la
+  posición de hoy y un botón de cerrar de 44 × 44. Si no hay fotos para esa posición, lo dice y
+  ofrece ir a un objeto que sí las tiene (§7.6).
+- **Créditos:** como no hay pie de página, el botón «Credits» de la cabecera abre un diálogo con el
+  texto del §7.10.
+- **Enlace de salto:** «Skip to search».
+
 ---
 
 ## 8. Accesibilidad

@@ -40,8 +40,12 @@ click==8.5.1
     #   uvicorn
 cloudpickle==3.1.2
     # via dask
+contourpy==1.4.0
+    # via matplotlib
 cryptography==50.0.2
     # via secretstorage
+cycler==0.12.1
+    # via matplotlib
 dask==2026.8.0
     # via
     #   dask-image
@@ -52,6 +56,8 @@ donfig==0.8.1.post1
     # via zarr
 fastapi==0.163.0
     # via spherex-ingest (pyproject.toml)
+fonttools==4.68.0
+    # via matplotlib
 fsspec==2026.9.0
     # via
     #   dask
@@ -87,8 +93,12 @@ jeepney==0.9.0
     #   secretstorage
 keyring==25.7.0
     # via astroquery
+kiwisolver==1.5.1
+    # via matplotlib
 locket==1.0.0
     # via partd
+matplotlib==3.11.2
+    # via spherex-ingest (pyproject.toml)
 more-itertools==11.2.1
     # via
     #   jaraco-classes
@@ -103,9 +113,11 @@ numpy==2.5.4
     #   astropy
     #   astropy-healpix
     #   astroquery
+    #   contourpy
     #   dask
     #   dask-image
     #   imageio
+    #   matplotlib
     #   numcodecs
     #   photutils
     #   pims
@@ -120,6 +132,7 @@ packaging==26.3
     # via
     #   astropy
     #   dask
+    #   matplotlib
     #   pims
     #   zarr
 partd==1.4.2
@@ -130,6 +143,7 @@ pillow==13.0.0
     # via
     #   spherex-ingest (pyproject.toml)
     #   imageio
+    #   matplotlib
     #   reproject
 pims==0.7
     # via dask-image
@@ -145,6 +159,10 @@ pydantic-core==2.50.4
     # via pydantic
 pyerfa==2.0.1.5
     # via astropy
+pyparsing==3.3.3
+    # via matplotlib
+python-dateutil==4.0.0
+    # via matplotlib
 pyvo==1.10.0
     # via
     #   spherex-ingest (pyproject.toml)
@@ -199,6 +217,8 @@ typing-inspection==0.4.5
     # via
     #   fastapi
     #   pydantic
+tzdata==2026.6
+    # via python-dateutil
 urllib3==2.8.0
     # via requests
 uvicorn==0.54.0

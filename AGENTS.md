@@ -12,10 +12,16 @@ R Draconis.
 
 ## Estado (sáb 14 nov 2026, pipeline de ingesta implementada)
 
+- **`mockup/`** (rama `claude/esfera-viaje`): prototipo de la interfaz, sin compilación. El cielo
+  entero a pantalla completa visto desde dentro (mapas propios hechos con `prepare_sky.py`: NASA SVS
+  para la luz visible y el cubo de SPHEREx de IRSA), un buscador por nombre o RA/Dec que viaja a la
+  posición, y el visor de parpadeo en un diálogo, con tres fotos reales de Barnard. Todavía no usa
+  la pipeline de ingesta. La versión anterior con Aladin Lite queda como plan B (`aladin.html`).
+  Cómo correrlo y qué se comprobó: [mockup/README.md](mockup/README.md).
 - **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
   - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ en vivo vía FastAPI con CORS habilitado y caché local de FITS en `.cache/fits/`.
   - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
-- **Comandos del Pipeline de Ingesta (`uv`):**
+- **Comandos con Astral `uv`:**
   ```bash
   # 1. Crear entorno e instalar dependencias
   uv venv --python 3.14 .venv
@@ -31,14 +37,21 @@ R Draconis.
 
   # 4. Levantar servidor FastAPI (puerto 8000, docs en /docs)
   uv run spherex-ingest serve --host 0.0.0.0 --port 8000
+
+  # 5. Correr script de preparación y servidor de mockup
+  uv run python mockup/prepare_barnard.py
+  uv run python -m http.server 8765 --directory mockup
   ```
+- **Frontend y despliegue: sin decidir.** Los decide el equipo. Cuando se decidan, se escriben
+  aquí, con los comandos de instalar, correr, probar y desplegar, en el mismo commit que los
+  introduce. No des por hecha ninguna decisión de diseño que no esté en este fichero.
 - Prioridad acordada: **una demo desplegada que funcione antes que más funciones.**
 
 ## Reloj (hora de Guadalajara)
 
 | Cuándo | Qué |
 |---|---|
-| Sáb 14, ~14:00 | se congela el alcance: después sólo se termina lo empezado (Miguel lo confirma) |
+| Sáb 14, 20:00 | se congela el alcance: después sólo se termina lo empezado (Miguel lo movió de las 14:00 por los retrasos de la mañana) |
 | Sáb 14 y dom 15, 20:00 | cierra la sede; se sigue desde fuera |
 | Dom 15, ~21:00 | objetivo para enviar la entrega, con 3–4 horas reservadas para armarla |
 | Dom 15, 23:59 | límite en la plataforma; cuenta la última versión enviada |
@@ -111,6 +124,14 @@ vivo antes de apoyarte en él.
   6. **WISE 0855 no está donde dice el enunciado** (coordenadas de ~2010; hoy ≈ 133.760, −7.2422,
      unos 20 px al oeste), sólo se detecta por encima de 3.9 µm (bandas 5 y 6) y tiene una fuente
      fija igual de brillante a 29″ de la coordenada del enunciado.
+- **Aladin Lite 3.8.2 y SPHEREx** (probado el 14 nov; detalle en `mockup/README.md`):
+  1. El cubo `spherex_allsky_cube` es un **promedio**: sirve de fondo, no para parpadear.
+  2. Elegir una capa del cubo funciona (`setFrequency`); mezclar tres en RGB funciona sólo con dos
+     rodeos atados a esta versión. Antes de cambiar de versión hay que volver a probarlos.
+  3. Aladin **coloca mal el recorte tal como lo entrega IRSA** (WCS TAN-SIP): sin error y en otro
+     punto del cielo. Con el WCS reescrito como TAN simple lo coloca bien y endereza el giro de 180°.
+  4. La 3.8.2 se declara GPL-3 en su `package.json`; el equipo tiene que confirmar que encaja con
+     Apache 2.0 antes de la entrega.
 - **Pasadas por objeto:** Barnard 3, Epsilon Indi B 4, WISE 0855 3 (sólo en DR1), RW Aurigae 3,
   R Draconis casi continuo (campo profundo).
 
@@ -129,8 +150,7 @@ vivo antes de apoyarte en él.
   uv pip install --python .venv -r requirements.txt
   ```
 
-  `requirements.txt` todavía no existe: se crea con el primer código de Python y lista **sólo lo que
-  el proyecto usa de verdad**.
+  `requirements.txt` lo genera `uv` desde `pyproject.toml` (`uv pip compile`): no se edita a mano.
 - **Datos pesados fuera de git:** ningún FITS ni descarga de IRSA se commitea. En la laptop de Miguel
   hay archivos de estudio en `D:\dev\lab\datos-spherex\`.
 - Node, git, `gh` y Vercel CLI están instalados; `gh` y Vercel tienen sesión como `vse-elbuenmai`.

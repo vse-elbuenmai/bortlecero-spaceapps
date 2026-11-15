@@ -1,0 +1,118 @@
+# Mockup: Barnard's Star blink viewer
+
+A **mockup** so the team can see the viewer with real data while the real pipeline (download and
+ingest) and the real frontend are being built. It is not the project's architecture: stack and
+structure are still for the team to decide (see `AGENTS.md`).
+
+- `prepare_barnard.py` — downloads a few SPHEREx cutouts of Barnard's Star from IRSA, picks one
+  per visit at nearly the same wavelength, re-aligns them north-up, stretches them and writes
+  `data/barnard/` (PNGs + `frames.json`). Each step is explained at the top of the file.
+- `index.html`, `sky.css`, `sky.js` — the **sky view**: the whole sky on screen, seen from inside,
+  a search panel (object name, or RA and Dec) that travels to the position, and the blink viewer in
+  a dialog on arrival. Plain HTML/CSS/JS and one WebGL 2 shader; no libraries, no build step.
+- `prepare_sky.py` — builds the three all-sky maps the sky view paints (`sky/*.webp`, `sky/sky.json`).
+- `mockup.css`, `mockup.js` — the blink viewer, following `DESIGN.md` §7.
+- `aladin.html`, `sky-aladin.js` — **plan B**: the earlier version of the sky, drawn by Aladin Lite
+  with sky maps streamed from IRSA. Kept because it can zoom all the way in. See "Plan B" below.
+
+## Run it
+
+```sh
+# 1. (optional) regenerate the data with uv — the PNGs and frames.json are already committed
+uv run python mockup/prepare_barnard.py          # downloads ~48 MB to .cache/spherex (git-ignored)
+
+# 2. serve the folder (fetch() does not work from file://)
+uv run python -m http.server 8765 --directory mockup
+# open http://127.0.0.1:8765/
+```
+
+Use Astral `uv` (`uv run ...`) or the project's Python (`.venv/bin/python` on Linux, `.venv\Scripts\python` on Windows, or the
+shared `D:\dev\lab\.venvs\astro` on Miguel's laptop). Any static server works for step 2.
+
+## What the data shows (run of 2026-11-14)
+
+| Date (UTC) | Release | λ at the star | PA | Measured − Gaia |
+|---|---|---|---|---|
+| 2025-08-25 00:52 | DR1 | 4.750 µm | 180° | 1.39″ |
+| 2026-03-19 09:08 | DR1 | 4.755 µm | 0° | 0.31″ |
+| 2026-08-19 04:57 | QR3 | 4.732 µm | 180° | 0.46″ |
+
+Barnard's Star moved **10.21″ (measured) vs 10.25″ (Gaia DR3 + parallax)** in 359 days, about
+1.7 SPHEREx pixels. All three frames have a saturated core (OVERFLOW, BLOOM), which pulls the
+centroid; the first frame is the worst.
+
+## Sky view
+
+The team's idea: the whole sky fills the screen and turns slowly; a search turns it to the position
+and closes in; on arrival a dialog opens with the SPHEREx frames of that position.
+
+- **Own sky maps, no map server.** Each layer is one image of the whole sky (a panorama, 4096 × 2048,
+  with a 2048 × 1024 copy shown while it loads), painted on the inside of a sphere by one shader.
+  Once the page has loaded it needs the network only to look up object names.
+- **Three layers.** "Visible light" is NASA SVS's Deep Star Maps 2020: a drawing from the Gaia,
+  Hipparcos and Tycho catalogues, not a photograph. "SPHEREx 4.77 µm" is frame 95 of IRSA's SPHEREx
+  DR1 all-sky cube. "SPHEREx false colour" is frames 95, 55 and 10 as red, green and blue; those three
+  frames are placeholders for the team to choose. The cube is an *average* of 24 Apr 2025 to
+  14 May 2026: a backdrop, never blink data. It is blank near the two ecliptic poles.
+- **How close it gets.** One map pixel covers 5.3′ of sky, so the view stops where one screen pixel
+  would show less than half a map pixel: about 60° across on a laptop, never closer than 30°. The
+  trip ends there, with a ring on the position; the dialog is where the real pixels are.
+- **Search.** The five test objects come from a list in `sky.js` (Gaia DR3 positions and proper
+  motions, moved to today). Any other name is looked up in SIMBAD through its mirror at Harvard
+  (`vizier.cfa.harvard.edu`, the Sesame service), from the browser.
+- **What opens on arrival.** Barnard's Star opens the blink viewer with the three prepared frames.
+  Any other position opens the dialog with a message: this mockup does not talk to the ingestion
+  service (`src/spherex_ingest/`) yet.
+- `window.skyPrototype` in the browser console gives the view's state.
+
+### Rebuilding the sky maps
+
+```sh
+uv run --with OpenEXR python mockup/prepare_sky.py   # downloads ~45 MB to .cache/sky (git-ignored)
+```
+
+The script checks itself and writes nothing if a check fails: six bright stars must sit on their
+catalogue positions in every map (2026-11-14: 6 of 6 in the NASA map, 5 of 6 in the SPHEREx one,
+where Vega is faint). That is also how the pixel order inside IRSA's tiles was settled: of the
+eight possible orders only one puts the stars in place.
+
+The view itself was checked the same way: with the page open, seven bright stars fall within 2
+screen pixels of where `sky.js` computes them, in three different framings.
+
+## Plan B: the sky drawn by Aladin Lite
+
+`aladin.html` is the first version: Aladin Lite 3.8.2 (loaded from jsDelivr) streaming sky maps from
+IRSA (DSS2 colour and the SPHEREx cube). It needs the network the whole time, but it can zoom down
+to the star. Its three sky layers work with the two workarounds described below.
+
+### What was checked in Aladin Lite 3.8.2 (2026-11-14)
+
+1. **Picking one frame of the SPHEREx cube: works.** `hips.setFrequency(...)` with the frequency in
+   the middle of the frame's interval; the browser then asks IRSA for the tiles of that frame
+   (`Npix…_95.png`). Frame 0 is the exception: Aladin asks for `…_0.png`, which IRSA answers with 404.
+2. **Mixing three frames as red, green and blue: works, with two workarounds** (both in `sky-aladin.js`,
+   both tied to this version):
+   - Aladin's engine identifies a sky map by its `creator_did`, so three layers of the same cube
+     end up sharing one frame. Each layer gets its own id by wrapping a private method
+     (`_parseProperties`).
+   - With additive blending on, a fully opaque layer still covers the ones below. Opacity 0.99 on
+     the green and blue layers makes them add up.
+3. **Overlaying a cutout by its WCS: works only with a plain WCS.**
+   - The cutout as IRSA delivers it (TAN-SIP, reference pixel outside the image) loads without an
+     error but lands in the wrong place: RA 178.81°, Dec +13.59° instead of 269.45°, +4.77°. Rewriting
+     the matrix as `CD` and keeping SIP does not fix it.
+   - With the header rewritten as plain TAN, fitted at the centre of the cutout (it differs from the
+     full WCS by at most 0.04″ over 47 pixels), Aladin puts all three dates in the right place and
+     undoes the 180° rotation by itself: the field stars coincide between dates.
+   - The north-up PNGs of this mockup, with their WCS passed as an object to `A.image`, also land in
+     the right place.
+   - Either way a preparation step is needed: IRSA's cutouts are 4 MB and are not served with CORS,
+     while the image extension alone is 14 KB.
+
+## What is fake in the mockup
+
+- Only Barnard's Star has prepared frames. Any other position, typed or from a chip, opens the
+  dialog with a message.
+- The "within X″ of Gaia" badge threshold (0.5″) is a placeholder for the team to decide.
+- The project name in the header.
+- Space Grotesk is not self-hosted yet; the page falls back to the system font.
