@@ -77,8 +77,10 @@ Run revision, and the live-query setting without resolving targets or contacting
 ## Live Staging Verification (`bortle-cero-nasa-staging-26`)
 
 The staging service `spherex-ingest-staging` is deployed in `us-central1` at
-`https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` with IAM invocation required (`403` when
-unauthenticated). Authorized team members can inspect it locally via:
+`https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` (public `allUsers` `roles/run.invoker`
+enabled for the NASA Space Apps demo; set `GCP_REQUIRE_INVOKER_IAM=true` in a GitHub Environment
+to enforce `401/403` unauthenticated checks in `cd-deploy.yml`). Authorized team members can
+inspect it locally via:
 
 ```bash
 gcloud run services proxy spherex-ingest-staging --port 8189 --project bortle-cero-nasa-staging-26 --region us-central1
