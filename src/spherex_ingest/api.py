@@ -7,8 +7,10 @@ serving scientifically calibrated, North-up reprojected SPHEREx blink bundles.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -19,6 +21,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from spherex_ingest import __version__
+from spherex_ingest.admission import (
+    AdmissionControllerProtocol,
+    AdmissionDenied,
+    InMemoryAdmissionController,
+)
 from spherex_ingest.domain.jobs import (
     AdmissionLimitExceeded,
     JobDispatcherProtocol,
@@ -46,11 +53,31 @@ from spherex_ingest.job_service import (
     JobNotFoundError,
     JobNotReadyError,
 )
-from spherex_ingest.limits import PublicLimits, WorkLimitExceeded
+from spherex_ingest.limits import PublicLimits, WorkLimitExceeded, bounded_ingestion
 from spherex_ingest.result_storage import ResultKey, ResultStore, get_result_store
-from spherex_ingest.service import SPHERExBlinkIngestionService
+from spherex_ingest.service import (
+    NoObservations,
+    SPHERExBlinkIngestionService,
+    UpstreamUnavailable,
+)
 
 logger = logging.getLogger(__name__)
+
+_DISABLED_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def is_live_queries_enabled() -> bool:
+    """Return whether live upstream ingestion queries are enabled."""
+    raw = os.environ.get("SPHEREX_LIVE_QUERIES_ENABLED", "true").strip().lower()
+    return raw not in _DISABLED_VALUES
+
+
+def _is_maintenance_authorized(token: str | None) -> bool:
+    """Verify the optional maintenance token for privileged refresh requests."""
+    configured = os.environ.get("SPHEREX_MAINTENANCE_TOKEN", "").strip()
+    if not configured or not token:
+        return False
+    return hmac.compare_digest(token.strip(), configured)
 
 
 class HealthResponseDTO(BaseModel):
@@ -73,6 +100,10 @@ class HealthResponseDTO(BaseModel):
     async_jobs_enabled: bool = Field(
         description="Whether asynchronous queued ingestion is enabled",
     )
+    live_queries_enabled: bool = Field(
+        default_factory=is_live_queries_enabled,
+        description="Whether live upstream SPHEREx queries are currently enabled",
+    )
     benchmark_count: int = Field(
         default=len(BENCHMARK_TARGETS),
         description="Number of curated NASA Space Apps benchmark targets available",
@@ -89,6 +120,17 @@ def get_default_service() -> SPHERExBlinkIngestionService:
 def get_output_dir() -> Path:
     """Return the directory where precomputed blink bundles are stored."""
     return Path(os.environ.get("SPHEREX_OUTPUT_DIR", "output"))
+
+
+def get_public_limits() -> PublicLimits:
+    """Return the active public ingestion resource limits."""
+    return PublicLimits.from_environment()
+
+
+@lru_cache(maxsize=1)
+def get_admission_controller() -> AdmissionControllerProtocol:
+    """Return the singleton admission controller for public live ingestion."""
+    return InMemoryAdmissionController(limits=get_public_limits())
 
 
 def legacy_sync_enabled() -> bool:
@@ -111,11 +153,6 @@ def require_async_jobs() -> None:
     """Reject async job submission when the queue capability flag is disabled."""
     if not async_jobs_enabled():
         raise HTTPException(status_code=503, detail="Asynchronous SPHEREx ingestion is disabled.")
-
-
-def get_public_limits() -> PublicLimits:
-    """Load public queue and worker admission limits from environment."""
-    return PublicLimits.from_environment()
 
 
 def get_api_result_store() -> ResultStore:
@@ -212,6 +249,9 @@ OutputDirDep = Annotated[Path, Depends(get_output_dir)]
 CoordinatorDep = Annotated[AsyncJobCoordinator, Depends(get_job_coordinator)]
 WorkerDep = Annotated[AsyncIngestionWorker, Depends(get_async_worker)]
 WorkerAuthDep = Annotated[WorkerAuthVerifierProtocol, Depends(get_worker_auth_verifier)]
+LimitsDep = Annotated[PublicLimits, Depends(get_public_limits)]
+AdmissionDep = Annotated[AdmissionControllerProtocol, Depends(get_admission_controller)]
+LiveEnabledDep = Annotated[bool, Depends(is_live_queries_enabled)]
 
 
 def _get_or_ingest_result(
@@ -261,6 +301,130 @@ app.add_middleware(
 )
 
 
+def _error_http_exception(
+    status_code: int,
+    code: str,
+    message: str,
+    correlation_id: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> HTTPException:
+    """Build a sanitized HTTPException with a stable error code and correlation ID."""
+    cid = correlation_id or uuid.uuid4().hex[:12]
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "code": code,
+            "message": message,
+            "correlation_id": cid,
+        },
+        headers=headers,
+    )
+
+
+def _run_bounded_live_ingestion(
+    *,
+    service: SPHERExBlinkIngestionService,
+    limits: PublicLimits,
+    admission: AdmissionControllerProtocol,
+    live_enabled: bool,
+    target_or_query: TargetSpec | str,
+    cutout_size_arcsec: float,
+    max_frames: int,
+    force_refresh: bool = False,
+) -> BlinkBundleDTO:
+    """Enforce kill switch, request limits, admission control, and bounded execution."""
+    correlation_id = uuid.uuid4().hex[:12]
+
+    if not live_enabled:
+        raise _error_http_exception(
+            status_code=503,
+            code="live_queries_disabled",
+            message="Live SPHEREx queries are currently disabled.",
+            correlation_id=correlation_id,
+        )
+
+    try:
+        limits.validate_request(cutout_size_arcsec, max_frames)
+    except WorkLimitExceeded as exc:
+        raise _error_http_exception(
+            status_code=400,
+            code=exc.code,
+            message="Requested cutout size or exposure count exceeds public limits.",
+            correlation_id=correlation_id,
+        ) from exc
+
+    try:
+        with admission.admit():
+            with bounded_ingestion(limits, max_frames):
+                return _get_or_ingest_result(
+                    service,
+                    target_or_query,
+                    cutout_size_arcsec,
+                    max_frames,
+                    force_refresh=force_refresh,
+                )
+    except AdmissionDenied as exc:
+        raise _error_http_exception(
+            status_code=429,
+            code="rate_limited",
+            message="Ingestion queue is busy; please retry later.",
+            correlation_id=correlation_id,
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except WorkLimitExceeded as exc:
+        logger.warning(
+            "Ingestion work limit '%s' exceeded (correlation_id=%s)",
+            exc.code,
+            correlation_id,
+        )
+        if exc.code == "timeout":
+            status_code = 504
+            message = "Ingestion exceeded the allowed time budget."
+        elif exc.code in {"request_limit", "grid_limit"}:
+            status_code = 400
+            message = "Requested cutout size or exposure count exceeds public limits."
+        else:
+            status_code = 422
+            message = "Ingestion exceeded the allowed resource budget."
+        raise _error_http_exception(
+            status_code=status_code,
+            code=exc.code,
+            message=message,
+            correlation_id=correlation_id,
+        ) from exc
+    except NoObservations as exc:
+        raise _error_http_exception(
+            status_code=404,
+            code="no_observations",
+            message="No SPHEREx observations were found for the requested target.",
+            correlation_id=correlation_id,
+        ) from exc
+    except UpstreamUnavailable as exc:
+        logger.exception("Upstream SPHEREx failure (correlation_id=%s)", correlation_id)
+        raise _error_http_exception(
+            status_code=502,
+            code="upstream_unavailable",
+            message="Upstream astronomy services are temporarily unavailable.",
+            correlation_id=correlation_id,
+        ) from exc
+    except ValueError as exc:
+        logger.warning("Invalid ingestion request (correlation_id=%s): %s", correlation_id, exc)
+        raise _error_http_exception(
+            status_code=400,
+            code="invalid_request",
+            message="Invalid target or coordinate query.",
+            correlation_id=correlation_id,
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unhandled ingestion failure (correlation_id=%s)", correlation_id)
+        raise _error_http_exception(
+            status_code=502,
+            code="internal_error",
+            message="SPHEREx ingestion failed.",
+            correlation_id=correlation_id,
+        ) from exc
+
+
 @app.get(
     "/api/v1/health",
     response_model=HealthResponseDTO,
@@ -297,6 +461,9 @@ def get_benchmark_blink_bundle(
     target_id: str,
     service: ServiceDep,
     output_dir: OutputDirDep,
+    limits: LimitsDep,
+    admission: AdmissionDep,
+    live_enabled: LiveEnabledDep,
     size_arcsec: Annotated[
         float,
         Query(
@@ -312,20 +479,25 @@ def get_benchmark_blink_bundle(
             le=120,
             description="Maximum exposures to fetch per SPHEREx SIAv2 collection",
         ),
-    ] = 24,
+    ] = 12,
     force_refresh: Annotated[
         bool,
         Query(
-            description="Bypass precomputed bundle on disk and run live ingestion pipeline",
+            description="Bypass precomputed bundle on disk (requires maintenance authorization)",
         ),
     ] = False,
+    x_maintenance_token: Annotated[
+        str | None,
+        Header(alias="X-Maintenance-Token"),
+    ] = None,
 ) -> BlinkBundleDTO:
-    """Serve the curated default bundle or a separately stored live query result."""
+    """Serve the curated default bundle or execute the bounded, cached live pipeline."""
     target = get_benchmark_target(target_id)
     if target is None:
-        raise HTTPException(
+        raise _error_http_exception(
             status_code=404,
-            detail=(
+            code="unknown_target",
+            message=(
                 f"Unknown benchmark target '{target_id}'. "
                 f"Available targets: {', '.join(BENCHMARK_TARGETS.keys())}"
             ),
@@ -335,7 +507,7 @@ def get_benchmark_blink_bundle(
     if (
         not force_refresh
         and size_arcsec == 180.0
-        and max_frames == 24
+        and max_frames == 12
         and precomputed_path.is_file()
     ):
         try:
@@ -355,18 +527,23 @@ def get_benchmark_blink_bundle(
             )
 
     require_legacy_sync()
-    try:
-        return _get_or_ingest_result(
-            service, target, size_arcsec, max_frames, force_refresh=force_refresh
+    if force_refresh and not _is_maintenance_authorized(x_maintenance_token):
+        raise _error_http_exception(
+            status_code=403,
+            code="refresh_forbidden",
+            message="Public force_refresh is disabled.",
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Live ingestion failed for target '%s'", target.target_id)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Upstream SPHEREx ingestion failed for '{target.target_id}': {exc}",
-        ) from exc
+
+    return _run_bounded_live_ingestion(
+        service=service,
+        limits=limits,
+        admission=admission,
+        live_enabled=live_enabled,
+        target_or_query=target,
+        cutout_size_arcsec=size_arcsec,
+        max_frames=max_frames,
+        force_refresh=force_refresh,
+    )
 
 
 @app.get(
@@ -377,6 +554,9 @@ def get_benchmark_blink_bundle(
 )
 def query_custom_blink_bundle(
     service: ServiceDep,
+    limits: LimitsDep,
+    admission: AdmissionDep,
+    live_enabled: LiveEnabledDep,
     ra: Annotated[
         float | None,
         Query(
@@ -416,9 +596,9 @@ def query_custom_blink_bundle(
             le=120,
             description="Maximum exposures to fetch per SPHEREx SIAv2 collection",
         ),
-    ] = 18,
+    ] = 12,
 ) -> BlinkBundleDTO:
-    """Execute the SPHEREx ingestion pipeline for custom coordinates or an object name."""
+    """Execute the bounded SPHEREx ingestion pipeline for custom coordinates or an object name."""
     require_legacy_sync()
     if ra is not None and dec is not None:
         slug = f"coord_{ra:.5f}_{dec:+.5f}".replace("+", "p").replace("-", "m").replace(".", "d")
@@ -433,23 +613,23 @@ def query_custom_blink_bundle(
     elif query is not None and query.strip():
         target_input = query.strip()
     else:
-        raise HTTPException(
+        raise _error_http_exception(
             status_code=422,
-            detail=(
+            code="invalid_request",
+            message=(
                 "Provide either both 'ra' and 'dec' in degrees, or a non-empty 'query' parameter."
             ),
         )
 
-    try:
-        return _get_or_ingest_result(service, target_input, size_arcsec, max_frames)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Custom blink query failed for input=%s", target_input)
-        raise HTTPException(
-            status_code=502,
-            detail=f"SPHEREx ingestion failed: {exc}",
-        ) from exc
+    return _run_bounded_live_ingestion(
+        service=service,
+        limits=limits,
+        admission=admission,
+        live_enabled=live_enabled,
+        target_or_query=target_input,
+        cutout_size_arcsec=size_arcsec,
+        max_frames=max_frames,
+    )
 
 
 @app.post(

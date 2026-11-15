@@ -28,11 +28,16 @@ At a sustained one 120-second attempt at a time, the worker can consume up to 60
 and 60 GiB-minutes of memory per wall-clock hour at 1 vCPU and 1 GiB. Each attempt can transfer
 up to 96 MiB from IRSA. Cloud Tasks delivery and retries, Firestore admission and status
 operations, Cloud Storage reads/writes and retained bytes, and result egress are separate
-meters. Measure saved bundle bytes and actual reads per job before raising limits. Configure a
-project-scoped budget alert before enabling the public queue. Budget alerts notify operators.
-Worker and queue ceilings control concurrent execution.
+meters. Measure saved bundle bytes and actual reads per job before raising limits. Configure a project-scoped budget alert before enabling the public queue. **Billing alerts and
+instance/concurrency ceilings are not hard total-spend caps**: budget alerts only notify operators
+asynchronously, and worker/queue ceilings bound concurrent execution rather than cumulative spend
+over time. To stop all live spend immediately, set `SPHEREX_LIVE_QUERIES_ENABLED=false` (live-query
+kill switch) and pause Cloud Tasks if queued work must stop dispatching too.
 
-The queue owns distributed admission and terminal states. Existing equivalent jobs should be
-returned before consuming a new admission. A full queue or exhausted admission window returns
-HTTP 429 with `Retry-After`. Reject refresh requests at submission. Failed public requests should
-return stable codes and correlation IDs while keeping exception details in restricted logs.
+The queue owns distributed admission and terminal states, and the API also enforces in-process
+admission and rate limits via `PublicLimits`. Existing equivalent jobs or precomputed benchmark
+bundles should be returned before consuming a new admission. A full queue or exhausted admission
+window returns HTTP 429 with `Retry-After` without starting IRSA downloads. Public `force_refresh`
+requests are rejected with HTTP 403 unless authenticated with `X-Maintenance-Token` matching
+`SPHEREX_MAINTENANCE_TOKEN`. Failed public requests return stable error codes and correlation IDs
+while keeping exception details and stack traces in restricted logs.
