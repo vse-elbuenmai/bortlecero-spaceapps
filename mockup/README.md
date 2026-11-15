@@ -175,7 +175,8 @@ the noise drops by roughly √N.
   one. Single frames is the default and comes back with every new target.
 - In the stack view, play, previous / next, speed, band and difference map are paused and
   disabled where they are, and the timeline is dimmed, so the layout does not move. Zoom and the
-  legend keep working.
+  legend keep working. The spectrum bar beside the band select lights the stretch the stack really
+  covers ("Stack · 4.29–4.97 µm"), because the stack adds exposures from several bands.
 - The "vs Gaia" check reports the stack: "✓ Detected 10.2σ" or "— Not detected, 2.1σ". "What the
   stack shows" replaces "What moved": the verdict with the distance from the prediction, the noise
   reduction, and, only when following the motion clearly matters (more than 1σ gained and a shift

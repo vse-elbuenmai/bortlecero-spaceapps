@@ -507,6 +507,8 @@
     }
     $("viewer").classList.toggle("is-stack", on);
     ["prev", "next", "play", "speed", "band-select"].forEach((id) => { if ($(id)) $(id).disabled = on; });
+    if (on) showStackSpectrum(stackOf(state.bundle));
+    else showBandSpectrum(state.activeBand);
     const timeline = document.querySelector(".timeline-wrap");
     if (timeline) timeline.inert = on;
     if ($("stack-block")) $("stack-block").hidden = !on;
@@ -702,6 +704,28 @@
     label.className = "spec-label mono";
     label.textContent = BANDS[band] ? fmtRange(band) : `${SPECTRUM_UM[0].toFixed(2)}–${SPECTRUM_UM[1].toFixed(2)} µm`;
     holder.replaceChildren(bandSpectrumBar(band), label);
+  }
+
+  // In the stack view the same legend shows the stretch the stack really covers: it adds exposures
+  // from several bands, so the band of the select (dimmed there) would be the wrong answer.
+  function showStackSpectrum(stack) {
+    const holder = $("band-spectrum");
+    const lo = Number(stack && stack.wavelength_min_um);
+    const hi = Number(stack && stack.wavelength_max_um);
+    if (!holder || !Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return;
+    const [min, max] = SPECTRUM_UM;
+    const clamp = (v) => Math.min(max, Math.max(min, v));
+    const bar = document.createElement("span");
+    bar.className = "spec-bar";
+    const seg = document.createElement("span");
+    seg.className = "spec-seg";
+    seg.style.left = `${((clamp(lo) - min) / (max - min)) * 100}%`;
+    seg.style.width = `${((clamp(hi) - clamp(lo)) / (max - min)) * 100}%`;
+    bar.append(seg);
+    const label = document.createElement("span");
+    label.className = "spec-label mono";
+    label.textContent = `Stack · ${lo.toFixed(2)}–${hi.toFixed(2)} µm`;
+    holder.replaceChildren(bar, label);
   }
 
   // Band 6 when it has two frames or more to blink. Otherwise the longest-wavelength band that does

@@ -560,6 +560,11 @@ como `deep_stack`, opcional, o `deep_stack_skipped_reason` si no se hizo.
   nada se mueva: reproducir, anterior / siguiente, velocidad, banda y «Difference Map». La línea de
   fechas queda atenuada (0.45) e inerte y enseña sólo la primera y la última fecha. Zoom, arrastre y
   leyenda siguen funcionando.
+- **Barra de espectro en la vista de pila** (decidido por Miguel el 15 nov): el desplegable de banda
+  queda atenuado con la banda que tenía, pero la barra de espectro (§7.14) enciende el tramo que la
+  pila cubre de verdad, de `wavelength_min_um` a `wavelength_max_um`, y su etiqueta dice
+  `Stack · 4.29–4.97 µm`. La pila suma fotos de varias bandas, así que la banda del desplegable
+  sería una respuesta equivocada. Al volver a «Single frames» la barra vuelve a la banda elegida.
 - **Panel:** el encabezado dice «Stack of N exposures»; la fecha es el intervalo
   (`2025-05-05 → 2026-05-13`, también en la placa de la imagen), la longitud de onda el rango
   (`3.82–4.98 µm`) y el detector las bandas (`Bands 5–6`). Las cuatro celdas del §7.4 siguen, con

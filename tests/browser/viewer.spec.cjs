@@ -802,6 +802,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 
       await expect(page.locator(id)).toBeDisabled();
     }
     await expect(page.locator("#zoom-in")).toBeEnabled();
+    // The spectrum legend shows what the stack covers, not the band left in the dimmed select
+    await expect(page.locator("#band-spectrum")).toHaveText("Stack · 3.82–4.98 µm");
+    const segment = await page.locator("#band-spectrum .spec-seg").evaluate((el) => [el.style.left, el.style.width]);
+    expect(parseFloat(segment[0])).toBeCloseTo(((3.82 - 0.75) / 4.25) * 100, 1);
+    expect(parseFloat(segment[1])).toBeCloseTo(((4.98 - 3.82) / 4.25) * 100, 1);
     // The prediction ring sits on the stack; there is no path in a target-tracked image
     await expect(page.locator("#overlay .mk-pred")).toHaveCount(1);
     await expect(page.locator("#overlay .mk-traj")).toHaveCount(0);
@@ -813,6 +818,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 
     await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
     await expect(page.locator("#play")).toBeEnabled();
     await expect(page.locator(".panel .result")).toBeVisible();
+    await expect(page.locator("#band-spectrum")).not.toContainText("Stack");
     await page.keyboard.press("ArrowRight");
     await expect(page.locator("#frame-count")).toHaveText("Stack of 12 exposures");
     await page.locator("#modal-close").click();
