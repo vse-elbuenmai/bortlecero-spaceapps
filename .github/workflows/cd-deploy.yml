@@ -239,7 +239,7 @@ jobs:
         env:
           VIEWER_BUCKET: ${{ vars.GCP_VIEWER_BUCKET || format('{0}-viewer', vars.GCP_PROJECT_ID) }}
         run: |
-          VIEWER_URL="https://storage.googleapis.com/${VIEWER_BUCKET}"
+          VIEWER_URL="https://${VIEWER_BUCKET}.storage.googleapis.com"
           HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${VIEWER_URL}/index.html")
           echo "Public viewer index.html -> HTTP ${HTTP_CODE}"
           test "${HTTP_CODE}" = "200"

@@ -21,6 +21,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     HOME=/scratch \
     TMPDIR=/scratch \
     SPHEREX_CACHE_DIR=/scratch/fits \
+    SPHEREX_IRSA_DISK_CACHE_ENABLED=false \
     SPHEREX_OUTPUT_DIR=/scratch/output \
     SPHEREX_LEGACY_SYNC_ENABLED=false \
     PYTHONDONTWRITEBYTECODE=1 \

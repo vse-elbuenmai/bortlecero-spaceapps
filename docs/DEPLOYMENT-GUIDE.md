@@ -6,9 +6,9 @@ This guide explains how the Bortle Cero SPHEREx web viewer (`mockup/`) and inges
 
 | Component | Source | Live Staging URL / Resource | Hosting Mechanism |
 | :--- | :--- | :--- | :--- |
-| **Static Web Viewer** | `mockup/` + `scripts/build_hosting.py` | `https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html` | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`, automated on push to `main` by `.github/workflows/cd-deploy.yml`; Firebase Hosting via `firebase.json` optional) |
+| **Static Web Viewer** | `mockup/` + `scripts/build_hosting.py` | `https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html` | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`, automated on push to `main` by `.github/workflows/cd-deploy.yml`; Firebase Hosting via `firebase.json` optional) |
 | **Ingestion API** | `src/spherex_ingest/` + `Dockerfile` | `https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` | Cloud Run (`spherex-ingest-staging`, publicly invokable via `allUsers` `roles/run.invoker` for demo; async queue `POST /api/v1/jobs`) |
-| **Bundle / Cache Store** | `src/spherex_ingest/result_storage.py` | `gs://bortle-cero-nasa-staging-26-spherex-bundles-staging` | Private versioned GCS bucket |
+| **Processed result store** | `src/spherex_ingest/result_storage.py` | `/scratch/results/results.sqlite3` | Per-instance SQLite; a private GCS bucket is provisioned for optional shared storage |
 | **Container Registry** | `.github/workflows/cd-deploy.yml` | `us-central1-docker.pkg.dev/bortle-cero-nasa-staging-26/spherex-ingest` | Artifact Registry (SHA-tagged) |
 
 ### Cost-Control Guardrails (Free-Tier Friendly)
@@ -65,7 +65,7 @@ gcloud storage objects update \
 Verify the live deployment:
 
 ```bash
-curl -fsS -o /dev/null -w "%{http_code}\n" https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html
+curl -fsS -o /dev/null -w "%{http_code}\n" https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html
 curl -fsS https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/benchmark-manifest.json
 ```
 

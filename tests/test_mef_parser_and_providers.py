@@ -396,3 +396,33 @@ def test_concurrent_identical_cutouts_recover_a_truncated_fits_cache(
     assert cache_path.read_bytes() == valid_cutout
     assert list(tmp_path.iterdir()) == [cache_path]
 
+
+def test_disabled_irsa_disk_cache_does_not_write_discovery_or_fits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mef_factory
+) -> None:
+    url = "https://example.invalid/cutout.fits"
+    votable = io.BytesIO()
+    Table({"access_url": [url]}).write(votable, format="votable")
+    fits_buffer = io.BytesIO()
+    mef_factory().writeto(fits_buffer)
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda url, **kwargs: httpx.Response(
+            200, content=votable.getvalue(), request=httpx.Request("GET", url)
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+    provider = IRSASiaCutoutProvider(cache_dir=None, max_retries=1)
+    sia_service = pyvo.dal.SIA2Service(provider.sia_url, check_baseurl=False)
+
+    table = provider._execute_sia_table_with_retry(sia_service, "spherex_dr1", 331, -56)
+    assert list(table["access_url"]) == [url]
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(
+            200, content=fits_buffer.getvalue()
+        ))
+    ) as client:
+        frame = provider._download_and_parse(client, url, "cutout.fits", "spherex_dr1", 331, -56)
+    assert frame.frame_id == "cutout"
+    assert not list(tmp_path.iterdir())
