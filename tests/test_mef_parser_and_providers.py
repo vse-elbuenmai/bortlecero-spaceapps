@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -238,7 +240,8 @@ def test_corrupt_discovery_cache_refetches_and_only_publishes_valid_tables(
     )
     cache_path = tmp_path / "sia_spherex_dr1_42.0000_m10.0000.vot"
     cache_path.write_bytes(partial_response)
-    payloads = iter([error_response, valid_response])
+    updated_response = valid_response.replace(b"cutout.fits", b"newcut.fits")
+    payloads = iter([error_response, valid_response, updated_response])
     monkeypatch.setattr(
         httpx,
         "get",
@@ -259,6 +262,10 @@ def test_corrupt_discovery_cache_refetches_and_only_publishes_valid_tables(
     assert list(query()["access_url"]) == ["https://example.invalid/cutout.fits"]
     assert cache_path.read_bytes() == valid_response
     assert list(query()["access_url"]) == ["https://example.invalid/cutout.fits"]
+    stale_time = time.time() - provider.sia_cache_ttl_sec - 1
+    os.utime(cache_path, (stale_time, stale_time))
+    assert list(query()["access_url"]) == ["https://example.invalid/newcut.fits"]
+    assert cache_path.read_bytes() == updated_response
 
 
 def test_concurrent_identical_cutouts_recover_a_truncated_fits_cache(

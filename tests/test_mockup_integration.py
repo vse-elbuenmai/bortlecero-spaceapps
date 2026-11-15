@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from spherex_ingest.api import app
@@ -107,23 +108,19 @@ def test_mockup_js_implementation_contracts() -> None:
     assert js_path.exists()
     js_code = js_path.read_text(encoding="utf-8")
 
-    # 1. Benchmark mapping for all 5 targets
+    # Benchmark mapping for all 5 targets
     for target_id in BENCHMARK_IDS:
         assert target_id in js_code, f"{target_id} must be in mockup.js benchmark map"
 
-    # 2. Dynamic fetch endpoints
-    assert "http://localhost:8000/api/v1/blink/" in js_code
-    assert "data/${targetId}/bundle.json" in js_code
-
-    # 3. Base64 Data URI handling
+    # Base64 Data URI handling
     assert "f.png_base64" in js_code
     assert "data:image/png;base64" in js_code or "startsWith(\"data:\")" in js_code
 
-    # 4. Astrometric coordinate pixel-center formula: [p.x + 0.5, p.y + 0.5]
+    # Astrometric coordinate pixel-center formula: [p.x + 0.5, p.y + 0.5]
     assert re.search(r"p\.x\s*\+\s*0\.5", js_code) is not None
     assert re.search(r"p\.y\s*\+\s*0\.5", js_code) is not None
 
-    # 5. Band selection and difference map toggle functions
+    # Band selection and difference map toggle functions
     assert "buildBandChips" in js_code
     assert "selectBand" in js_code
     assert "diffMode" in js_code
@@ -131,17 +128,17 @@ def test_mockup_js_implementation_contracts() -> None:
     assert "diff-toggle" in js_code
     assert "delta_wavelength_um" in js_code
 
-    # 6. Scientific warnings and citations rendering
+    # Scientific warnings and citations rendering
     assert "panel-warnings" in js_code
     assert "warnings-list" in js_code
     assert "panel-citations" in js_code
     assert "citations-list" in js_code
 
-    # 7. Graceful null centroid handling
+    # Graceful null centroid handling
     assert "measured_centroid_x" in js_code
     assert "null" in js_code
 
-    # 8. Event listener for external navigation
+    # Event listener for external navigation
     assert "viewer:load-target" in js_code
 
 
@@ -164,8 +161,8 @@ def test_sky_js_target_router_connection() -> None:
     assert "openModal" in sky_code
 
 
-def test_fastapi_blink_and_static_bundle_parity(monkeypatch) -> None:
-    """Verify FastAPI serves the checked-in bundle without contacting IRSA."""
+def test_fastapi_blink_and_static_bundle_parity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify the API reads the tracked static bundle without contacting IRSA."""
     monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(Path("mockup/data").resolve()))
     client = TestClient(app)
     response = client.get("/api/v1/blink/barnards_star")

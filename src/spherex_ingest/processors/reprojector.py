@@ -8,6 +8,7 @@ import numpy as np
 from astropy.wcs import WCS
 from reproject import reproject_interp
 
+from spherex_ingest.limits import grid_side
 from spherex_ingest.processors.cleaners import CleanedFrameResult
 
 
@@ -42,8 +43,7 @@ class NorthUpCommonReprojector:
     ) -> tuple[WCS, tuple[int, int]]:
         """Construct a standard North-up, East-left 2D TAN WCS and (ny, nx) grid shape."""
         scale = pixel_scale_arcsec or self.default_pixel_scale_arcsec
-        raw_npix = max(9, int(np.ceil(cutout_size_arcsec / scale)))
-        npix = raw_npix if raw_npix % 2 == 1 else raw_npix + 1
+        npix = grid_side(cutout_size_arcsec, scale)
         shape_out = (npix, npix)
 
         wcs = WCS(naxis=2)

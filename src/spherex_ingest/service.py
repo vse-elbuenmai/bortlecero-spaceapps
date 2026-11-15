@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from spherex_ingest.domain.models import BlinkBundleDTO, TargetSpec
@@ -58,7 +59,10 @@ class SPHERExBlinkIngestionService:
         from spherex_ingest.processors import SPHERExFrameProcessor
 
         return cls(
-            cutout_provider=IRSASiaCutoutProvider(cache_dir=Path(cache_dir)),
+            cutout_provider=IRSASiaCutoutProvider(
+                cache_dir=Path(cache_dir),
+                sia_cache_ttl_sec=int(os.environ.get("SPHEREX_SIA_CACHE_TTL_SECONDS", "3600")),
+            ),
             catalog_provider=HarvardSimbadCatalogProvider(),
             frame_processor=SPHERExFrameProcessor(),
             bundle_exporter=FrontendBundleExporter(),
@@ -88,7 +92,7 @@ class SPHERExBlinkIngestionService:
         Returns:
             Complete `BlinkBundleDTO` ready for the web frontend.
         """
-        target = self._resolve_input_target(target_or_query, cutout_size_arcsec=cutout_size_arcsec)
+        target = self.resolve_target(target_or_query, cutout_size_arcsec=cutout_size_arcsec)
         logger.info(
             "Starting SPHEREx ingestion for '%s' (id=%s, RA=%.6f, Dec=%.6f, size=%.1f\")",
             target.name,
@@ -134,14 +138,14 @@ class SPHERExBlinkIngestionService:
 
         return bundle
 
-    def _resolve_input_target(
+    def resolve_target(
         self,
         target_or_query: TargetSpec | str,
         cutout_size_arcsec: float,
     ) -> TargetSpec:
         """Resolve a `TargetSpec` or string query into a normalized `TargetSpec`."""
         if isinstance(target_or_query, TargetSpec):
-            if abs(target_or_query.cutout_size_arcsec - cutout_size_arcsec) > 1e-6:
+            if target_or_query.cutout_size_arcsec != cutout_size_arcsec:
                 return target_or_query.model_copy(update={"cutout_size_arcsec": cutout_size_arcsec})
             return target_or_query
 
@@ -151,7 +155,7 @@ class SPHERExBlinkIngestionService:
 
         benchmark = get_benchmark_target(query_str)
         if benchmark is not None:
-            if abs(benchmark.cutout_size_arcsec - cutout_size_arcsec) > 1e-6:
+            if benchmark.cutout_size_arcsec != cutout_size_arcsec:
                 return benchmark.model_copy(update={"cutout_size_arcsec": cutout_size_arcsec})
             return benchmark
 

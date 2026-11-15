@@ -23,6 +23,7 @@ from spherex_ingest.domain.models import (
     ProcessedBlinkFrame,
     TargetSpec,
 )
+from spherex_ingest.limits import active_budget
 
 DEFAULT_CITATIONS: tuple[str, ...] = (
     "SPHEREx Explanatory Supplement & Data Release 1 / Quick Release 3 (NASA/IPAC IRSA, 2026)",
@@ -83,7 +84,10 @@ class FrontendBundleExporter:
         frames_chronological: list[FrameMetadataDTO] = []
         frames_by_band_dict: dict[str, list[FrameMetadataDTO]] = defaultdict(list)
 
+        budget = active_budget.get()
         for frame in retained_frames:
+            if budget:
+                budget.remaining_time()
             vmin, vmax, softening = band_scales.get(frame.detector_band, (0.0, 10.0, 1.0))
             display_arr = (
                 frame.repaired_image_mjy_sr

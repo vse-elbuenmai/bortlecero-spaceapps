@@ -9,7 +9,14 @@ from threading import Event
 import pytest
 from fastapi.testclient import TestClient
 
-from spherex_ingest.api import app, get_default_service, get_output_dir
+from spherex_ingest.admission import InMemoryAdmissionController
+from spherex_ingest.api import (
+    app,
+    get_admission_controller,
+    get_default_service,
+    get_output_dir,
+    get_public_limits,
+)
 from spherex_ingest.domain.models import (
     CutoutFetchResult,
     DroppedFrameDTO,
@@ -19,8 +26,15 @@ from spherex_ingest.domain.models import (
 from spherex_ingest.exporters.bundle_exporter import FrontendBundleExporter
 from spherex_ingest.infrastructure.catalog_provider import HarvardSimbadCatalogProvider
 from spherex_ingest.infrastructure.irsa_sia_provider import IRSASiaCutoutProvider
+from spherex_ingest.limits import PublicLimits
 from spherex_ingest.processors.pipeline_processor import SPHERExFrameProcessor
 from spherex_ingest.service import NoObservations, SPHERExBlinkIngestionService, UpstreamUnavailable
+
+
+@pytest.fixture(autouse=True)
+def temporary_result_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPHEREX_RESULTS_DIR", str(tmp_path / "results"))
+    monkeypatch.delenv("SPHEREX_RESULTS_BUCKET", raising=False)
 
 
 class _StubCutoutProvider:
@@ -196,3 +210,143 @@ def test_service_distinguishes_no_observations_from_upstream_failure(
     )
     with pytest.raises(expected_error):
         service.ingest_target("epsilon_indi_b")
+def test_api_rejects_oversized_requests_and_public_refresh(
+    raw_cutout_factory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+    f1 = raw_cutout_factory(mjd_avg=60800.0, sps_epa_deg=0.0, detector_band=6, frame_id="exp_1")
+    f2 = raw_cutout_factory(mjd_avg=60980.0, sps_epa_deg=180.0, detector_band=6, frame_id="exp_2")
+
+    class _CountingStub(_StubCutoutProvider):
+        def fetch_cutouts(self, target: TargetSpec, max_frames_per_collection: int | None = None):
+            nonlocal calls
+            calls += 1
+            return super().fetch_cutouts(target, max_frames_per_collection)
+
+    service = SPHERExBlinkIngestionService(
+        cutout_provider=_CountingStub([f1, f2]),
+        catalog_provider=HarvardSimbadCatalogProvider(),
+        frame_processor=SPHERExFrameProcessor(),
+        bundle_exporter=FrontendBundleExporter(),
+    )
+    limits = PublicLimits(max_exposures=12, max_grid_pixels=961, max_new_jobs_per_minute=10)
+    monkeypatch.setitem(app.dependency_overrides, get_default_service, lambda: service)
+    monkeypatch.setitem(app.dependency_overrides, get_output_dir, lambda: tmp_path)
+    monkeypatch.setitem(app.dependency_overrides, get_public_limits, lambda: limits)
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_admission_controller,
+        lambda: InMemoryAdmissionController(limits),
+    )
+
+    client = TestClient(app)
+
+    # Oversized cutout grid and exposure count are rejected before touching IRSA
+    resp_big_grid = client.get("/api/v1/blink?ra=331.076&dec=-56.794&size_arcsec=500")
+    assert resp_big_grid.status_code == 400
+    assert resp_big_grid.json()["detail"]["code"] == "request_limit"
+    assert resp_big_grid.json()["detail"]["correlation_id"]
+
+    resp_many_frames = client.get("/api/v1/blink?ra=331.076&dec=-56.794&max_frames=20")
+    assert resp_many_frames.status_code == 400
+    assert resp_many_frames.json()["detail"]["code"] == "request_limit"
+    assert calls == 0
+
+    # Public force_refresh is rejected with 403
+    resp_refresh = client.get("/api/v1/blink/epsilon_indi_b?force_refresh=true")
+    assert resp_refresh.status_code == 403
+    assert resp_refresh.json()["detail"]["code"] == "refresh_forbidden"
+    assert calls == 0
+
+    # Authenticated maintenance refresh is permitted
+    monkeypatch.setenv("SPHEREX_MAINTENANCE_TOKEN", "ops-secret-token")
+    resp_auth_refresh = client.get(
+        "/api/v1/blink/epsilon_indi_b?force_refresh=true",
+        headers={"X-Maintenance-Token": "ops-secret-token"},
+    )
+    assert resp_auth_refresh.status_code == 200
+    assert calls == 1
+
+
+def test_api_burst_returns_429_without_starting_downloads(
+    raw_cutout_factory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+    f1 = raw_cutout_factory(mjd_avg=60800.0, sps_epa_deg=0.0, detector_band=6, frame_id="exp_1")
+
+    class _CountingStub(_StubCutoutProvider):
+        def fetch_cutouts(self, target: TargetSpec, max_frames_per_collection: int | None = None):
+            nonlocal calls
+            calls += 1
+            return super().fetch_cutouts(target, max_frames_per_collection)
+
+    service = SPHERExBlinkIngestionService(
+        cutout_provider=_CountingStub([f1]),
+        catalog_provider=HarvardSimbadCatalogProvider(),
+        frame_processor=SPHERExFrameProcessor(),
+        bundle_exporter=FrontendBundleExporter(),
+    )
+    limits = PublicLimits(max_new_jobs_per_minute=1, max_outstanding_jobs=2)
+    controller = InMemoryAdmissionController(limits)
+
+    monkeypatch.setitem(app.dependency_overrides, get_default_service, lambda: service)
+    monkeypatch.setitem(app.dependency_overrides, get_output_dir, lambda: tmp_path)
+    monkeypatch.setitem(app.dependency_overrides, get_public_limits, lambda: limits)
+    monkeypatch.setitem(app.dependency_overrides, get_admission_controller, lambda: controller)
+
+    client = TestClient(app)
+    first = client.get("/api/v1/blink?ra=331.076&dec=-56.794")
+    assert first.status_code == 200
+    assert calls == 1
+
+    second = client.get("/api/v1/blink?ra=331.076&dec=-56.794")
+    assert second.status_code == 429
+    assert int(second.headers["Retry-After"]) >= 1
+    assert second.json()["detail"]["code"] == "rate_limited"
+    assert second.json()["detail"]["correlation_id"]
+    assert calls == 1
+
+
+def test_api_kill_switch_and_sanitized_upstream_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _FailingProvider:
+        def fetch_cutouts(self, target: TargetSpec, max_frames_per_collection: int | None = None):
+            raise RuntimeError("internal-irsa-host.example: secret stack detail")
+
+    service = SPHERExBlinkIngestionService(
+        cutout_provider=_FailingProvider(),
+        catalog_provider=HarvardSimbadCatalogProvider(),
+        frame_processor=SPHERExFrameProcessor(),
+        bundle_exporter=FrontendBundleExporter(),
+    )
+    limits = PublicLimits(max_new_jobs_per_minute=10, max_outstanding_jobs=4)
+    monkeypatch.setitem(app.dependency_overrides, get_default_service, lambda: service)
+    monkeypatch.setitem(app.dependency_overrides, get_output_dir, lambda: tmp_path)
+    monkeypatch.setitem(app.dependency_overrides, get_public_limits, lambda: limits)
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_admission_controller,
+        lambda: InMemoryAdmissionController(limits),
+    )
+
+    client = TestClient(app)
+
+    # Upstream/internal failures are sanitized with correlation IDs
+    resp_err = client.get("/api/v1/blink?ra=331.076&dec=-56.794")
+    assert resp_err.status_code == 502
+    detail = resp_err.json()["detail"]
+    assert detail["code"] == "internal_error"
+    assert detail["correlation_id"]
+    assert "secret stack detail" not in detail["message"]
+
+    # Kill switch blocks live queries with 503 while still serving precomputed bundles
+    monkeypatch.setenv("SPHEREX_LIVE_QUERIES_ENABLED", "false")
+    resp_disabled = client.get("/api/v1/blink?ra=331.076&dec=-56.794")
+    assert resp_disabled.status_code == 503
+    assert resp_disabled.json()["detail"]["code"] == "live_queries_disabled"
+
+    monkeypatch.setenv("SPHEREX_OUTPUT_DIR", str(Path("mockup/data").resolve()))
+    app.dependency_overrides.pop(get_output_dir, None)
+    resp_precomputed = client.get("/api/v1/blink/barnards_star")
+    assert resp_precomputed.status_code == 200
