@@ -19,14 +19,22 @@ from typing import Any
 import httpx
 import pyvo
 from astropy.io import fits
+from astropy.io.votable import parse as parse_votable
 from astropy.table import Table
 
-from spherex_ingest.domain.models import DroppedFrameDTO, RawCutoutFrame, TargetSpec
+from spherex_ingest._atomic_files import atomic_write_bytes
+from spherex_ingest.domain.models import (
+    CutoutFetchResult,
+    DroppedFrameDTO,
+    RawCutoutFrame,
+    TargetSpec,
+)
 from spherex_ingest.infrastructure.mef_parser import SPHERExMEFParser
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
+FITS_BLOCK_BYTES = 2880
 
 
 class IRSASiaCutoutProvider:
@@ -45,7 +53,6 @@ class IRSASiaCutoutProvider:
         self.parser = parser or SPHERExMEFParser()
         self.timeout_sec = timeout_sec
         self.max_retries = max_retries
-        self.dropped_frames: list[DroppedFrameDTO] = []
 
     @staticmethod
     def validate_collections(collections: tuple[str, ...] | list[str]) -> None:
@@ -61,11 +68,10 @@ class IRSASiaCutoutProvider:
         self,
         target: TargetSpec,
         max_frames_per_collection: int | None = None,
-    ) -> list[RawCutoutFrame]:
-        """Discover and retrieve raw SPHEREx Level 2b cutouts covering the target coordinates."""
+    ) -> CutoutFetchResult:
+        """Retrieve raw cutouts and diagnostics for the requested sky position."""
         self.validate_collections(target.collections)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.dropped_frames = []
 
         # Propagate catalog coordinates to mid-SPHEREx survey (MJD 61000 ~ Nov 2025)
         # so high-proper-motion stars (e.g., Barnard's Star) are centered in the cutout.
@@ -84,6 +90,7 @@ class IRSASiaCutoutProvider:
         sia_service = pyvo.dal.SIA2Service(self.sia_url, check_baseurl=False)
         seen_filenames: set[str] = set()
         frames: list[RawCutoutFrame] = []
+        dropped_frames: list[DroppedFrameDTO] = []
 
         with httpx.Client(timeout=self.timeout_sec, follow_redirects=True) as client:
             for collection in target.collections:
@@ -109,7 +116,7 @@ class IRSASiaCutoutProvider:
                         collection,
                         exc,
                     )
-                    self.dropped_frames.append(
+                    dropped_frames.append(
                         DroppedFrameDTO(
                             frame_id=f"{collection}_query",
                             reason="collection_query_error",
@@ -142,7 +149,7 @@ class IRSASiaCutoutProvider:
                             collection,
                             exc,
                         )
-                        self.dropped_frames.append(
+                        dropped_frames.append(
                             DroppedFrameDTO(
                                 frame_id=cand.get("filename", "unknown"),
                                 reason="cutout_download_error",
@@ -153,7 +160,28 @@ class IRSASiaCutoutProvider:
                         )
 
         frames.sort(key=lambda f: (f.mjd_avg, f.detector_band))
-        return frames
+        return CutoutFetchResult(frames=tuple(frames), dropped_frames=tuple(dropped_frames))
+
+    @staticmethod
+    def _parse_sia_table(data: bytes) -> Table:
+        """Decode a discovery response and check its status and schema."""
+        document = parse_votable(io.BytesIO(data), table_number=0)
+        if any(
+            info.name == "QUERY_STATUS" and info.value == "ERROR" for info in document.iter_info()
+        ):
+            raise ValueError("IRSA reported a failed SIAv2 query.")
+        table = document.get_first_table().to_table(use_names_over_ids=True)
+        if "access_url" not in table.colnames:
+            raise ValueError("SIAv2 response is missing the access_url column.")
+        return table
+
+    @staticmethod
+    def _publish_cache_entry(path: Path, data: bytes) -> None:
+        """Cache a validated response when local scratch storage is writable."""
+        try:
+            atomic_write_bytes(path, data)
+        except OSError as exc:
+            logger.warning("Could not publish IRSA cache entry %s: %s", path, exc)
 
     def _execute_sia_table_with_retry(
         self,
@@ -169,15 +197,12 @@ class IRSASiaCutoutProvider:
                 "-", "m"
             )
         )
-        if cache_file.is_file() and cache_file.stat().st_size > 0:
-            try:
-                from astropy.io.votable import parse_single_table
-
-                return parse_single_table(io.BytesIO(cache_file.read_bytes())).to_table(
-                    use_names_over_ids=True
-                )
-            except Exception:
-                pass
+        try:
+            return self._parse_sia_table(cache_file.read_bytes())
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            logger.warning("Ignoring unreadable SIAv2 cache entry %s: %s", cache_file, exc)
 
         last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
@@ -190,15 +215,7 @@ class IRSASiaCutoutProvider:
                     follow_redirects=True,
                 )
                 resp.raise_for_status()
-                from astropy.io.votable import parse_single_table
-
-                vot_table = parse_single_table(io.BytesIO(resp.content))
-                table = vot_table.to_table(use_names_over_ids=True)
-                try:
-                    cache_file.write_bytes(resp.content)
-                except Exception:
-                    pass
-                return table
+                table = self._parse_sia_table(resp.content)
             except Exception as exc:
                 last_exc = exc
                 if attempt < self.max_retries:
@@ -212,6 +229,9 @@ class IRSASiaCutoutProvider:
                         delay,
                     )
                     time.sleep(delay)
+            else:
+                self._publish_cache_entry(cache_file, resp.content)
+                return table
 
         assert last_exc is not None
         raise last_exc
@@ -361,31 +381,43 @@ class IRSASiaCutoutProvider:
         stem = base_filename.replace(".fits", "")
         cache_path = self.cache_dir / f"{stem}_{url_hash}.fits"
 
-        if cache_path.exists() and cache_path.stat().st_size > 0:
-            raw_bytes = cache_path.read_bytes()
-        else:
-            raw_bytes = b""
-            last_exc: Exception | None = None
-            for attempt in range(1, self.max_retries + 1):
-                try:
-                    response = client.get(cutout_url)
-                    response.raise_for_status()
-                    raw_bytes = response.content
-                    cache_path.write_bytes(raw_bytes)
-                    break
-                except Exception as exc:
-                    last_exc = exc
-                    if attempt < self.max_retries:
-                        time.sleep(1.0 * attempt)
-            if not raw_bytes and last_exc is not None:
-                raise last_exc
+        def parse_cutout(data: bytes) -> RawCutoutFrame:
+            if not data or len(data) % FITS_BLOCK_BYTES:
+                raise ValueError("IRSA FITS response has an incomplete block.")
+            with fits.open(io.BytesIO(data), memmap=False, lazy_load_hdus=False) as hdul:
+                last_hdu = hdul.fileinfo(len(hdul) - 1)
+                if last_hdu is None or last_hdu["datLoc"] + last_hdu["datSpan"] != len(data):
+                    raise ValueError("IRSA FITS response has an incomplete or invalid block.")
+                return self.parser.parse_hdulist(
+                    hdul=hdul,
+                    target_ra_deg=target_ra_deg,
+                    target_dec_deg=target_dec_deg,
+                    collection=collection,
+                    source_url=cutout_url,
+                    frame_id=stem,
+                )
 
-        with fits.open(io.BytesIO(raw_bytes), memmap=False) as hdul:
-            return self.parser.parse_hdulist(
-                hdul=hdul,
-                target_ra_deg=target_ra_deg,
-                target_dec_deg=target_dec_deg,
-                collection=collection,
-                source_url=cutout_url,
-                frame_id=stem,
-            )
+        try:
+            return parse_cutout(cache_path.read_bytes())
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            logger.warning("Ignoring unreadable FITS cache entry %s: %s", cache_path, exc)
+
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = client.get(cutout_url)
+                response.raise_for_status()
+                data = response.content
+                frame = parse_cutout(data)
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    time.sleep(1.0 * attempt)
+            else:
+                self._publish_cache_entry(cache_path, data)
+                return frame
+
+        assert last_exc is not None
+        raise last_exc

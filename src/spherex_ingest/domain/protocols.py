@@ -10,6 +10,7 @@ from astropy.wcs import WCS
 
 from spherex_ingest.domain.models import (
     BlinkBundleDTO,
+    CutoutFetchResult,
     DroppedFrameDTO,
     ProcessedBlinkFrame,
     RawCutoutFrame,
@@ -25,8 +26,8 @@ class CutoutProviderProtocol(Protocol):
         self,
         target: TargetSpec,
         max_frames_per_collection: int | None = None,
-    ) -> list[RawCutoutFrame]:
-        """Discover and retrieve raw SPHEREx Level 2b cutouts covering the target coordinates."""
+    ) -> CutoutFetchResult:
+        """Retrieve raw cutouts and diagnostics for the requested sky position."""
         ...
 
 
