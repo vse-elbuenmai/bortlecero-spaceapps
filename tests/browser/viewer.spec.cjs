@@ -705,8 +705,17 @@ test("viewer distinguishes queue admission, lost jobs, and archive failure", asy
 test("viewer stops polling when the overall search deadline expires", async ({ page }) => {
   let polls = 0;
   await page.addInitScript(() => {
+    const deadline = new AbortController();
     const timeout = AbortSignal.timeout.bind(AbortSignal);
-    AbortSignal.timeout = (delay) => timeout(delay === 300000 ? 300 : delay);
+    AbortSignal.timeout = (delay) => delay === 300000 ? deadline.signal : timeout(delay);
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (url, options) => {
+      const response = await fetch(url, options);
+      if (new URL(url, location.href).pathname === "/api/v1/jobs/pending") {
+        deadline.abort(new DOMException("Search deadline elapsed", "TimeoutError"));
+      }
+      return response;
+    };
   });
   await serve(page, localOrigin, source, {
     "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true } }),
