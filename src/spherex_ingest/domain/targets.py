@@ -15,8 +15,8 @@ BENCHMARK_TARGETS: dict[str, TargetSpec] = {
         name="Barnard's Star",
         category="high_proper_motion",
         # Gaia DR3 4472832130942575872 (Epoch J2016.0)
-        ra_deg=269.45207696,
-        dec_deg=4.69336497,
+        ra_deg=269.44850253,
+        dec_deg=4.73942005,
         ref_epoch_jyear=2016.0,
         pm_ra_cosdec_mas_yr=-801.551,
         pm_dec_mas_yr=10362.394,
