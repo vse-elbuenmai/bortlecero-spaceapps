@@ -163,12 +163,15 @@ jobs:
           SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
         run: |
           SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --format='value(status.url)')
-          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+          ID_TOKEN=$(gcloud auth print-identity-token \
+            --impersonate-service-account="${DEPLOY_SA}" \
+            --audiences="${SERVICE_URL}")
 
           UNAUTH_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${SERVICE_URL}/api/v1/health")
           echo "Unauthenticated /api/v1/health -> HTTP ${UNAUTH_CODE}"
