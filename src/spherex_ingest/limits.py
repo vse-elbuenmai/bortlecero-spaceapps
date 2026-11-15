@@ -27,7 +27,7 @@ class PublicLimits:
     max_grid_pixels: int = 961
     max_download_bytes: int = 96 * 1024 * 1024
     max_elapsed_seconds: int = 120
-    max_upstream_attempts: int = 2
+    max_upstream_attempts: int = 3
     max_new_jobs_per_minute: int = 6
     max_outstanding_jobs: int = 8
 

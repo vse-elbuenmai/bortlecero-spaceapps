@@ -170,6 +170,103 @@ def test_irsa_sia_provider_priority_bands_subset_selection() -> None:
     assert p_count == 4
 
 
+def test_irsa_sia_provider_select_balanced_subset_balances_bands_and_epochs() -> None:
+    """Verify band-balanced multi-epoch subset selection distributes frames across bands 1..6."""
+    epochs = [60700.0, 60750.0, 60800.0, 60900.0]
+    rows = [
+        {"filename": f"f_d{band}_{idx}.fits", "t_min": t, "band": band}
+        for band in range(1, 7)
+        for idx, t in enumerate(epochs)
+    ]
+
+    selected = IRSASiaCutoutProvider._select_balanced_subset(rows, max_frames=12)
+    assert len(selected) == 12
+    for band in range(1, 7):
+        band_rows = [r for r in selected if r["band"] == band]
+        assert len(band_rows) == 2
+        assert [r["t_min"] for r in band_rows] == [60700.0, 60900.0]
+    assert selected == sorted(selected, key=lambda r: (r["t_min"], r["band"], r["filename"]))
+
+    uneven_rows = [
+        {"filename": "f_d1_0.fits", "t_min": 60700.0, "band": 1},
+        *[
+            {"filename": f"f_d2_{idx}.fits", "t_min": t, "band": 2}
+            for idx, t in enumerate([60700.0, 60740.0, 60780.0, 60820.0, 60900.0])
+        ],
+        *[
+            {"filename": f"f_d3_{idx}.fits", "t_min": t, "band": 3}
+            for idx, t in enumerate([60700.0, 60740.0, 60780.0, 60820.0, 60900.0])
+        ],
+    ]
+    selected_uneven = IRSASiaCutoutProvider._select_balanced_subset(uneven_rows, max_frames=6)
+    assert len(selected_uneven) == 6
+    d1_rows = [r for r in selected_uneven if r["band"] == 1]
+    d2_rows = [r for r in selected_uneven if r["band"] == 2]
+    d3_rows = [r for r in selected_uneven if r["band"] == 3]
+    assert len(d1_rows) == 1
+    assert len(d2_rows) == 3
+    assert len(d3_rows) == 2
+    assert d2_rows[0]["t_min"] == 60700.0 and d2_rows[-1]["t_min"] == 60900.0
+    assert d3_rows[0]["t_min"] == 60700.0 and d3_rows[-1]["t_min"] == 60900.0
+
+
+@pytest.mark.parametrize(
+    ("cutout_size_arcsec", "expected_fetch_size"),
+    [
+        (180.0, 261.0),
+        (100.0, 160.0),
+        (1500.0, 1800.0),
+    ],
+)
+def test_irsa_sia_provider_fetch_cutouts_requests_overscanned_size(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cutout_size_arcsec: float,
+    expected_fetch_size: float,
+) -> None:
+    """Verify fetch_cutouts overscans IRSA cutout size so rotated frames cover the target grid."""
+    provider = IRSASiaCutoutProvider(cache_dir=tmp_path / "cache")
+    target = TargetSpec(
+        target_id="test_overscan",
+        name="Test Overscan",
+        ra_deg=269.452,
+        dec_deg=4.693,
+        cutout_size_arcsec=cutout_size_arcsec,
+        collections=("spherex_dr1",),
+    )
+
+    monkeypatch.setattr(
+        provider,
+        "_query_collection",
+        lambda *args, **kwargs: [
+            {
+                "filename": "cand1.fits",
+                "access_url": "https://example.com/cand1.fits",
+                "t_min": 60800.0,
+                "band": 2,
+            }
+        ],
+    )
+
+    seen_urls: list[str] = []
+    from unittest.mock import MagicMock
+
+    fake_frame = MagicMock()
+    fake_frame.mjd_avg = 60800.0
+    fake_frame.detector_band = 2
+
+    def mock_download(client, cutout_url, base_filename, collection, target_ra_deg, target_dec_deg):
+        seen_urls.append(cutout_url)
+        return fake_frame
+
+    monkeypatch.setattr(provider, "_download_and_parse", mock_download)
+
+    result = provider.fetch_cutouts(target)
+    assert len(result.frames) == 1
+    assert len(seen_urls) == 1
+    assert f"size={expected_fetch_size:.1f}arcsec" in seen_urls[0]
+
+
 def test_irsa_sia_provider_tracks_dropped_cutouts_on_download_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
