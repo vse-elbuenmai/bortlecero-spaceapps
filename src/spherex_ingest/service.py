@@ -61,6 +61,7 @@ class SPHERExBlinkIngestionService:
         return cls(
             cutout_provider=IRSASiaCutoutProvider(
                 cache_dir=Path(cache_dir),
+                cutout_workers=int(os.environ.get("SPHEREX_IRSA_CUTOUT_WORKERS", "3")),
                 sia_cache_ttl_sec=int(os.environ.get("SPHEREX_SIA_CACHE_TTL_SECONDS", "3600")),
             ),
             catalog_provider=HarvardSimbadCatalogProvider(),
