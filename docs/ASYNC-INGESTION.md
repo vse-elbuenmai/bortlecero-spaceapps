@@ -1,7 +1,9 @@
 # Durable Asynchronous Ingestion (Issue #20)
 
 This document describes the durable asynchronous ingestion architecture for arbitrary sky
-coordinates in `spherex-ingest`.
+coordinates in `spherex-ingest`. Cloud Run API revisions share Firestore job state
+and Cloud Storage results. Cloud Tasks invokes a private worker that performs the
+ingestion during the authenticated HTTP request.
 
 ## Overview
 
@@ -21,6 +23,7 @@ export are decoupled from public HTTP request lifetimes:
      enqueuing duplicate work.
    - **Admission control (`429 Too Many Requests`)**: Enforces `SPHEREX_MAX_OUTSTANDING_JOBS` and
      `SPHEREX_MAX_NEW_JOBS_PER_MINUTE` atomically in the job store, returning `Retry-After`.
+     CORS exposes that header so the public viewer can show when to try again.
    - **Enqueue (`202 Accepted`)**: Persists the `queued` `JobRecord` durably before dispatching,
      returning `job_id`, `status`, `status_url`, `result_url`, and `correlation_id`.
 
@@ -29,6 +32,9 @@ export are decoupled from public HTTP request lifetimes:
    - Transitions overdue `queued`/`running` jobs to `expired` when `expires_at` has passed.
    - Failed jobs expose only sanitized `error_code`, `error_message`, and `correlation_id` (no
      stack traces or internal exception details).
+   - The viewer retries transient status and result reads at most twice with backoff
+     and stops automatic polling after five minutes. A new submission requires a
+     user action.
 
 3. **Fetch Result (`GET /api/v1/jobs/{job_id}/result`)**:
    - `200 OK`: Returns `BlinkBundleDTO` from `ResultStore` when `status="succeeded"`.
@@ -59,7 +65,11 @@ export are decoupled from public HTTP request lifetimes:
 Permanent errors (`NoObservations`, `ValueError`, `WorkLimitExceeded` for `request_limit` /
 `download_limit` / `exposure_limit`) are never retried. Transient errors (`UpstreamUnavailable`,
 `WorkLimitExceeded("timeout")`, unexpected runtime failures) retry up to
-`SPHEREX_JOB_MAX_ATTEMPTS` (default `3`).
+`SPHEREX_JOB_MAX_ATTEMPTS` (two in Cloud Run staging, three by default in local
+development). Cloud Tasks can deliver a task up to six times to accommodate HTTP
+delivery failures or a worker restart before a lease expires. The job record enforces
+the two-attempt ingestion limit. Each creation uses the job ID as the task name so
+retrying the enqueue operation cannot create a second task for that job.
 
 ## Storage & Queue Implementations
 
@@ -71,7 +81,8 @@ Permanent errors (`NoObservations`, `ValueError`, `WorkLimitExceeded` for `reque
 - **Cloud Run + Firestore + Cloud Tasks**:
   - `FirestoreJobStore` (`SPHEREX_JOBS_BACKEND=firestore`, `SPHEREX_FIRESTORE_PROJECT`,
     `SPHEREX_JOBS_COLLECTION`): transactional Firestore job documents, `request_key` dedup
-    pointers, and global admission counters.
+    pointers, and global admission counters. Job and dedup documents use Firestore
+    TTL on the native `expires_at` timestamp.
   - `CloudTasksJobDispatcher` (`SPHEREX_JOBS_DISPATCHER=cloud_tasks`): enqueues `POST` tasks
     with OIDC tokens targeting `POST /internal/worker/ingest`.
 
@@ -92,6 +103,7 @@ Permanent errors (`NoObservations`, `ValueError`, `WorkLimitExceeded` for `reque
 | `SPHEREX_TASKS_SERVICE_ACCOUNT` | unset | Invoker service account email for OIDC |
 | `SPHEREX_WORKER_OIDC_AUDIENCE` | unset | Expected OIDC audience on `/internal/worker/ingest` |
 | `SPHEREX_REQUIRE_CLOUD_TASKS_HEADER` | `false` | Require `X-CloudTasks-TaskName` header |
+| `SPHEREX_WORKER_ENABLED` | `true` | The Cloud Run API sets this to `false`; the private worker exposes the ingestion endpoint. |
 | `SPHEREX_WORKER_AUTH_REQUIRED` | `false` (auto `true` on `K_SERVICE`) | Fail-closed worker auth guard |
 | `SPHEREX_JOB_MAX_ATTEMPTS` | `3` | Maximum execution attempts per job |
 | `SPHEREX_JOB_TTL_SECONDS` | `86400` | Job retention/expiration window in seconds |

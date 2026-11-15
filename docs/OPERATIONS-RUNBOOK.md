@@ -10,7 +10,9 @@ This runbook defines observability, alerting, ownership, and rollback procedures
 |---|---|---|---|
 | **Ingestion API** (`spherex-ingest`) | Google Cloud Run (`gen2`, `us-central1`) | `spherex-runtime-<env>` (`allUsers` `roles/run.invoker` public demo in staging, `GCP_REQUIRE_INVOKER_IAM=false`; async queue `POST /api/v1/jobs`) | Backend / Cloud Delivery Lead |
 | **Container Registry** | Google Artifact Registry (`spherex-ingest`) | `spherex-deploy-<env>` via GitHub OIDC/WIF | Cloud Delivery Lead |
-| **Data Bundles** | GCS (`<project>-spherex-bundles-<env>`, versioned) + `mockup/data/` | Uniform bucket-level access, public access prevented | Data Pipeline Lead |
+| **Private ingestion worker** | Cloud Run and Cloud Tasks in `us-central1` | Separate worker runtime and OIDC invocation identities | Backend / Cloud Delivery Lead |
+| **Job state** | Firestore default database | API and worker runtime accounts share job leases, deduplication and admission state | Backend / Cloud Delivery Lead |
+| **Data bundles** | GCS (`<project>-spherex-bundles-<env>`, versioned) | Uniform bucket-level access, public access prevented | Data Pipeline Lead |
 | **Static Viewer** (`mockup/`) | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`) via `.github/workflows/cd-deploy.yml` (Firebase Hosting via `firebase.json` optional) | Public read-only static assets (`no-cache` on entrypoints/manifest, `immutable` on `releases/**`) | Frontend Lead |
 
 - **Keyless CI/CD:** GitHub Actions (`.github/workflows/cd-deploy.yml`) authenticates via `google-github-actions/auth@v2` and OIDC Workload Identity Federation. Long-lived JSON keys are prohibited.
@@ -44,6 +46,28 @@ Cloud Run automatically captures stdout/stderr from `uvicorn` and enriches each 
   (httpRequest.status>=500 OR httpRequest.latency>"10s")
   ```
 
+### Diagnosing a failed search
+
+On November 15, 2026, revision `spherex-ingest-staging-00021-dnv` returned
+HTTP 200 for the same job on one instance and HTTP 404 on another within seconds.
+An earlier deployment also produced 404s when polling switched revisions. These
+failures occurred while job state lived in SQLite on each instance. With Firestore
+enabled, look for an unexpected job-status 404 before expiry:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="spherex-ingest-staging"
+httpRequest.requestUrl:"/api/v1/jobs/"
+httpRequest.status=404
+```
+
+For a job with `upstream_unavailable`, inspect the private worker logs for its
+job ID or correlation ID and for IRSA SIA or cutout failures. On November 15,
+IRSA SIA calls separately returned HTTP 502, in some cases through the upstream
+retry limit. Verify one of the five cached benchmark targets during an archive
+outage. An HTTP 503 from the legacy synchronous endpoint is the expected delivery
+gate.
+
 ### Log Retention
 
 - Cloud Logging `_Default` bucket retains logs for **30 days** by default.
@@ -63,7 +87,7 @@ Cloud Run automatically captures stdout/stderr from `uvicorn` and enriches each 
 |---|---|---|
 | `run.googleapis.com/request_count` (`response_code_class="5xx"`) | `< 1%` 5xx rate | `> 5%` over 5 minutes |
 | `run.googleapis.com/request_latencies` (p95 on `/api/v1/health`) | `< 500 ms` | `> 2000 ms` over 5 minutes |
-| `run.googleapis.com/request_latencies` (p95 on `/api/v1/jobs` & `/api/v1/benchmarks`) | `< 500 ms` enqueue/read (`POST /api/v1/jobs` capped at 6 new jobs/min, 8 outstanding; sync `/api/v1/blink` returns `503` while `SPHEREX_LEGACY_SYNC_ENABLED=false`) | `> 270 s` background worker execution (near 300 s timeout) |
+| `run.googleapis.com/request_latencies` (p95 on `/api/v1/jobs` & `/api/v1/benchmarks`) | `< 500 ms` enqueue/read (`POST /api/v1/jobs` capped at 6 new jobs/min, 8 outstanding; sync `/api/v1/blink` returns `503` while `SPHEREX_LEGACY_SYNC_ENABLED=false`) | `> 120 s` worker request (near processing budget) |
 | `run.googleapis.com/container/memory/utilizations` (p95) | `< 75%` of 1 GiB | `> 85%` over 5 minutes |
 | `run.googleapis.com/container/billable_instance_time` | Scale to zero (`minScale=0`) | Unexpected sustained `maxScale=2` |
 
@@ -82,9 +106,14 @@ or use a value from 2 to 4. If IRSA starts returning more 429 or 503 responses,
 reduce concurrency. The exposure, download byte, retry and deadline limits still
 apply. Discovery queries remain serial, and archive errors can still delay jobs.
 
-The default result cache is local to each instance, so a warm repeat does not
-measure cold search performance. The [private result store](RESULT-STORAGE.md)
-can be configured separately to reuse processed bundles across instances.
+The [private result store](RESULT-STORAGE.md) lets repeats reuse processed
+bundles across instances. Run the first staging smoke with one uncached search.
+Record its job ID and status on the current API revision, then read the same job
+on a new revision with the same Firestore configuration. Confirm it succeeds and
+fetch the result. Repeat the original POST and check for `200` and `cached: true`.
+Use Cloud Tasks delivery logs to check that the repeated POST caused no second
+dispatch. Review job-status 404s and failed task deliveries before promotion.
+Routine CI uses simulated upstream responses and cached benchmark smoke requests.
 
 ---
 
@@ -129,7 +158,14 @@ Recommended alert policies to keep enabled in Cloud Monitoring:
 
 ### A. Backend Rollback (Cloud Run)
 
-**Option 1 — Instant Revision Traffic Shift (fastest, < 15 seconds):**
+**Option 1 — Shift traffic to compatible revisions**
+
+Keep the Firestore database, task queue and bucket in place. If the worker needs
+rollback, set `worker_revision` in the workflow to shift worker traffic first.
+Choose an API revision that uses the same durable configuration. Reverting to
+the pre-migration SQLite revision during a first-cutover emergency makes queued
+durable jobs inaccessible through that API until traffic returns to a compatible
+revision.
 1. List recent healthy revisions:
    ```bash
    gcloud run revisions list \
@@ -153,7 +189,9 @@ Recommended alert policies to keep enabled in Cloud Monitoring:
      "us-central1-docker.pkg.dev/bortle-cero-nasa-staging-26/spherex-ingest/spherex-ingest" \
      --include-tags --sort-by="~UPDATE_TIME"
    ```
-2. Trigger **CD / Cloud Run Keyless Delivery** with `action: rollback` and `image_digest: <REGION>-docker.pkg.dev/<PROJECT>/<REPO>/spherex-ingest@sha256:<DIGEST>`.
+2. Trigger **CD / Cloud Run Keyless Delivery** with `action: rollback`,
+   the compatible `image_digest`, and the digest's original full Git `code_sha`.
+   The workflow redeploys and verifies the worker before the API.
 
 ### B. Frontend Rollback (Static Viewer on GCS)
 

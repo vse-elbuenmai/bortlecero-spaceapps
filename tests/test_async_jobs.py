@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from google.cloud import firestore
 
 from spherex_ingest.api import (
     app,
@@ -525,9 +526,13 @@ def test_admission_limits_and_expiration(tmp_path: Path) -> None:
         r1 = client.post("/api/v1/jobs", json={"ra": 10.0, "dec": 10.0})
         assert r1.status_code == 202
 
-        r2 = client.post("/api/v1/jobs", json={"ra": 20.0, "dec": 20.0})
+        r2 = client.post(
+            "/api/v1/jobs", json={"ra": 20.0, "dec": 20.0},
+            headers={"Origin": "https://viewer.example"},
+        )
         assert r2.status_code == 429
-        assert "Retry-After" in r2.headers
+        assert r2.headers["Retry-After"] == "30"
+        assert r2.headers["Access-Control-Expose-Headers"] == "Retry-After"
     finally:
         app.dependency_overrides.clear()
 
@@ -550,7 +555,9 @@ def test_admission_limits_and_expiration(tmp_path: Path) -> None:
     assert coordinator.get_job_status("expired-job-1").status == "expired"
 
 
-def test_cloud_tasks_dispatcher_and_firestore_adapter_contract() -> None:
+def test_cloud_tasks_dispatcher_and_firestore_adapter_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Verify CloudTasksJobDispatcher payload and FirestoreJobStore transaction contract."""
 
     class _FakeTasksClient:
@@ -586,6 +593,7 @@ def test_cloud_tasks_dispatcher_and_firestore_adapter_contract() -> None:
     assert len(tasks_client.calls) == 1
     parent, task = tasks_client.calls[0]
     assert parent.endswith("/queues/spherex")
+    assert task["name"] == f"{parent}/tasks/{job.job_id}"
     assert task["http_request"]["oidc_token"]["service_account_email"] == (
         "tasks@p.iam.gserviceaccount.com"
     )
@@ -631,12 +639,24 @@ def test_cloud_tasks_dispatcher_and_firestore_adapter_contract() -> None:
         def transaction(self) -> _FakeTransaction:
             return _FakeTransaction()
 
+    monkeypatch.setattr(firestore, "transactional", lambda fn: fn)
     fs_store = FirestoreJobStore(client=_FakeFirestoreClient())
+    second_instance = FirestoreJobStore(client=_FakeFirestoreClient())
+    coordinator = AsyncJobCoordinator(
+        ingestion_service=_make_service(_StubCutoutProvider()),
+        job_store=second_instance,
+        result_store=_make_stores(tmp_path)[1],
+        dispatcher=_RecordingDispatcher(),
+        limits=PublicLimits(),
+    )
     created, is_new = fs_store.create_or_deduplicate_job(job, PublicLimits())
     assert is_new is True
     assert created.job_id == "job-cloud-1"
+    assert db[("spherex_jobs", job.job_id)]["expires_at"] == job.expires_at
+    assert db[("spherex_job_keys", job.request_key)]["expires_at"] == job.expires_at
+    assert coordinator.get_job_status(job.job_id).status == "queued"
 
-    dedup, is_new_2 = fs_store.create_or_deduplicate_job(job, PublicLimits())
+    dedup, is_new_2 = second_instance.create_or_deduplicate_job(job, PublicLimits())
     assert is_new_2 is False
     assert dedup.job_id == "job-cloud-1"
 
@@ -647,3 +667,4 @@ def test_cloud_tasks_dispatcher_and_firestore_adapter_contract() -> None:
 
     done = fs_store.mark_succeeded("job-cloud-1", job.request_key)
     assert done.status == "succeeded"
+    assert coordinator.get_job_status(job.job_id).status == "succeeded"

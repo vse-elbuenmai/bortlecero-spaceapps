@@ -4,25 +4,53 @@ metadata:
   name: __SERVICE_NAME__
   annotations:
     run.googleapis.com/invoker-iam-disabled: "false"
+    run.googleapis.com/minScale: "0"
+    run.googleapis.com/maxScale: "__MAX_INSTANCES__"
 spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "2"
         run.googleapis.com/execution-environment: gen2
-        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/cpu-throttling: "true"
     spec:
       serviceAccountName: __RUNTIME_SERVICE_ACCOUNT__
-      containerConcurrency: 1
-      timeoutSeconds: 300
+      containerConcurrency: __CONCURRENCY__
+      timeoutSeconds: __TIMEOUT_SECONDS__
       containers:
         - image: __IMAGE_DIGEST__
           env:
             - name: SPHEREX_LEGACY_SYNC_ENABLED
               value: "false"
+            - name: SPHEREX_ASYNC_JOBS_ENABLED
+              value: "__SUBMISSIONS_ENABLED__"
+            - name: SPHEREX_WORKER_ENABLED
+              value: "__WORKER_ENABLED__"
             - name: SPHEREX_BENCHMARK_BUCKET
-              value: "__BENCHMARK_BUCKET__"
+              value: "__BUNDLE_BUCKET__"
+            - name: SPHEREX_RESULTS_BUCKET
+              value: "__BUNDLE_BUCKET__"
+            - name: SPHEREX_CODE_SHA
+              value: "__CODE_SHA__"
+            - name: SPHEREX_JOBS_BACKEND
+              value: "firestore"
+            - name: SPHEREX_JOB_MAX_ATTEMPTS
+              value: "2"
+            - name: SPHEREX_JOBS_DISPATCHER
+              value: "cloud_tasks"
+            - name: SPHEREX_TASKS_PROJECT
+              value: "__PROJECT_ID__"
+            - name: SPHEREX_TASKS_LOCATION
+              value: "__REGION__"
+            - name: SPHEREX_TASKS_QUEUE
+              value: "__TASKS_QUEUE__"
+            - name: SPHEREX_TASKS_SERVICE_ACCOUNT
+              value: "__TASKS_SERVICE_ACCOUNT__"
+            - name: SPHEREX_WORKER_BASE_URL
+              value: "__WORKER_URL__"
+            - name: SPHEREX_WORKER_OIDC_AUDIENCE
+              value: "__WORKER_URL__"
+            - name: SPHEREX_REQUIRE_CLOUD_TASKS_HEADER
+              value: "true"
           ports:
             - name: http1
               containerPort: 8080
@@ -30,20 +58,6 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
-          startupProbe:
-            httpGet:
-              path: /api/v1/health
-              port: 8080
-            timeoutSeconds: 2
-            periodSeconds: 5
-            failureThreshold: 12
-          livenessProbe:
-            httpGet:
-              path: /api/v1/health
-              port: 8080
-            timeoutSeconds: 2
-            periodSeconds: 30
-            failureThreshold: 3
           volumeMounts:
             - name: scratch
               mountPath: /scratch

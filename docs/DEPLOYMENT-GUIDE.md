@@ -8,16 +8,18 @@ This guide explains how the Bortle Cero SPHEREx web viewer (`mockup/`) and inges
 | :--- | :--- | :--- | :--- |
 | **Static Web Viewer** | `mockup/` + `scripts/build_hosting.py` | `https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html` | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`, automated on push to `main` by `.github/workflows/cd-deploy.yml`; Firebase Hosting via `firebase.json` optional) |
 | **Ingestion API** | `src/spherex_ingest/` + `Dockerfile` | `https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` | Cloud Run (`spherex-ingest-staging`, publicly invokable via `allUsers` `roles/run.invoker` for demo; async queue `POST /api/v1/jobs`) |
-| **Processed result store** | `src/spherex_ingest/result_storage.py` | `/scratch/results/results.sqlite3` | Per-instance SQLite; a private GCS bucket is provisioned for optional shared storage |
+| **Private ingestion worker** | `src/spherex_ingest/` + `Dockerfile` | `spherex-ingest-staging-worker` | Cloud Run with authenticated Cloud Tasks delivery |
+| **Job state** | `src/spherex_ingest/infrastructure/job_store.py` | Default Firestore database | Shared status, deduplication, admission, and leases |
+| **Processed result store** | `src/spherex_ingest/result_storage.py` | Private staging bundle bucket | Five seeded benchmarks and a 24-hour live result cache |
 | **Container Registry** | `.github/workflows/cd-deploy.yml` | `us-central1-docker.pkg.dev/bortle-cero-nasa-staging-26/spherex-ingest` | Artifact Registry (SHA-tagged) |
 
 ### Cost-Control Guardrails (Free-Tier Friendly)
 
 - **Region**: `us-central1` (eligible for Google Cloud Free Tier on Cloud Run and Cloud Storage).
-- **Zero idle compute**: Cloud Run uses `minScale: 0`, `maxScale: 2`, and `run.googleapis.com/cpu-throttling: "false"` (`deploy/cloud-run/service.yaml`), so idle instances cost `$0` while background async worker threads are not throttled between poll requests.
+- **Compute** uses request-based Cloud Run billing, zero minimum instances, and maximums of two API instances and one worker. The previous instance-based configuration billed the full lifetime of an instance, including idle time before shutdown.
 - **Public demo IAM & async ingestion**: `spherex-ingest-staging` is publicly invokable (`allUsers` `roles/run.invoker`, `GCP_REQUIRE_INVOKER_IAM=false` default in `cd-deploy.yml`) with synchronous ingestion disabled (`SPHEREX_LEGACY_SYNC_ENABLED=false`) and arbitrary coordinate queries served via the bounded async job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
 - **Bucket lifecycle**: `gs://bortle-cero-nasa-staging-26-spherex-bundles-staging` deletes noncurrent versions after 7 days (keeping up to 3 newer versions) and `queries/` objects after 30 days.
-- **Budget alert**: A `20 MXN` monthly budget alert (`50% / 90% / 100%`) is configured on `bortle-cero-nasa-staging-26`.
+- **Budget alert**: A `20 MXN` monthly budget alert (`50% / 90% / 100%`) is configured on `bortle-cero-nasa-staging-26` and was verified on November 15, 2026. It sends notifications as spend reaches the thresholds. Compute limits and the budget alert serve different purposes.
 
 ---
 
@@ -79,6 +81,11 @@ Backend deployments to Cloud Run are automated via **keyless OIDC Workload Ident
 
 ### Automatic Deployment on `main`
 
+Before the first durable deployment in an environment, run
+[the durable bootstrap](CLOUD-RUN.md#durable-staging-setup).
+The keyless workflow deploys and verifies the worker, deploys the API,
+checks all five cached benchmark requests, then publishes the viewer.
+
 Every merge to `main` triggers `.github/workflows/cd-deploy.yml`:
 1. **Verify**: Runs `uv sync --frozen --extra dev`, `pytest`, and `ruff check`.
 2. **Deploy Static Viewer (`deploy-viewer`)**: Runs `scripts/build_hosting.py`, syncs `dist/hosting/` to `gs://bortle-cero-nasa-staging-26-viewer` (`GCP_VIEWER_BUCKET`, defaulting to `<GCP_PROJECT_ID>-viewer`), sets `Cache-Control: public, max-age=31536000, immutable` on `releases/**` and `Cache-Control: no-cache` on entrypoints/manifest, and verifies `index.html` (`200`) and `benchmark-manifest.json`.
@@ -100,7 +107,8 @@ Every merge to `main` triggers `.github/workflows/cd-deploy.yml`:
 
 Use **GitHub Actions -> `CD / Cloud Run Keyless Delivery` -> Run workflow** (`workflow_dispatch`):
 - `action: promote` with a specific `image_digest` (`...@sha256:...`)
-- `action: rollback` with a known-good Cloud Run `revision` or `image_digest`
+- `action: rollback` with a known-good API `revision` and, when needed, the compatible `worker_revision`.
+- For `promote` or an image-based `rollback`, supply `image_digest` and the image's original full Git `code_sha`.
 
 See [OPERATIONS-RUNBOOK.md](OPERATIONS-RUNBOOK.md) for full incident and rollback procedures.
 

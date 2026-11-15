@@ -49,7 +49,11 @@ After running, copy the printed `GCP_*` variables into the corresponding GitHub 
 The staging environment is provisioned in `us-central1` (Google Cloud Free Tier eligible) with cost controls:
 
 - **Cloud Run API (`spherex-ingest-staging`)**: `https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` (publicly invokable via `allUsers` `roles/run.invoker` for the NASA Space Apps demo, `GCP_REQUIRE_INVOKER_IAM=false` default in `cd-deploy.yml`; scales `0..2` with `$0` idle cost, `run.googleapis.com/cpu-throttling: "false"`, `SPHEREX_LEGACY_SYNC_ENABLED=false`, and arbitrary coordinate queries served via the bounded async job queue `POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
-- **GCS Bucket (`gs://bortle-cero-nasa-staging-26-spherex-bundles-staging`)**: Stores the five durable benchmark snapshots under `benchmarks/v1/`. Other live results use per-instance SQLite. Private, versioned, with a lifecycle rule deleting noncurrent versions after 7 days (keeping up to 3 newer versions) and `queries/` cache objects after 30 days.
+- **GCS Bucket (`gs://bortle-cero-nasa-staging-26-spherex-bundles-staging`)**: Stores the five durable benchmark snapshots under `benchmarks/v1/`. The durable worker shares the same bucket for completed live results. Private, versioned, with a lifecycle rule deleting noncurrent versions after 7 days (keeping up to 3 newer versions) and `queries/` cache objects after 30 days.
 - **Budget Alert**: Monthly budget alert set to `20 MXN` (~$1 USD) with thresholds at 50%, 90%, and 100%.
 - **GitHub `staging` Environment**: Configured with all 8 `GCP_*` variables for keyless OIDC/WIF deployment via [`.github/workflows/cd-deploy.yml`](../../.github/workflows/cd-deploy.yml).
 - **Static Web Viewer**: Hosted on the public GCS bucket `gs://bortle-cero-nasa-staging-26-viewer` (`https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html`) and deployed automatically on every push to `main` by `.github/workflows/cd-deploy.yml` with `Cache-Control: no-cache` on entrypoints/manifest and `public, max-age=31536000, immutable` on `releases/**` (with Firebase Hosting via `firebase.json` as an optional alternative). Run locally with `uv run python -m http.server 8765 --directory mockup`.
+
+For Firestore, Cloud Tasks, and the private worker, run the
+[durable job bootstrap](../../docs/CLOUD-RUN.md#durable-staging-setup)
+after provisioning the base project.

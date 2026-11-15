@@ -26,53 +26,50 @@ gate, SIGTERM handling, and restart. It runs in an isolated container without up
 access. The interactive server exposes `http://127.0.0.1:8080/api/v1/health` and
 `http://127.0.0.1:8080/docs`.
 
-## Private staging
+## Durable staging setup
 
-Use an Artifact Registry repository and a dedicated runtime service account in the approved
-staging project. Use a new staging service name and keep the Cloud Run invoker IAM check
-enabled. The operator running the smoke commands needs permission to invoke the staging service.
-Use the CI-published image digest when available.
+Run the durable job bootstrap in Bash, Git Bash, or WSL after the base
+[Google Cloud bootstrap](../deploy/gcp/README.md). Use `--dry-run` to review the
+commands without provisioning resources.
 
-1. Copy [the service template](../deploy/cloud-run/service.yaml) to `service.staging.yaml` outside
-   the repository or an ignored directory. Replace `__SERVICE_NAME__` with the staging service
-   name, `__RUNTIME_SERVICE_ACCOUNT__` with the runtime account email, and `__IMAGE_DIGEST__` with
-   the full Artifact Registry image reference ending in `@sha256:<digest>`. Replace
-   `__BENCHMARK_BUCKET__` with the private bucket name or leave its value empty to
-   disable [benchmark caching](RESULT-STORAGE.md).
-2. Replace `PROJECT_ID`, `REGION`, and `SERVICE_NAME` in the following commands with staging values.
-   These commands work in Bash and PowerShell.
+```bash
+PROJECT_ID=bortle-cero-nasa-staging-26 bash deploy/gcp/bootstrap-durable-jobs.sh --dry-run
+PROJECT_ID=bortle-cero-nasa-staging-26 bash deploy/gcp/bootstrap-durable-jobs.sh
+```
 
-   ```shell
-   gcloud run services replace service.staging.yaml --project PROJECT_ID --region REGION --dry-run
-   gcloud run services replace service.staging.yaml --project PROJECT_ID --region REGION
-   gcloud run services get-iam-policy SERVICE_NAME --project PROJECT_ID --region REGION
-   gcloud run services proxy SERVICE_NAME --port 8189 --project PROJECT_ID --region REGION
-   ```
+The bootstrap enables Firestore and Cloud Tasks, creates the default Firestore
+database when missing, adds TTL for jobs and deduplication pointers, and configures
+the regional queue and scoped service account permissions. The API runtime account
+enqueues tasks and reads results. The worker runtime account claims jobs and writes
+results. The task identity can invoke only the worker delivery endpoint. The
+GitHub deployment identity uses Workload Identity Federation and can mint a token
+for the task identity to verify delivery during deployment.
 
-3. In a second terminal, use `curl` in Bash or `curl.exe` in PowerShell to request
-   `http://127.0.0.1:8189/api/v1/health`. Expect HTTP 200, a non-null `revision`, and
-   `legacy_sync_enabled: false`. Request `http://127.0.0.1:8189/api/v1/benchmarks` and verify
-   that it lists five targets. Request `http://127.0.0.1:8189/api/v1/blink?ra=331&dec=-56` and
-   expect HTTP 503. Check the staged service IAM policy for public principals such as `allUsers`
-   or `allAuthenticatedUsers` and verify that unauthenticated requests to its service URL receive
-   HTTP 401 or 403.
+The [deployment script](../deploy/gcp/deploy-services.sh) renders the Cloud Run
+service template for both services from the same immutable image digest. It deploys
+the worker first, confirms that unauthenticated requests are rejected, and checks
+authenticated delivery against an unknown job ID to exercise Firestore without
+contacting IRSA. It then deploys the API. The workflow checks the health endpoint,
+synchronous-ingestion gate, and all five cached benchmarks before publishing
+the viewer.
 
 ## Runtime settings
 
-The service starts with 1 vCPU, 1 GiB memory, concurrency 1, a 300-second request timeout, `run.googleapis.com/cpu-throttling: "false"` (so background async job worker threads are not CPU-throttled between poll requests), and zero to two replicas. The offline container smoke measured 157 MiB after serving the fixture. The memory limit leaves room for the 256 MiB scratch volume and the Python process. These are staging settings. Measure peak memory, scratch use, and latency with representative ingestion inputs before raising concurrency. The request timeout allows for the previously reported cold benchmark latency of up to 212 seconds ([issue #13](https://github.com/vse-elbuenmai/bortlecero-spaceapps/issues/13)).
+| Setting | Public API | Private worker |
+| --- | --- | --- |
+| CPU and memory | 1 vCPU, 1 GiB | 1 vCPU, 1 GiB |
+| Service-level minimum and maximum | 0 and 2 | 0 and 1 |
+| Concurrent HTTP requests | 8 | 1 |
+| Request timeout | 60 seconds | 210 seconds |
+| Billing and startup check | Request-based, default TCP | Request-based, default TCP |
 
-The container sets `SPHEREX_IRSA_DISK_CACHE_ENABLED=false` so raw FITS cutouts and IRSA discovery
-tables do not accumulate on the memory-backed scratch volume. IRSA responses are still downloaded
-and processed in memory. Staging uses a per-instance SQLite database at
-`/scratch/results/results.sqlite3` for processed bundles, capped at 128 MiB plus journal overhead.
-The private results bucket is provisioned but staging uses it only if `SPHEREX_RESULTS_BUCKET`
-and `SPHEREX_CODE_SHA` are configured. The scratch volume is erased with the instance. Synchronous live
-requests (`/api/v1/blink`) return HTTP 503 while `SPHEREX_LEGACY_SYNC_ENABLED=false`; arbitrary
-coordinate queries are served instead via the bounded async job queue (`POST /api/v1/jobs`, capped
-at 6 new jobs/min and 8 outstanding). The local Python command retains its development defaults.
-
-The HTTP startup and liveness probes use `/api/v1/health`. It reports package version, Cloud
-Run revision, and the live-query setting without resolving targets or contacting IRSA.
+The queue starts at one concurrent delivery and one delivery per second. It
+allows up to six deliveries to cover infrastructure retries, while each job is
+limited to two ingestion attempts. Each processing attempt retains the
+120-second work budget, 12-exposure limit, and 96 MiB upstream download limit.
+The task request has a 180-second deadline. Job state lives in Firestore, and
+processed bundles live in private Cloud Storage. The 256 MiB memory-backed
+scratch volume is temporary, and the container disables its raw FITS cache.
 
 ## Live Staging Verification (`bortle-cero-nasa-staging-26`)
 
@@ -83,6 +80,7 @@ Run revision, and the live-query setting without resolving targets or contacting
   enforce `401/403` unauthenticated checks). Synchronous ingestion is disabled
   (`SPHEREX_LEGACY_SYNC_ENABLED=false`), and arbitrary coordinate queries are served via the bounded
   async job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
+  The worker is `spherex-ingest-staging-worker` and keeps the invoker IAM check enabled.
 - **Static Viewer (GCS):** Hosted on the public GCS bucket `gs://bortle-cero-nasa-staging-26-viewer`
   (`https://bortle-cero-nasa-staging-26-viewer.storage.googleapis.com/index.html`) and deployed
   automatically on every push to `main` by `.github/workflows/cd-deploy.yml`, with
