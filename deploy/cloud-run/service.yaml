@@ -21,6 +21,8 @@ spec:
           env:
             - name: SPHEREX_LEGACY_SYNC_ENABLED
               value: "false"
+            - name: SPHEREX_BENCHMARK_BUCKET
+              value: "__BENCHMARK_BUCKET__"
           ports:
             - name: http1
               containerPort: 8080

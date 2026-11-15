@@ -47,7 +47,7 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | Source | Used for | Added |
 |---|---|---|
 | [The full sky in the ultraviolet](https://menard.pha.jhu.edu/uvmap/), Brice Ménard (2026), its "inside" view | The approach of the sky view: one panorama of the whole sky painted inside a sphere with plain WebGL. Only the approach, seen by using the page: no code, images or data taken. | 2026-11-14 |
-| [Cloud Storage generation preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions) and [object lifecycle management](https://docs.cloud.google.com/storage/docs/lifecycle) | Atomic manifest publication and retention for private live-query results. | 2026-11-15 |
+| [Cloud Storage generation preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions) and [object lifecycle management](https://docs.cloud.google.com/storage/docs/lifecycle) | Atomic manifest publication and retention for private live-query results, and create-only publication for benchmark snapshots. | 2026-11-15 |
 | [Python temporary files](https://docs.python.org/3/library/tempfile.html#tempfile.NamedTemporaryFile) and [atomic replacement](https://docs.python.org/3/library/os.html#os.replace) | Publish validated cache entries and self-contained local exports from temporary sibling files. | 2026-11-15 |
 | [IAU FITS Standard](https://fits.gsfc.nasa.gov/fits_standard.html) and [Astropy FITS file handling](https://docs.astropy.org/en/stable/io/fits/api/files.html) | Validate FITS block alignment and the last HDU's byte extent before caching a cutout. | 2026-11-15 |
 

@@ -2,10 +2,31 @@
 
 The synchronous ingestion API keeps curated benchmark bundles in its existing
 `SPHEREX_OUTPUT_DIR` path. This directory is for approved releases and the legacy
-default request of 180 arcseconds and up to 24 exposures per collection.
-Live queries use a separate result store. The two legacy parameters are an operator
-contract for installing unversioned fixtures. Publish scientifically validated
-benchmarks through the hosting release process.
+default request of 180 arcseconds and up to 12 exposures.
+Live queries use a separate result store.
+
+## Durable NASA benchmark cache
+
+Cloud delivery seeds the five default viewer bundles in the private Cloud Storage
+bucket configured by `GCP_GCS_BUCKET` before replacing the Cloud Run revision.
+Each snapshot uses the canonical target, a 180-arcsecond cutout, and a total budget
+of 12 exposures. Cloud Run reads the same snapshots through both the async
+`/api/v1/jobs` endpoint and the benchmark blink endpoint. Alternate parameters,
+coordinate searches, and unavailable snapshots use the normal query path.
+
+The five snapshots for the current processing version are stored under
+`benchmarks/v1/`, outside the bucket lifecycle rule for `queries/`. Changes to
+the processing key create a new snapshot. Operators can remove old snapshot keys
+after the corresponding revisions are retired. The seed command skips existing
+valid snapshots and rejects incomplete upstream retrievals. The deploy identity
+writes the snapshots, and the runtime identity needs read access.
+
+To seed manually with Application Default Credentials that can write to the bucket,
+replace `BUCKET_NAME` in this command.
+
+```sh
+uv run --frozen --no-dev python scripts/seed_benchmark_cache.py BUCKET_NAME
+```
 
 ## Query keys and versions
 
@@ -26,6 +47,7 @@ use generation preconditions, so both receive the published result.
 
 | Environment variable | Default | Purpose |
 |---|---|---|
+| `SPHEREX_BENCHMARK_BUCKET` | Unset | Private Cloud Storage bucket for the five default viewer bundles. |
 | `SPHEREX_RESULTS_BUCKET` | Unset | Name of the private Cloud Storage bucket for live results. |
 | `SPHEREX_RESULTS_DIR` | `.cache/results`, or `results` beside `SPHEREX_CACHE_DIR` | Location of the local SQLite database when Cloud Storage is disabled. |
 | `SPHEREX_CODE_SHA` | Source SHA-256 in local development | Set to the full Git commit SHA of the deployed image when using Cloud Storage. |
@@ -47,8 +69,7 @@ readable. Successful retries can switch the manifest to a new complete bundle.
   Credentials from the runtime service accounts.
 - Apply a Cloud Storage Delete lifecycle rule at eight days or later to
   `queries/v1/`. Review bucket soft-delete and versioning settings when estimating
-  retained storage. Publish only the separately approved benchmark assets through
-  public hosting.
+  retained storage.
 - The local SQLite data file is capped at 128 MiB and removes entries older than
   eight days on writes. Allow space for the transaction journal. Clear the local
   results directory while the service is stopped when a full cache needs immediate

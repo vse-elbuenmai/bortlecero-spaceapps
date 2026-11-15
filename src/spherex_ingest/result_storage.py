@@ -12,9 +12,12 @@ from functools import cache, lru_cache
 from pathlib import Path
 from typing import Literal
 
+from google.api_core.exceptions import GoogleAPIError
+from google.auth.exceptions import GoogleAuthError
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from spherex_ingest.domain.models import BUNDLE_SCHEMA_VERSION, BlinkBundleDTO, TargetSpec
+from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.infrastructure.result_objects import (
     CloudResultObjects,
     LocalResultObjects,
@@ -27,6 +30,8 @@ logger = logging.getLogger(__name__)
 ALGORITHM_VERSION = "1"
 CATALOG_VERSION = "gaia-dr3-targets-v1"
 RESULT_PREFIX = "queries/v1"
+BENCHMARK_SIZE_ARCSEC = 180.0
+BENCHMARK_MAX_FRAMES = 12
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _UPSTREAM_DROP_REASONS = {"collection_query_error", "cutout_download_error"}
 
@@ -60,6 +65,42 @@ class ResultKey(BaseModel):
         return hashlib.sha256(data).hexdigest()
 
 
+def benchmark_object_path(key: ResultKey) -> str | None:
+    """Identify the fixed viewer request for each curated catalog entry."""
+    target = BENCHMARK_TARGETS.get(key.target.target_id)
+    if target is None:
+        return None
+    target = target.model_copy(update={"cutout_size_arcsec": BENCHMARK_SIZE_ARCSEC})
+    if key != ResultKey.from_target(target, BENCHMARK_MAX_FRAMES):
+        return None
+    return f"benchmarks/v1/{target.target_id}/{key.digest}.json"
+
+
+def read_benchmark_bundle(objects: ResultObjects, key: ResultKey) -> BlinkBundleDTO | None:
+    """Read a validated, non-expiring snapshot for the default benchmark request."""
+    path = benchmark_object_path(key)
+    if path is None:
+        return None
+    entry = objects.read(path)
+    if entry is None:
+        return None
+    bundle = BlinkBundleDTO.model_validate_json(entry.data)
+    validate_benchmark_bundle(key, bundle)
+    return bundle
+
+
+def validate_benchmark_bundle(key: ResultKey, bundle: BlinkBundleDTO) -> None:
+    """Reject mismatched, empty, or partially downloaded benchmark snapshots."""
+    if (
+        bundle.target != key.target
+        or bundle.schema_version != key.bundle_schema_version
+        or not 0 < bundle.total_frames <= BENCHMARK_MAX_FRAMES
+        or bundle.total_frames != len(bundle.frames_chronological)
+        or any(frame.reason in _UPSTREAM_DROP_REASONS for frame in bundle.dropped_frames)
+    ):
+        raise ValueError(f"Invalid benchmark bundle for {key.target.target_id}.")
+
+
 class StoredBlinkResult(BaseModel):
     """A self-contained immutable bundle with its processing and cache metadata."""
 
@@ -80,10 +121,12 @@ class ResultStore:
         objects: ResultObjects,
         code_sha: str,
         ttl_seconds: int = 86_400,
+        benchmark_objects: ResultObjects | None = None,
     ) -> None:
         if not 0 < ttl_seconds <= 7 * 86_400:
             raise ValueError("Result retention must be between one second and seven days.")
         self.objects = objects
+        self.benchmark_objects = benchmark_objects
         self.code_sha = code_sha
         self.ttl = timedelta(seconds=ttl_seconds)
 
@@ -97,6 +140,13 @@ class ResultStore:
 
     def lookup(self, key: ResultKey, *, allow_stale_partial: bool = False) -> BlinkBundleDTO | None:
         """Return the current verified result. Existing jobs may reuse a partial result longer."""
+        if self.benchmark_objects is not None:
+            try:
+                benchmark = read_benchmark_bundle(self.benchmark_objects, key)
+                if benchmark is not None:
+                    return benchmark
+            except (GoogleAPIError, GoogleAuthError, RuntimeError, ValueError):
+                logger.warning("Benchmark cache unavailable for %s", key.digest, exc_info=True)
         pointer = self.objects.read(self._manifest_path(key))
         return self._read_bundle(key, pointer, allow_stale_partial=allow_stale_partial)
 
@@ -190,7 +240,11 @@ def _local_code_sha() -> str:
 
 @lru_cache(maxsize=4)
 def _configure_store(
-    bucket: str | None, root: Path, code_sha: str | None, ttl_seconds: int
+    bucket: str | None,
+    root: Path,
+    code_sha: str | None,
+    ttl_seconds: int,
+    benchmark_bucket: str | None,
 ) -> ResultStore:
     if bucket:
         if not code_sha or not re.fullmatch(r"[0-9a-f]{40}", code_sha):
@@ -198,7 +252,13 @@ def _configure_store(
         objects: ResultObjects = CloudResultObjects.from_bucket_name(bucket)
     else:
         objects = LocalResultObjects(root / "results.sqlite3")
-    return ResultStore(objects, code_sha or _local_code_sha(), ttl_seconds)
+    benchmark_objects = None
+    if benchmark_bucket:
+        try:
+            benchmark_objects = CloudResultObjects.from_bucket_name(benchmark_bucket)
+        except GoogleAuthError:
+            logger.warning("Could not configure the benchmark cache", exc_info=True)
+    return ResultStore(objects, code_sha or _local_code_sha(), ttl_seconds, benchmark_objects)
 
 
 def get_result_store() -> ResultStore:
@@ -210,4 +270,5 @@ def get_result_store() -> ResultStore:
         root,
         os.getenv("SPHEREX_CODE_SHA"),
         int(os.getenv("SPHEREX_RESULT_TTL_SECONDS", "86400")),
+        os.getenv("SPHEREX_BENCHMARK_BUCKET"),
     )
