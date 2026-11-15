@@ -1,4 +1,4 @@
 {
-  "liveQueries": false,
-  "apiBaseUrl": ""
+  "liveQueries": true,
+  "apiBaseUrl": "https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app"
 }
