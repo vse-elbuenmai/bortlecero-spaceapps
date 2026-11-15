@@ -31,6 +31,12 @@ from spherex_ingest.processors.pipeline_processor import SPHERExFrameProcessor
 from spherex_ingest.service import NoObservations, SPHERExBlinkIngestionService, UpstreamUnavailable
 
 
+@pytest.fixture(autouse=True)
+def temporary_result_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPHEREX_RESULTS_DIR", str(tmp_path / "results"))
+    monkeypatch.delenv("SPHEREX_RESULTS_BUCKET", raising=False)
+
+
 class _StubCutoutProvider:
     """In-memory stub implementing CutoutProviderProtocol for fast API testing."""
 

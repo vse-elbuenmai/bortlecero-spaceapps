@@ -25,9 +25,10 @@ from spherex_ingest.admission import (
     AdmissionDenied,
     InMemoryAdmissionController,
 )
-from spherex_ingest.domain.models import BlinkBundleDTO, TargetSpec
+from spherex_ingest.domain.models import BUNDLE_SCHEMA_VERSION, BlinkBundleDTO, TargetSpec
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS, get_benchmark_target
 from spherex_ingest.limits import PublicLimits, WorkLimitExceeded, bounded_ingestion
+from spherex_ingest.result_storage import ResultKey, get_result_store
 from spherex_ingest.service import (
     NoObservations,
     SPHERExBlinkIngestionService,
@@ -120,6 +121,35 @@ LimitsDep = Annotated[PublicLimits, Depends(get_public_limits)]
 AdmissionDep = Annotated[AdmissionControllerProtocol, Depends(get_admission_controller)]
 LiveEnabledDep = Annotated[bool, Depends(is_live_queries_enabled)]
 
+
+def _get_or_ingest_result(
+    service: SPHERExBlinkIngestionService,
+    target_input: TargetSpec | str,
+    size_arcsec: float,
+    max_frames: int,
+    *,
+    force_refresh: bool = False,
+) -> BlinkBundleDTO:
+    target = service.resolve_target(target_input, cutout_size_arcsec=size_arcsec)
+    if force_refresh:
+        return service.ingest_target(
+            target_or_query=target,
+            cutout_size_arcsec=size_arcsec,
+            max_frames_per_collection=max_frames,
+        )
+    key = ResultKey.from_target(target, max_frames)
+    store = get_result_store()
+    cached = store.lookup(key)
+    if cached is not None:
+        return cached
+    bundle = service.ingest_target(
+        target_or_query=target,
+        cutout_size_arcsec=size_arcsec,
+        max_frames_per_collection=max_frames,
+    )
+    return store.publish(key, bundle)
+
+
 app = FastAPI(
     title="Bortle Cero · SPHEREx Blink Comparator Ingestion API",
     description=(
@@ -168,7 +198,7 @@ def _run_bounded_live_ingestion(
     target_or_query: TargetSpec | str,
     cutout_size_arcsec: float,
     max_frames: int,
-    output_dir: Path | None = None,
+    force_refresh: bool = False,
 ) -> BlinkBundleDTO:
     """Enforce kill switch, request limits, admission control, and bounded execution."""
     correlation_id = uuid.uuid4().hex[:12]
@@ -194,11 +224,12 @@ def _run_bounded_live_ingestion(
     try:
         with admission.admit():
             with bounded_ingestion(limits, max_frames):
-                return service.ingest_target(
-                    target_or_query=target_or_query,
-                    cutout_size_arcsec=cutout_size_arcsec,
-                    max_frames_per_collection=max_frames,
-                    output_dir=output_dir,
+                return _get_or_ingest_result(
+                    service,
+                    target_or_query,
+                    cutout_size_arcsec,
+                    max_frames,
+                    force_refresh=force_refresh,
                 )
     except AdmissionDenied as exc:
         raise _error_http_exception(
@@ -327,11 +358,7 @@ def get_benchmark_blink_bundle(
         Header(alias="X-Maintenance-Token"),
     ] = None,
 ) -> BlinkBundleDTO:
-    """Return the complete `BlinkBundleDTO` for one of the benchmark targets.
-
-    Serves directly from `output/{target_id}/bundle.json` in <50ms when precomputed
-    on disk, or executes the bounded live pipeline on demand.
-    """
+    """Serve the curated default bundle or execute the bounded, cached live pipeline."""
     target = get_benchmark_target(target_id)
     if target is None:
         raise _error_http_exception(
@@ -344,13 +371,27 @@ def get_benchmark_blink_bundle(
         )
 
     precomputed_path = output_dir / target.target_id / "bundle.json"
-    if not force_refresh and precomputed_path.is_file():
+    if (
+        not force_refresh
+        and size_arcsec == 180.0
+        and max_frames == 12
+        and precomputed_path.is_file()
+    ):
         try:
-            return BlinkBundleDTO.model_validate_json(
-                precomputed_path.read_text(encoding="utf-8")
+            curated = BlinkBundleDTO.model_validate_json(precomputed_path.read_bytes())
+            if (
+                curated.target.target_id == target.target_id
+                and curated.target.cutout_size_arcsec == size_arcsec
+                and curated.schema_version == BUNDLE_SCHEMA_VERSION
+            ):
+                return curated
+            logger.warning("Precomputed bundle has unexpected parameters at %s", precomputed_path)
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "Failed to load precomputed bundle at %s, falling back to live pipeline: %s",
+                precomputed_path,
+                exc,
             )
-        except (OSError, ValueError):
-            logger.warning("Failed to load precomputed bundle at %s", precomputed_path)
 
     require_legacy_sync()
 
@@ -369,7 +410,7 @@ def get_benchmark_blink_bundle(
         target_or_query=target,
         cutout_size_arcsec=size_arcsec,
         max_frames=max_frames,
-        output_dir=output_dir,
+        force_refresh=force_refresh,
     )
 
 

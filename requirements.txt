@@ -43,7 +43,9 @@ cloudpickle==3.1.2
 contourpy==1.4.0
     # via matplotlib
 cryptography==50.0.2
-    # via secretstorage
+    # via
+    #   google-auth
+    #   secretstorage
 cycler==0.12.1
     # via matplotlib
 dask==2026.8.0
@@ -62,8 +64,28 @@ fsspec==2026.9.0
     # via
     #   dask
     #   reproject
+google-api-core==2.44.0
+    # via
+    #   google-cloud-core
+    #   google-cloud-storage
+google-auth==2.62.2
+    # via
+    #   google-api-core
+    #   google-cloud-core
+    #   google-cloud-storage
+google-cloud-core==2.8.0
+    # via google-cloud-storage
+google-cloud-storage==3.17.1
+    # via spherex-ingest (pyproject.toml)
 google-crc32c==1.9.0
-    # via zarr
+    # via
+    #   google-cloud-storage
+    #   google-resumable-media
+    #   zarr
+google-resumable-media==2.11.0
+    # via google-cloud-storage
+googleapis-common-protos==1.76.0
+    # via google-api-core
 h11==0.16.0
     # via
     #   httpcore
@@ -127,7 +149,9 @@ numpy==2.5.4
     #   tifffile
     #   zarr
 opentelemetry-api==1.45.2
-    # via fastapi
+    # via
+    #   fastapi
+    #   google-api-core
 packaging==26.3
     # via
     #   astropy
@@ -147,6 +171,17 @@ pillow==13.0.0
     #   reproject
 pims==0.7
     # via dask-image
+proto-plus==1.29.0
+    # via google-api-core
+protobuf==7.36.2
+    # via
+    #   google-api-core
+    #   googleapis-common-protos
+    #   proto-plus
+pyasn1==0.6.5
+    # via pyasn1-modules
+pyasn1-modules==0.4.2
+    # via google-auth
 pyavm==0.9.9
     # via reproject
 pycparser==3.12
@@ -177,6 +212,8 @@ reproject==0.21.0
 requests==2.34.2
     # via
     #   astroquery
+    #   google-api-core
+    #   google-cloud-storage
     #   pyvo
 scipy==1.18.1
     # via

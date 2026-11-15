@@ -11,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -48,12 +50,14 @@ class IRSASiaCutoutProvider:
         parser: SPHERExMEFParser | None = None,
         timeout_sec: float = 45.0,
         max_retries: int = 3,
+        sia_cache_ttl_sec: int = 3600,
     ) -> None:
         self.sia_url = sia_url
         self.cache_dir = Path(cache_dir)
         self.parser = parser or SPHERExMEFParser()
         self.timeout_sec = timeout_sec
         self.max_retries = max_retries
+        self.sia_cache_ttl_sec = sia_cache_ttl_sec
 
     @staticmethod
     def validate_collections(collections: tuple[str, ...] | list[str]) -> None:
@@ -218,7 +222,10 @@ class IRSASiaCutoutProvider:
             )
         )
         try:
-            return self._parse_sia_table(cache_file.read_bytes())
+            with cache_file.open("rb") as cached:
+                age = time.time() - os.fstat(cached.fileno()).st_mtime
+                if age < self.sia_cache_ttl_sec:
+                    return self._parse_sia_table(cached.read())
         except FileNotFoundError:
             pass
         except Exception as exc:
