@@ -7,6 +7,7 @@ All live catalog lookups strictly route through the Harvard CfA SIMBAD TAP mirro
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -16,6 +17,7 @@ from astropy.coordinates import SkyCoord
 
 from spherex_ingest.domain.models import TargetSpec
 from spherex_ingest.domain.targets import get_benchmark_target
+from spherex_ingest.infrastructure.bounded_http import fetch_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +149,8 @@ class HarvardSimbadCatalogProvider:
         }
 
         with httpx.Client(timeout=self.timeout_sec, follow_redirects=True) as client:
-            response = client.get(self.tap_url, params=params)
-            response.raise_for_status()
-            payload = response.json()
+            raw_bytes = fetch_bytes(client, self.tap_url, self.timeout_sec, params=params)
+            payload = json.loads(raw_bytes.decode("utf-8"))
 
         data_rows = payload.get("data", [])
         if not data_rows:

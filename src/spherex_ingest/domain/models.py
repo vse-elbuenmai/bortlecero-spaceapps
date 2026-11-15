@@ -10,6 +10,8 @@ import numpy as np
 from astropy.wcs import WCS
 from pydantic import BaseModel, ConfigDict, Field
 
+BUNDLE_SCHEMA_VERSION = "1.0.0"
+
 
 class SPHERExFlagBits(IntFlag):
     """Bitmask definitions for the SPHEREx Level 2b FLAGS extension.
@@ -251,6 +253,14 @@ class DroppedFrameDTO(BaseModel):
     error_detail: str | None = None
 
 
+@dataclass(frozen=True)
+class CutoutFetchResult:
+    """The frames and retrieval diagnostics from one ingestion request."""
+
+    frames: tuple[RawCutoutFrame, ...]
+    dropped_frames: tuple[DroppedFrameDTO, ...] = ()
+
+
 class CommonGridSpecDTO(BaseModel):
     """Metadata describing the common North-up celestial grid shared by all frames in a bundle."""
 
@@ -265,7 +275,7 @@ class CommonGridSpecDTO(BaseModel):
 class BlinkBundleDTO(BaseModel):
     """Complete frontend-ready data bundle for a target across all SPHEREx passes and bands."""
 
-    schema_version: str = "1.0.0"
+    schema_version: str = BUNDLE_SCHEMA_VERSION
     target: TargetSpec
     propagated_current_ra_deg: float
     propagated_current_dec_deg: float

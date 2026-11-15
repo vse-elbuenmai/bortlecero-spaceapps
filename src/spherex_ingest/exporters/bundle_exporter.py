@@ -13,6 +13,7 @@ import numpy as np
 from astropy.wcs import WCS
 from PIL import Image
 
+from spherex_ingest._atomic_files import atomic_write_bytes
 from spherex_ingest.domain.models import (
     BlinkBundleDTO,
     CommonGridSpecDTO,
@@ -22,6 +23,7 @@ from spherex_ingest.domain.models import (
     ProcessedBlinkFrame,
     TargetSpec,
 )
+from spherex_ingest.limits import active_budget
 
 DEFAULT_CITATIONS: tuple[str, ...] = (
     "SPHEREx Explanatory Supplement & Data Release 1 / Quick Release 3 (NASA/IPAC IRSA, 2026)",
@@ -82,7 +84,10 @@ class FrontendBundleExporter:
         frames_chronological: list[FrameMetadataDTO] = []
         frames_by_band_dict: dict[str, list[FrameMetadataDTO]] = defaultdict(list)
 
+        budget = active_budget.get()
         for frame in retained_frames:
+            if budget:
+                budget.remaining_time()
             vmin, vmax, softening = band_scales.get(frame.detector_band, (0.0, 10.0, 1.0))
             display_arr = (
                 frame.repaired_image_mjy_sr
@@ -146,7 +151,7 @@ class FrontendBundleExporter:
         bundle: BlinkBundleDTO,
         output_dir: Path,
     ) -> Path:
-        """Write the bundle JSON and accompanying image assets to disk."""
+        """Publish the self-contained JSON bundle and standalone PNG exports."""
         target_dir = Path(output_dir) / bundle.target.target_id
         frames_dir = target_dir / "frames"
         diffs_dir = target_dir / "differences"
@@ -159,7 +164,7 @@ class FrontendBundleExporter:
                 safe_id = "".join(
                     c if (c.isalnum() or c in ("-", "_")) else "_" for c in frame.frame_id
                 )
-                (frames_dir / f"{safe_id}.png").write_bytes(raw_bytes)
+                atomic_write_bytes(frames_dir / f"{safe_id}.png", raw_bytes)
 
         for diff in bundle.difference_maps:
             if diff.png_base64 and "," in diff.png_base64:
@@ -171,10 +176,11 @@ class FrontendBundleExporter:
                 safe_fname = "".join(
                     c if (c.isalnum() or c in ("-", "_", ".")) else "_" for c in fname
                 )
-                (diffs_dir / safe_fname).write_bytes(raw_bytes)
+                atomic_write_bytes(diffs_dir / safe_fname, raw_bytes)
 
+        # The JSON includes its own images, so readers obtain one complete snapshot.
         bundle_path = target_dir / "bundle.json"
-        bundle_path.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_bytes(bundle_path, bundle.model_dump_json(indent=2).encode("utf-8"))
         return bundle_path
 
     def _compute_band_display_scales(

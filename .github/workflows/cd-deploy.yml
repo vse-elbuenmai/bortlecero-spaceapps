@@ -1,0 +1,248 @@
+name: "CD / Cloud Run Keyless Delivery"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target GitHub Environment (staging or production)"
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      action:
+        description: "Delivery action: deploy (build+deploy), promote (existing digest), or rollback"
+        type: choice
+        options:
+          - deploy
+          - promote
+          - rollback
+        default: deploy
+      image_digest:
+        description: "Full Artifact Registry image@sha256:... (required for promote; optional for rollback)"
+        type: string
+        required: false
+        default: ""
+      revision:
+        description: "Existing Cloud Run revision name to shift 100% traffic to (for rollback)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: "Verify (tests + lint)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Astral uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Sync frozen environment
+        run: uv sync --frozen --extra dev
+
+      - name: Run pytest
+        run: uv run pytest
+
+      - name: Run ruff lint
+        run: uv run ruff check src/ tests/ scripts/
+
+  build-and-push:
+    name: "Build & Push (SHA-tagged image)"
+    needs: verify
+    if: ${{ github.event_name == 'push' || (github.event.inputs.action || 'deploy') == 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.push.outputs.image_digest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push SHA-tagged container image
+        id: push
+        env:
+          IMAGE_TAG: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPOSITORY }}/spherex-ingest:${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 --tag "${IMAGE_TAG}" .
+          docker push "${IMAGE_TAG}"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_TAG}")
+          echo "image_digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "Published immutable image: ${DIGEST}"
+
+  deploy-or-promote:
+    name: "Deploy / Promote to Cloud Run"
+    needs: [verify, build-and-push]
+    if: >-
+      !cancelled() &&
+      needs.verify.result == 'success' &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
+      (github.event.inputs.action || 'deploy') != 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve target image digest
+        id: image
+        env:
+          ACTION: ${{ github.event.inputs.action || 'deploy' }}
+          BUILT_DIGEST: ${{ needs.build-and-push.outputs.image_digest }}
+          INPUT_DIGEST: ${{ github.event.inputs.image_digest }}
+        run: |
+          if [ "${ACTION}" = "promote" ]; then
+            if [ -z "${INPUT_DIGEST}" ]; then
+              echo "::error::image_digest input is required for promote action"
+              exit 1
+            fi
+            echo "digest=${INPUT_DIGEST}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "digest=${BUILT_DIGEST}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        id: gcp-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Render Cloud Run service manifest and deploy
+        env:
+          SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+          RUNTIME_SA: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+        run: |
+          sed \
+            -e "s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
+            -e "s|__RUNTIME_SERVICE_ACCOUNT__|${RUNTIME_SA}|g" \
+            -e "s|__IMAGE_DIGEST__|${IMAGE_DIGEST}|g" \
+            deploy/cloud-run/service.yaml > /tmp/service.rendered.yaml
+          gcloud run services replace /tmp/service.rendered.yaml \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}"
+
+      - name: Verify live Cloud Run service (auth + health + benchmarks + gate)
+        env:
+          SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+        run: |
+          SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format='value(status.url)')
+          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+
+          UNAUTH_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${SERVICE_URL}/api/v1/health")
+          echo "Unauthenticated /api/v1/health -> HTTP ${UNAUTH_CODE}"
+          echo "${UNAUTH_CODE}" | grep -qE "^(401|403)$"
+
+          curl -fsS -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/api/v1/health" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['status']=='ok' and d.get('revision') and d['legacy_sync_enabled'] is False, d; print('Health OK:', d['revision'])"
+
+          curl -fsS -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/api/v1/benchmarks" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and len(d)==5, d; print('Benchmarks OK:', len(d))"
+
+          GATE_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/api/v1/blink?ra=331&dec=-56")
+          echo "Live-query gate -> HTTP ${GATE_CODE}"
+          test "${GATE_CODE}" = "503"
+
+  rollback:
+    name: "Rollback Cloud Run Service"
+    needs: [verify]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'rollback' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Rollback by revision or image digest
+        env:
+          SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+          RUNTIME_SA: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+          TARGET_REVISION: ${{ github.event.inputs.revision }}
+          TARGET_DIGEST: ${{ github.event.inputs.image_digest }}
+        run: |
+          if [ -n "${TARGET_REVISION}" ]; then
+            gcloud run services update-traffic "${SERVICE_NAME}" \
+              --project "${PROJECT_ID}" \
+              --region "${REGION}" \
+              --to-revisions="${TARGET_REVISION}=100"
+          elif [ -n "${TARGET_DIGEST}" ]; then
+            sed \
+              -e "s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
+              -e "s|__RUNTIME_SERVICE_ACCOUNT__|${RUNTIME_SA}|g" \
+              -e "s|__IMAGE_DIGEST__|${TARGET_DIGEST}|g" \
+              deploy/cloud-run/service.yaml > /tmp/service.rollback.yaml
+            gcloud run services replace /tmp/service.rollback.yaml \
+              --project "${PROJECT_ID}" \
+              --region "${REGION}"
+          else
+            echo "::error::Provide either revision or image_digest for rollback"
+            exit 1
+          fi
+
+      - name: Verify post-rollback health
+        env:
+          SERVICE_NAME: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+        run: |
+          SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format='value(status.url)')
+          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ID_TOKEN}" \
+            "${SERVICE_URL}/api/v1/health"
