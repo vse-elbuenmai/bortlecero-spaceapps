@@ -9,7 +9,7 @@ const localOrigin = "http://127.0.0.1:8765";
 const targets = [
   ["barnard", "barnards_star", "Barnard's Star"],
   ["epsindib", "epsilon_indi_b", "Epsilon Indi B"],
-  ["wise0855", "wise_0855_0714", "WISE 0855−0714"],
+  ["wise0855", "wise_0855_0714", /^WISE (?:0855−0714|J085510\.83-071442\.5)$/],
   ["rwaur", "rw_aurigae", "RW Aurigae"],
   ["rdra", "r_draconis", "R Draconis"],
 ];
