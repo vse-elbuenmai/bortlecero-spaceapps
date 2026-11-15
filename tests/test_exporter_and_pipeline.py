@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from spherex_ingest.domain.models import ProcessedBlinkFrame, RawCutoutFrame
+from spherex_ingest.domain.models import DroppedFrameDTO, ProcessedBlinkFrame, RawCutoutFrame
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.exporters.bundle_exporter import FrontendBundleExporter
 from spherex_ingest.processors.kinematics import KinematicsAndPhotometryAnalyzer
@@ -314,4 +314,203 @@ def test_difference_map_wavelength_optimization_and_warning() -> None:
         target, [f1, f2], difference_maps=diffs_large_delta
     )
     assert any("delta_lambda > 0.05 um" in w for w in warnings_b)
+
+
+def test_bundle_exporter_tracks_low_coverage_frames() -> None:
+    """Verify Finding 9: frames with valid_pixel_fraction < 0.40 are dropped and tracked."""
+    target = BENCHMARK_TARGETS["barnards_star"]
+    exporter = FrontendBundleExporter()
+    reprojector = SPHERExFrameProcessor()._reprojector
+
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=target.ra_deg,
+        center_dec_deg=target.dec_deg,
+        cutout_size_arcsec=180.0,
+    )
+
+    # Build one normal coverage frame (100% valid) and one low-coverage frame (10% valid)
+    ny, nx = shape_out
+    full_img = np.ones((ny, nx), dtype=np.float64)
+    full_mask = np.zeros((ny, nx), dtype=bool)
+
+    low_cov_img = np.full((ny, nx), np.nan, dtype=np.float64)
+    # Only a 3x3 patch is valid out of 31x31 (9 / 961 = ~0.009 < 0.40)
+    low_cov_img[14:17, 14:17] = 5.0
+    low_cov_footprint = np.isfinite(low_cov_img)
+
+    f_good = ProcessedBlinkFrame(
+        frame_id="good_frame",
+        collection="spherex_dr1",
+        detector_band=1,
+        mjd_avg=60800.0,
+        obs_time_iso="2025-05-01T00:00:00",
+        sps_epa_deg=0.0,
+        wavelength_um=0.75,
+        bandwidth_um=0.02,
+        reprojected_image_mjy_sr=full_img,
+        reprojected_variance=full_img * 0.1,
+        reprojected_zodi_mjy_sr=full_img,
+        saturation_mask=full_mask,
+        bad_pixel_mask=full_mask,
+        footprint_mask=~full_mask,
+        predicted_ra_deg=target.ra_deg,
+        predicted_dec_deg=target.dec_deg,
+        predicted_pixel_x=15.0,
+        predicted_pixel_y=15.0,
+    )
+    f_low = ProcessedBlinkFrame(
+        frame_id="low_coverage_frame",
+        collection="spherex_dr1",
+        detector_band=1,
+        mjd_avg=60810.0,
+        obs_time_iso="2025-05-11T00:00:00",
+        sps_epa_deg=0.0,
+        wavelength_um=0.76,
+        bandwidth_um=0.02,
+        reprojected_image_mjy_sr=low_cov_img,
+        reprojected_variance=np.nan_to_num(low_cov_img, nan=0.0),
+        reprojected_zodi_mjy_sr=np.zeros_like(low_cov_img),
+        saturation_mask=full_mask,
+        bad_pixel_mask=~low_cov_footprint,
+        footprint_mask=low_cov_footprint,
+        predicted_ra_deg=target.ra_deg,
+        predicted_dec_deg=target.dec_deg,
+        predicted_pixel_x=15.0,
+        predicted_pixel_y=15.0,
+    )
+
+    bundle = exporter.build_bundle(
+        target=target,
+        processed_frames=[f_good, f_low],
+        common_wcs=common_wcs,
+        grid_shape=shape_out,
+    )
+
+    # f_low must be excluded from frames_chronological
+    assert bundle.total_frames == 1
+    assert len(bundle.frames_chronological) == 1
+    assert bundle.frames_chronological[0].frame_id == "good_frame"
+
+    # f_low must be tracked in dropped_frames
+    assert len(bundle.dropped_frames) == 1
+    dropped = bundle.dropped_frames[0]
+    assert dropped.frame_id == "low_coverage_frame"
+    assert "low_valid_pixel_fraction" in dropped.reason
+    assert "0.40 threshold" in (dropped.error_detail or "")
+
+    # Scientific warning emitted
+    assert any("dropped or excluded" in w for w in bundle.scientific_warnings)
+
+
+def test_bundle_exporter_records_dropped_cutouts() -> None:
+    """Verify Finding 9: dropped cutout metadata from SIA provider is included in bundle."""
+    target = BENCHMARK_TARGETS["epsilon_indi_b"]
+    exporter = FrontendBundleExporter()
+    reprojector = SPHERExFrameProcessor()._reprojector
+
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=target.ra_deg,
+        center_dec_deg=target.dec_deg,
+        cutout_size_arcsec=180.0,
+    )
+
+    ny, nx = shape_out
+    full_img = np.ones((ny, nx), dtype=np.float64)
+    full_mask = np.zeros((ny, nx), dtype=bool)
+
+    f_good = ProcessedBlinkFrame(
+        frame_id="eps_good_1",
+        collection="spherex_dr1",
+        detector_band=3,
+        mjd_avg=60800.0,
+        obs_time_iso="2025-05-01T00:00:00",
+        sps_epa_deg=0.0,
+        wavelength_um=1.85,
+        bandwidth_um=0.03,
+        reprojected_image_mjy_sr=full_img,
+        reprojected_variance=full_img * 0.1,
+        reprojected_zodi_mjy_sr=full_img,
+        saturation_mask=full_mask,
+        bad_pixel_mask=full_mask,
+        footprint_mask=~full_mask,
+        predicted_ra_deg=target.ra_deg,
+        predicted_dec_deg=target.dec_deg,
+        predicted_pixel_x=15.0,
+        predicted_pixel_y=15.0,
+    )
+
+    incoming_dropped = [
+        DroppedFrameDTO(
+            frame_id="cutout_503_error.fits",
+            reason="cutout_download_error",
+            attempted_band=3,
+            error_detail="503 Service Unavailable",
+        )
+    ]
+
+    bundle = exporter.build_bundle(
+        target=target,
+        processed_frames=[f_good],
+        common_wcs=common_wcs,
+        grid_shape=shape_out,
+        dropped_frames=incoming_dropped,
+    )
+
+    assert len(bundle.dropped_frames) == 1
+    assert bundle.dropped_frames[0].frame_id == "cutout_503_error.fits"
+    assert any("dropped or excluded" in w for w in bundle.scientific_warnings)
+
+
+def test_unsaturated_target_does_not_trigger_spurious_core_saturation_warning() -> None:
+    """Verify Finding 11: edge saturation artifacts do not trigger core saturation warning."""
+    target = BENCHMARK_TARGETS["epsilon_indi_b"]
+    exporter = FrontendBundleExporter()
+    reprojector = SPHERExFrameProcessor()._reprojector
+
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=target.ra_deg,
+        center_dec_deg=target.dec_deg,
+        cutout_size_arcsec=180.0,
+    )
+
+    ny, nx = shape_out
+    full_img = np.ones((ny, nx), dtype=np.float64)
+    bad_mask = np.zeros((ny, nx), dtype=bool)
+
+    # Saturated pixel at the far edge of the frame (0, 0), NOT in stellar core
+    sat_mask = np.zeros((ny, nx), dtype=bool)
+    sat_mask[0, 0] = True
+
+    frame = ProcessedBlinkFrame(
+        frame_id="eps_edge_sat",
+        collection="spherex_dr1",
+        detector_band=2,
+        mjd_avg=60800.0,
+        obs_time_iso="2025-05-01T00:00:00",
+        sps_epa_deg=0.0,
+        wavelength_um=1.35,
+        bandwidth_um=0.02,
+        reprojected_image_mjy_sr=full_img,
+        reprojected_variance=full_img * 0.1,
+        reprojected_zodi_mjy_sr=full_img,
+        saturation_mask=sat_mask,
+        bad_pixel_mask=bad_mask,
+        footprint_mask=~bad_mask,
+        predicted_ra_deg=target.ra_deg,
+        predicted_dec_deg=target.dec_deg,
+        predicted_pixel_x=15.0,
+        predicted_pixel_y=15.0,
+        is_saturated_core=False,  # Un-saturated stellar core!
+    )
+
+    bundle = exporter.build_bundle(
+        target=target,
+        processed_frames=[frame],
+        common_wcs=common_wcs,
+        grid_shape=shape_out,
+    )
+
+    # Core saturation warning must NOT be present
+    assert not any("Detector core saturation" in w for w in bundle.scientific_warnings)
+
 

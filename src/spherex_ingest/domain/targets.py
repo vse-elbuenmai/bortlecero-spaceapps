@@ -7,6 +7,8 @@ including the critical coordinate propagation notes from AGENTS.md.
 
 from __future__ import annotations
 
+import re
+
 from spherex_ingest.domain.models import TargetSpec
 
 BENCHMARK_TARGETS: dict[str, TargetSpec] = {
@@ -65,6 +67,7 @@ BENCHMARK_TARGETS: dict[str, TargetSpec] = {
         radial_velocity_km_s=0.0,
         cutout_size_arcsec=180.0,
         collections=("spherex_dr1", "spherex_qr3"),
+        priority_bands=(5, 6),
         notes=(
             "Coldest known Y dwarf (~250 K) at 2.28 pc. Challenge prompt coordinates "
             "(~133.795, -7.245) are from ~2010 discovery epoch; today it lies ~20 SPHEREx "
@@ -118,14 +121,78 @@ BENCHMARK_TARGETS: dict[str, TargetSpec] = {
 }
 
 
+_BENCHMARK_ALIASES: dict[str, str] = {
+    # Barnard's Star
+    "barnards_star": "barnards_star",
+    "barnard_star": "barnards_star",
+    "barnards": "barnards_star",
+    "barnard": "barnards_star",
+    "gj_699": "barnards_star",
+    "gj699": "barnards_star",
+    # Epsilon Indi B
+    "epsilon_indi_b": "epsilon_indi_b",
+    "epsilon_indi": "epsilon_indi_b",
+    "eps_ind_b": "epsilon_indi_b",
+    "eps_ind": "epsilon_indi_b",
+    "epsindib": "epsilon_indi_b",
+    "epsindi": "epsilon_indi_b",
+    "gj_845_b": "epsilon_indi_b",
+    "gj_845b": "epsilon_indi_b",
+    "gj845b": "epsilon_indi_b",
+    # WISE 0855-0714
+    "wise_0855_0714": "wise_0855_0714",
+    "wise_0855": "wise_0855_0714",
+    "wise0855": "wise_0855_0714",
+    "wise0855_0714": "wise_0855_0714",
+    "wise08550714": "wise_0855_0714",
+    "wise_j0855": "wise_0855_0714",
+    "wise_j085510": "wise_0855_0714",
+    "wise_j0855_0714": "wise_0855_0714",
+    "wise_j085510_83_071442_5": "wise_0855_0714",
+    # RW Aurigae
+    "rw_aurigae": "rw_aurigae",
+    "rw_aur": "rw_aurigae",
+    "rwaurigae": "rw_aurigae",
+    "rwaur": "rw_aurigae",
+    # R Draconis
+    "r_draconis": "r_draconis",
+    "r_dra": "r_draconis",
+    "rdraconis": "r_draconis",
+    "rdra": "r_draconis",
+}
+
+_AMBIGUOUS_TERMS: frozenset[str] = frozenset(
+    {"star", "stars", "dwarf", "dwarfs", "variable", "system", "object"}
+)
+
+
 def get_benchmark_target(target_id_or_name: str) -> TargetSpec | None:
-    """Lookup a curated benchmark target by ID or case-insensitive name."""
-    key = target_id_or_name.strip().lower().replace(" ", "_").replace("-", "_").replace("'", "")
-    if key in BENCHMARK_TARGETS:
-        return BENCHMARK_TARGETS[key]
+    """Lookup a curated benchmark target by strict exact ID, name, or explicit alias.
+
+    Replaces loose substring matching to avoid spurious matches on single characters
+    or common generic terms (e.g., 'a', 's', '0', 'star').
+    """
+    cleaned = target_id_or_name.strip()
+    if not cleaned or len(cleaned) < 3 or cleaned.lower() in _AMBIGUOUS_TERMS:
+        return None
+
+    # Check direct name matches first (exact or case-insensitive)
     for spec in BENCHMARK_TARGETS.values():
-        if spec.name.lower() == target_id_or_name.strip().lower():
+        if spec.name.lower() == cleaned.lower():
             return spec
-        if key in spec.target_id:
-            return spec
+
+    # Normalize: strip punctuation, spaces, hyphens, and apostrophes
+    norm = cleaned.lower().replace("'", "")
+    norm_key = re.sub(r"[\s\.\-]+", "_", norm).strip("_")
+
+    target_id = _BENCHMARK_ALIASES.get(norm_key)
+    if target_id is not None and target_id in BENCHMARK_TARGETS:
+        return BENCHMARK_TARGETS[target_id]
+
+    # Also check stripped alphanumeric version (e.g. wise0855, epsindb)
+    alpha_key = re.sub(r"[^a-z0-9]", "", norm)
+    target_id_alpha = _BENCHMARK_ALIASES.get(alpha_key)
+    if target_id_alpha is not None and target_id_alpha in BENCHMARK_TARGETS:
+        return BENCHMARK_TARGETS[target_id_alpha]
+
     return None

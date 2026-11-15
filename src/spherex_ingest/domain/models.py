@@ -120,6 +120,10 @@ class TargetSpec(BaseModel):
         default=("spherex_dr1", "spherex_qr3"),
         description="IRSA SPHEREx SIAv2 collections to query (never use qr2)",
     )
+    priority_bands: tuple[int, ...] = Field(
+        default=(),
+        description="Preferred detector bands to prioritize when slicing under frame limits",
+    )
     notes: str = Field(
         default="",
         description="Scientific and data handling notes for this object",
@@ -237,6 +241,16 @@ class DifferenceMapDTO(BaseModel):
     png_base64: str | None = None
 
 
+class DroppedFrameDTO(BaseModel):
+    """Record of a frame dropped during cutout retrieval or quality filtering."""
+
+    frame_id: str
+    reason: str
+    attempted_band: int | None = None
+    obs_date: str | None = None
+    error_detail: str | None = None
+
+
 class CommonGridSpecDTO(BaseModel):
     """Metadata describing the common North-up celestial grid shared by all frames in a bundle."""
 
@@ -261,5 +275,6 @@ class BlinkBundleDTO(BaseModel):
     frames_chronological: list[FrameMetadataDTO]
     frames_by_band: dict[str, list[FrameMetadataDTO]]
     difference_maps: list[DifferenceMapDTO]
+    dropped_frames: list[DroppedFrameDTO] = Field(default_factory=list)
     scientific_warnings: list[str]
     citations: list[str]
