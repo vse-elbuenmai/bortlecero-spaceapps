@@ -137,6 +137,22 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .chip:hover { border-color: var(--bc-acento); color: var(--bc-blanco); }
 .chip.is-active { border-color: var(--bc-estrella); color: var(--bc-blanco); background: var(--bc-noche); }
 
+/* Select (DESIGN §7.12): the native control, so phones open their own picker */
+.select { position: relative; display: block; min-width: 0; }
+.select select { display: block; width: 100%; min-height: 48px; padding: 0 44px 0 14px; appearance: none;
+  border-radius: var(--bc-radius-sm); background: var(--bc-noche); border: 1px solid var(--bc-border);
+  color: var(--bc-blanco); font: 500 var(--bc-fs-ui)/1.2 var(--bc-font); text-overflow: ellipsis; cursor: pointer;
+  transition: border-color var(--bc-transition); }
+.select select:hover { border-color: var(--bc-acento); }
+.select select[aria-invalid="true"] { border-color: var(--bc-error); }
+.select option { background: var(--bc-noche); color: var(--bc-blanco); }
+/* The arrow: 16 px from the edge, and the text stops 44 px short so it never runs under it */
+.select::after { content: ""; position: absolute; right: 16px; top: 50%; width: 8px; height: 8px; margin-top: -7px;
+  border-right: 2px solid var(--bc-estrella); border-bottom: 2px solid var(--bc-estrella);
+  transform: rotate(45deg); pointer-events: none; }
+.select-inline { flex: none; font-size: var(--bc-fs-xs); color: var(--bc-muted); text-transform: uppercase;
+  letter-spacing: 0.14em; line-height: 1.4; }
+
 /* Viewer (DESIGN §7.1) */
 .viewer { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: var(--bc-sp-m);
   padding: var(--bc-sp-s) 0 var(--bc-sp-l); outline: none; }
@@ -177,17 +193,44 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .mk-dot { fill: var(--viz-trayectoria); stroke: var(--viz-halo); stroke-width: 1; }
 
 /* Controls (DESIGN §7.2) */
-.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bc-sp-xs); margin-top: var(--bc-sp-s); }
-.controls-gap { flex: 1; }
-.icon-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--bc-border);
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bc-sp-xs) 12px; margin-top: var(--bc-sp-s); }
+.transport, .zoom-group { flex: none; display: flex; align-items: center; }
+.transport { gap: var(--bc-sp-xs); }
+/* The zoom buttons and their reset travel as one piece: if the row is full, they wrap together */
+.zoom-group { gap: 4px; margin-left: auto; }
+.icon-btn { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--bc-border);
   background: transparent; color: var(--bc-estrella); font-size: 16px; cursor: pointer;
   display: inline-grid; place-items: center; transition: border-color var(--bc-transition), background var(--bc-transition); }
+/* Icons are drawn as 1.6 px lines on a 16 px grid, so every round button carries the same weight */
+.icon-btn svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.icon-btn .ico-fill { fill: currentColor; stroke-width: 1.2; }
 .icon-btn:hover { border-color: var(--bc-acento); background: var(--bc-noche); }
 .icon-btn[aria-pressed="true"] { background: var(--bc-noche); border-color: var(--bc-estrella); }
-.speed { display: inline-flex; align-items: center; gap: 8px; font-size: var(--bc-fs-sm); color: var(--bc-muted); margin-left: 8px; }
-.speed input { width: 120px; accent-color: var(--bc-estrella); }
-.speed output, .zoom-label { color: var(--bc-blanco); font-variant-numeric: tabular-nums; font-size: var(--bc-fs-sm); min-width: 3.2em; }
-.zoom-label { text-align: center; min-width: 2.4em; }
+/* Speed sits on the transport row and takes what is left of it, like the bar of an audio player */
+.speed { flex: 1 1 150px; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: var(--bc-fs-sm);
+  color: var(--bc-muted); }
+.speed input { flex: 1; min-width: 60px; max-width: 200px; min-height: 44px; margin: 0; accent-color: var(--bc-estrella); }
+.speed output, .zoom-label { color: var(--bc-blanco); font-variant-numeric: tabular-nums; font-size: var(--bc-fs-sm); }
+.speed output { flex: none; min-width: 3.4em; text-align: right; }
+.zoom-label { text-align: center; min-width: 2.2em; }
+@media (max-width: 760px) {
+  /* The slider says what it is next to the transport buttons; its name stays for screen readers */
+  .speed-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .speed { flex-basis: 110px; }
+  .speed input { max-width: none; }
+  /* Tighter, so the difference map and the zoom group share the second row on a 390 px phone */
+  .controls { column-gap: var(--bc-sp-xs); }
+  .diff-toggle { padding: 0 12px; }
+  .zoom-label { min-width: 2em; }
+}
+@media (max-width: 379px) {
+  /* Very narrow phones: transport centred on its own row, the speed bar stretched under it */
+  .controls { justify-content: center; }
+  .transport { flex: 1 0 100%; justify-content: center; }
+  .speed { flex: 1 0 100%; }
+  .zoom-group { margin-left: 0; }
+}
 
 .diff-toggle { min-height: 38px; padding: 0 14px; font-size: var(--bc-fs-xs); border-radius: var(--bc-radius-pill);
   cursor: pointer; border: 1px solid var(--bc-border); background: transparent; color: var(--bc-texto);
@@ -196,33 +239,38 @@ nav a:hover, nav a[aria-current="page"] { color: var(--bc-blanco); }
 .diff-toggle[aria-pressed="true"] { border-color: var(--bc-aviso); background: rgba(212, 168, 112, 0.15); color: var(--bc-aviso); font-weight: 600; }
 .diff-toggle:disabled { opacity: 0.35; cursor: not-allowed; border-color: var(--bc-border-soft); }
 
-.band-chips { display: flex; flex-wrap: wrap; gap: var(--bc-sp-xs); align-items: center; justify-content: flex-start;
-  max-width: 720px; margin: var(--bc-sp-xs) auto 0; padding: 0 4px; }
-.band-chip { min-height: 34px; padding: 0 12px; font-size: var(--bc-fs-xs); border-radius: var(--bc-radius-pill);
-  border: 1px solid var(--bc-border); background: transparent; color: var(--bc-texto); cursor: pointer;
-  transition: border-color var(--bc-transition), color var(--bc-transition), background var(--bc-transition); }
-.band-chip:hover { border-color: var(--bc-acento); color: var(--bc-blanco); }
-.band-chip.is-active { border-color: var(--bc-estrella); background: var(--bc-horizonte); color: var(--bc-blanco); font-weight: 600; }
+.band-row { display: flex; align-items: center; gap: 12px; max-width: 720px; margin: var(--bc-sp-s) auto 0; }
+.band-row .select { flex: 1; max-width: 320px; }
 
 .warnings-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--bc-fs-xs); }
+/* Warnings quote frame names and URLs with no spaces: let them break instead of widening the dialog */
 .warnings-list li { padding: 8px 12px; background: rgba(212, 168, 112, 0.08); border-left: 3px solid var(--bc-aviso);
-  border-radius: var(--bc-radius-sm); color: var(--bc-texto); line-height: 1.5; }
+  border-radius: var(--bc-radius-sm); color: var(--bc-texto); line-height: 1.5; overflow-wrap: anywhere; }
 
 .citations-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--bc-fs-micro); color: var(--bc-muted); }
-.citations-list li { line-height: 1.4; border-bottom: 1px solid var(--bc-border-soft); padding-bottom: 6px; }
+.citations-list li { line-height: 1.4; border-bottom: 1px solid var(--bc-border-soft); padding-bottom: 6px; overflow-wrap: anywhere; }
 .citations-list li:last-child { border-bottom: none; }
 
-.timeline { position: relative; height: 72px; margin: var(--bc-sp-s) 44px 0; }
+.timeline { position: relative; height: 68px; margin: var(--bc-sp-s) 22px 0; }
 .controls, .timeline-wrap { max-width: 720px; margin-inline: auto; }
 .timeline-track { position: absolute; left: 0; right: 0; top: 21px; height: 1px; background: var(--bc-border); }
-.tl-dot { position: absolute; top: 0; transform: translateX(-50%); width: 44px; height: 44px; border: 0;
-  background: transparent; cursor: pointer; display: grid; place-items: center; padding: 0; }
-.tl-dot::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--bc-noche);
-  border: 1px solid var(--bc-acento); transition: transform var(--bc-transition); }
+/* mockup.js sets each dot's left, width and --tl-mark: a dot owns the space up to halfway to its neighbours */
+.tl-dot { position: absolute; top: 0; height: 44px; border: 0; background: transparent; cursor: pointer; padding: 0; }
+.tl-dot::before { content: ""; position: absolute; left: var(--tl-mark, 50%); top: 50%; width: 10px; height: 10px;
+  margin: -5px 0 0 -5px; border-radius: 50%; background: var(--bc-noche); border: 1px solid var(--bc-acento);
+  transition: transform var(--bc-transition); }
+.tl-dot[aria-current="true"] { z-index: 1; }
 .tl-dot[aria-current="true"]::before { background: var(--bc-estrella); border-color: var(--bc-estrella); transform: scale(1.5); }
-.tl-label { position: absolute; top: 44px; transform: translateX(-50%); font-size: var(--bc-fs-xs);
-  color: var(--bc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.4; }
-.tl-label.is-current { color: var(--bc-blanco); }
+/* Long series on a narrow screen: smaller marks, so neighbours stay apart */
+.is-dense .tl-dot::before { width: 6px; height: 6px; margin: -3px 0 0 -3px; }
+.is-dense .tl-dot[aria-current="true"]::before { transform: scale(2); }
+.tl-labels { position: absolute; left: 0; right: 0; top: 44px; height: 20px; font-size: var(--bc-fs-xs);
+  font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.4; }
+.tl-end, .tl-current { position: absolute; left: 0; top: 0; }
+.tl-end { color: var(--bc-muted); }
+.tl-end-right { left: auto; right: 0; }
+.tl-end.is-hidden { visibility: hidden; }
+.tl-current { color: var(--bc-blanco); }
 
 /* Panel (DESIGN §7.3, 7.4, 7.8) */
 .panel { background: var(--bc-noche); border: 1px solid var(--bc-border); border-radius: var(--bc-radius);
