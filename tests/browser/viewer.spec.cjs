@@ -634,6 +634,143 @@ test("summary reports 8-direction compass bearing and stationary threshold for R
   await expect(page.locator("#summary")).toContainText("west");
 });
 
+// Deep stack (schema 1.1.0): a synthetic block on the two-frame fixture. The real numbers come from
+// the engine; these only exercise the switch, the texts and the fallbacks.
+const stackPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+function withStack(bundle, overrides = {}) {
+  return {
+    ...bundle,
+    schema_version: "1.1.0",
+    deep_stack: {
+      mode: "target_tracked",
+      frame_count: 12,
+      frame_ids: bundle.frames_chronological.map((f) => f.frame_id),
+      detector_bands: [6, 5, 5],
+      wavelength_min_um: 3.82,
+      wavelength_max_um: 4.98,
+      mjd_start: 60800.0,
+      mjd_end: 61173.0,
+      obs_time_start_iso: "2025-05-05T00:00:00Z",
+      obs_time_end_iso: "2026-05-13T00:00:00Z",
+      max_tracking_shift_px: 1.9,
+      target_pixel_x: 15.0,
+      target_pixel_y: 15.0,
+      noise_mjy_sr: 0.012,
+      single_frame_noise_mjy_sr: 0.037,
+      noise_reduction_factor: 3.1,
+      peak_snr: 10.24,
+      sky_fixed_peak_snr: 6.0,
+      detected: true,
+      detection_threshold_sigma: 5.0,
+      measured_centroid_x: 15.1,
+      measured_centroid_y: 14.9,
+      centroid_offset_arcsec: 0.83,
+      rejected_pixel_count: 3,
+      matrix_mjy_sr: [[0.1, null], [null, 0.2]],
+      png_base64: stackPng,
+      ...overrides,
+    },
+    deep_stack_skipped_reason: null,
+  };
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 }]) {
+  test(`the deep stack switch shows the stack, stays hidden for old bundles and explains a skip at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const base = (id, name, coords) => makeBundle({ targetId: id, name, ...coords });
+    const bundles = {
+      wise_0855_0714: withStack(base("wise_0855_0714", "WISE 0855−0714", { ra: 133.76, dec: -7.2422 })),
+      // Not detected, and following the motion changes nothing: no tracking line; null fields tolerated
+      epsilon_indi_b: withStack(base("epsilon_indi_b", "Epsilon Indi B", { ra: 331.0765, dec: -56.7938 }), {
+        detected: false, peak_snr: 2.1, sky_fixed_peak_snr: null, centroid_offset_arcsec: null,
+        measured_centroid_x: null, measured_centroid_y: null, noise_reduction_factor: null, frame_count: 4,
+      }),
+      barnards_star: base("barnards_star", "Barnard's Star", { ra: 269.4485, dec: 4.7394 }),
+      r_draconis: {
+        ...base("r_draconis", "R Draconis", { ra: 248.1674, dec: 66.7550 }),
+        schema_version: "1.1.0", deep_stack: null, deep_stack_skipped_reason: "target_saturated",
+      },
+    };
+    await serve(page, localOrigin, source, {
+      "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: "" } }),
+      "/api/v1/jobs": (route) => {
+        const { query } = route.request().postDataJSON();
+        return route.fulfill({ json: { job_id: `job-${query}`, status: "succeeded", result: bundles[query] } });
+      },
+    });
+    const frames = page.getByRole("radio", { name: "Single frames" });
+    const stack = page.getByRole("radio", { name: /^Stack/ });
+
+    await pickTarget(page, "wise0855");
+    await expect(page.locator("#viewer")).toBeVisible();
+    await expect(page.locator("#view-row")).toBeVisible();
+    await expect(frames).toHaveAttribute("aria-checked", "true");
+    await expect(stack).toHaveText("Stack of 12");
+    await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
+
+    await stack.click();
+    await expect(stack).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator("#frame-img")).toHaveAttribute("src", stackPng);
+    await expect.poll(() => page.locator("#frame-img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect(page.locator("#frame-count")).toHaveText("Stack of 12 exposures");
+    await expect(page.locator("#m-wave")).toHaveText("3.82–4.98 µm");
+    await expect(page.locator("#m-det")).toHaveText("Bands 5–6");
+    await expect(page.locator("#m-date")).toHaveText("2025-05-05 → 2026-05-13");
+    await expect(page.locator("#st-gaia")).toHaveText("✓ Detected 10.2σ");
+    await expect(page.locator("#stack-headline"))
+      .toHaveText("Detected in the stack: 10.2σ, 0.8″ from the predicted position.");
+    await expect(page.locator("#stack-facts")).toContainText("Noise 3.1× lower than in a single frame");
+    await expect(page.locator("#stack-facts")).toContainText("Without following the predicted motion: 6.0σ");
+    await expect(page.locator(".stack-caveat")).toBeVisible();
+    await expect(page.locator(".panel .result")).toBeHidden();
+    for (const id of ["#play", "#prev", "#next", "#speed", "#band-select"]) {
+      await expect(page.locator(id)).toBeDisabled();
+    }
+    await expect(page.locator("#zoom-in")).toBeEnabled();
+    // The prediction ring sits on the stack; there is no path in a target-tracked image
+    await expect(page.locator("#overlay .mk-pred")).toHaveCount(1);
+    await expect(page.locator("#overlay .mk-traj")).toHaveCount(0);
+    // Arrow keys inside the switch change the view, not the frame
+    await stack.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(frames).toHaveAttribute("aria-checked", "true");
+    await expect(frames).toBeFocused();
+    await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
+    await expect(page.locator("#play")).toBeEnabled();
+    await expect(page.locator(".panel .result")).toBeVisible();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator("#frame-count")).toHaveText("Stack of 12 exposures");
+    await page.locator("#modal-close").click();
+
+    // A new target opens on the single frames again; an honest line when nothing is detected
+    await pickTarget(page, "epsindib");
+    await expect(page.locator("#modal-title")).toHaveText("Epsilon Indi B");
+    await expect(frames).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
+    await expect(page.locator("#play")).toBeEnabled();
+    await stack.click();
+    await expect(page.locator("#st-gaia")).toHaveText("— Not detected, 2.1σ");
+    await expect(page.locator("#stack-headline")).toHaveText("Not detected in the stack (peak 2.1σ, below the 5σ threshold).");
+    await expect(page.locator("#stack-facts")).not.toContainText("Without following");
+    await page.locator("#modal-close").click();
+
+    // Old bundle: no switch at all
+    await pickTarget(page, "barnard");
+    await expect(page.locator("#modal-title")).toHaveText("Barnard's Star");
+    await expect(page.locator("#view-row")).toBeHidden();
+    await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
+    await page.locator("#modal-close").click();
+
+    // Skipped: the switch is there, disabled, with the reason
+    await pickTarget(page, "rdra");
+    await expect(page.locator("#modal-title")).toHaveText("R Draconis");
+    await expect(page.locator("#view-row")).toBeVisible();
+    await expect(stack).toBeDisabled();
+    await expect(page.locator("#view-note")).toHaveText(
+      "Stack unavailable: the star saturates the detector, so stacking cannot help.");
+  });
+}
+
 test("transient status and result errors retry the same accepted job", async ({ page }) => {
   let posts = 0;
   let polls = 0;

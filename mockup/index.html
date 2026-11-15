@@ -212,6 +212,16 @@
           </div>
         </div>
 
+        <!-- Single frames or the deep stack (DESIGN §7.14). Hidden for bundles without a stack block -->
+        <div id="view-row" class="view-row" hidden>
+          <div id="view-switch" class="mode-switch view-switch" role="radiogroup" aria-label="Image"
+            aria-describedby="view-note">
+            <button type="button" role="radio" aria-checked="true" data-view="frames">Single frames</button>
+            <button id="view-stack" type="button" role="radio" aria-checked="false" data-view="stack">Stack</button>
+          </div>
+          <p id="view-note" class="view-note" hidden></p>
+        </div>
+
         <div class="controls" role="group" aria-label="Playback">
           <div class="transport">
             <button id="prev" class="icon-btn" type="button" aria-label="Previous frame" data-tip="Previous frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 3.6v8.8"/><path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z"/></svg></button>
@@ -302,6 +312,15 @@
         <div class="panel-block result">
           <p class="eyebrow">What moved</p>
           <p id="summary"></p>
+        </div>
+
+        <!-- In the stack view this takes the place of "What moved" -->
+        <div class="panel-block stack-block" id="stack-block" hidden>
+          <p class="eyebrow">What the stack shows</p>
+          <p id="stack-headline" class="stack-headline"></p>
+          <ul id="stack-facts" class="stack-facts"></ul>
+          <p class="stack-caveat">The stack mixes wavelengths, so it shows that something is there and where,
+            not how bright it is. Field stars may look slightly smeared because the image follows the target.</p>
         </div>
 
         <div class="panel-block adv">

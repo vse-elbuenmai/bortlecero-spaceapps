@@ -27,6 +27,15 @@ downloads only the selected FITS cutouts. It subtracts the zodiacal foreground,
 handles detector artifacts, aligns the images on a common sky grid, and exports a
 blink bundle with PNGs, spectral metadata, quality masks, and difference maps.
 
+It also adds the usable exposures into one **deep stack**, shifting each exposure so the
+position predicted for its date stays on the same pixel (the "comet mode" of
+astrophotography stacking). The noise averages down, so a source too faint for any single
+exposure can appear. In our run of 15 Nov 2026, WISE 0855−0714 is unmeasured in all six
+single exposures and is detected at 10.5σ in their stack, 1.8″ from the predicted
+position; two empty positions next to it give no detection (3.6σ and 0.5σ, under the 5σ
+threshold). The stack mixes wavelengths, so it reports a detection and a position, never a
+brightness, and it is not built for targets that saturate the detector.
+
 The [ingestion guide](docs/GUIA-EQUIPO-INGESTA.md) walks through the full process
 in Spanish, from IRSA discovery and download to image preprocessing and display.
 The [async API guide](docs/ASYNC-INGESTION.md) documents job status and results.

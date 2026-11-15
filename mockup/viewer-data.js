@@ -282,7 +282,8 @@
     const config = await readConfig(signal);
     if (!config.liveQueries) throw liveDisabledError();
     // Bump the key version when old bundles are incompatible with the viewer.
-    const key = JSON.stringify([1, config.baseHref, payload]);
+    // 2: schema 1.1.0 adds the optional deep stack; skip bundles saved before it.
+    const key = JSON.stringify([2, config.baseHref, payload]);
     const cached = await readCachedBundle(key).catch(() => null);
     signal.throwIfAborted();
     if (cached) return { status: "ready", bundle: cached, cached: true };

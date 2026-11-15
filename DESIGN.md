@@ -307,10 +307,10 @@ baja a `--bc-fs-micro`. Las celdas sustituyen a las pills, que cambiaban de núm
 
 | Celda | Valores y color |
 |---|---|
-| Roll | `↻ 180°, aligned` (acento) · `✓ 0°, as taken` (ok) · `↻ Aligned (0°)` en el mapa de diferencia |
-| Core | `⚠ Saturated` (aviso) · `✓ Not saturated` (ok) · `— Not applicable` (`--bc-muted`) |
-| vs Gaia | `✓ 0.31″ off` (ok, hasta 0.5″) · `⚠ 3.27″ off` (aviso) · `— Unmeasured` (`--bc-muted`) · `± Dipole ΔI` |
-| Wavelength | `✓ Same as before` (ok) · `⚠ 2.29→4.23 µm` (aviso, salto mayor de 0.05 µm) · `— First frame` · `Δλ 0.012 µm` |
+| Roll | `↻ 180°, aligned` (acento) · `✓ 0°, as taken` (ok) · `↻ Aligned (0°)` en el mapa de diferencia · `↻ All north-up` en la pila (§7.14) |
+| Core | `⚠ Saturated` (aviso) · `✓ Not saturated` (ok) · `— Not applicable` (`--bc-muted`; también en la pila) |
+| vs Gaia | `✓ 0.31″ off` (ok, hasta 0.5″) · `⚠ 3.27″ off` (aviso) · `— Unmeasured` (`--bc-muted`) · `± Dipole ΔI` · en la pila: `✓ Detected 10.2σ` (ok) · `— Not detected, 2.1σ` (`--bc-muted`) |
+| Wavelength | `✓ Same as before` (ok) · `⚠ 2.29→4.23 µm` (aviso, salto mayor de 0.05 µm) · `— First frame` · `Δλ 0.012 µm` · `⚠ Mixed` en la pila (aviso) |
 
 ### 7.5 Entrada de coordenadas
 
@@ -510,6 +510,50 @@ se recuerda en el navegador (`localStorage`, clave `viewer-detail`).
 | Número de foto, fecha, longitud de onda, detector | Bloque «Object» (nombre y posición de Gaia, que la cabecera ya da) |
 | Las cuatro comprobaciones (§7.4) | «Scientific Warnings & Notes» |
 | «What moved» y «How these frames were made» | «Data & Astrometry Citations» |
+| Selector «Single frames \| Stack of N» y la pila con su veredicto, reducción de ruido y advertencia (§7.14) | En la pila: lo esperado por √N, el ruido en MJy/sr, el mayor desplazamiento aplicado y los píxeles rechazados |
+
+### 7.14 Pila profunda («deep stack»)
+
+Hay objetos (la enana marrón WISE 0855−0714 es el caso que lo motivó) que no se ven en ninguna foto
+sola: todas dicen `— Unmeasured`. El motor suma todas las fotos útiles desplazando cada una para que
+la posición predicha del objeto (movimiento propio + paralaje) quede quieta, como el modo cometa del
+apilado en astrofotografía; el ruido baja más o menos como √N. Llega en el paquete (esquema 1.1.0)
+como `deep_stack`, opcional, o `deep_stack_skipped_reason` si no se hizo.
+
+- **Selector:** un `radiogroup` de dos opciones, «Single frames» y «Stack of N» (N = `frame_count`),
+  con la misma pill y el mismo pulgar deslizante del nivel de detalle (§7.13); opciones de 38 px de
+  alto para llegar a 44 con el marco. Va en su propia fila, justo bajo la imagen y encima de los
+  controles, porque cambia lo que enseña la imagen. Flechas izquierda y derecha cambian de opción
+  (sin cambiar de foto). «Single frames» es el inicial y vuelve a serlo con cada objeto nuevo.
+- **Cuándo aparece:** con `deep_stack`, activo. Sin pila pero con `deep_stack_skipped_reason`, la
+  opción de la pila va deshabilitada (`opacity: 0.45`) y al lado, en `--bc-fs-xs` / `--bc-muted`,
+  el motivo: «Stack unavailable: too few usable exposures.» o «Stack unavailable: the star saturates
+  the detector, so stacking cannot help.». Sin ninguno de los dos campos (paquetes anteriores a
+  1.1.0) la fila no existe y el visor queda como antes.
+- **Qué cambia en la vista de pila:** la imagen es la de la pila, en la misma cuadrícula y con el
+  mismo estirado `asinh` y la misma paleta que las fotos, pero con su propia escala de brillo
+  (el motor la calcula sobre la suma, que tiene menos ruido). Encima, el anillo de la posición predicha (en `target_pixel_x/y`) y
+  la cruz del centro medido si lo hay; no hay trayectoria, porque la imagen sigue al objeto. Lo que
+  sólo tiene sentido en una serie se pausa y se deshabilita **en su sitio**, sin ocultarlo, para que
+  nada se mueva: reproducir, anterior / siguiente, velocidad, banda y «Difference Map». La línea de
+  fechas queda atenuada (0.45) e inerte y enseña sólo la primera y la última fecha. Zoom, arrastre y
+  leyenda siguen funcionando.
+- **Panel:** el encabezado dice «Stack of N exposures»; la fecha es el intervalo
+  (`2025-05-05 → 2026-05-13`, también en la placa de la imagen), la longitud de onda el rango
+  (`3.82–4.98 µm`) y el detector las bandas (`Bands 5–6`). Las cuatro celdas del §7.4 siguen, con
+  los valores de la pila. «What moved» cede su sitio a **«What the stack shows»**:
+  - el veredicto en `--bc-fs-base` / `--bc-blanco`: «Detected in the stack: 10.2σ, 0.8″ from the
+    predicted position.» o «Not detected in the stack (peak 2.1σ, below the 5σ threshold).»;
+  - «Noise 3.1× lower than in a single frame» (no «÷3.1»: en letra pequeña el `÷` se lee como `+`);
+  - sólo si sumar sin seguir el movimiento da más de 1σ menos y el desplazamiento mayor pasa de
+    0.3 px: «Without following the predicted motion: 6.0σ»;
+  - en avanzado, en `--bc-muted`: lo esperado por √N, el ruido de la pila y de una foto en MJy/sr,
+    el mayor desplazamiento aplicado (px y ″) y los píxeles rechazados;
+  - siempre, en `--bc-fs-xs` / `--bc-muted`, la advertencia: «The stack mixes wavelengths, so it
+    shows that something is there and where, not how bright it is. Field stars may look slightly
+    smeared because the image follows the target.»
+- **Tolerancia:** cualquier número que llegue `null` o falte se omite o se escribe «N/A»; nunca se
+  inventa.
 
 ---
 

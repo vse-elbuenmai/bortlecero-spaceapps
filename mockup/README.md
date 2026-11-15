@@ -152,6 +152,35 @@ citations. The choice is remembered in the browser. The four cells are always th
 keeps its height from one frame to the next while playing. `DESIGN.md` §7.4 and §7.13 have the
 details.
 
+### The deep stack
+
+Some targets are too faint to be found in any single frame (WISE 0855−0714: every frame says
+"— Unmeasured"). From bundle schema 1.1.0 the engine can add an optional `deep_stack` block: all
+usable exposures co-added, each one shifted so that the predicted position of the target (proper
+motion + parallax) stays at the same pixel. It is the "comet mode" stack of astrophotography, and
+the noise drops by roughly √N.
+
+- A switch under the image, **Single frames | Stack of N**, shows the stacked image in the same
+  place, with the predicted position at `target_pixel_x/y` and the measured centroid if there is
+  one. Single frames is the default and comes back with every new target.
+- In the stack view, play, previous / next, speed, band and difference map are paused and
+  disabled where they are, and the timeline is dimmed, so the layout does not move. Zoom and the
+  legend keep working.
+- The "vs Gaia" check reports the stack: "✓ Detected 10.2σ" or "— Not detected, 2.1σ". "What the
+  stack shows" replaces "What moved": the verdict with the distance from the prediction, the noise
+  reduction, and, only when following the motion clearly matters (more than 1σ gained and a shift
+  above 0.3 px), the peak without following it. Advanced adds the √N expectation, the noise in
+  MJy/sr, the largest shift and the rejected pixels. A caveat is always shown: the stack mixes
+  wavelengths, so it says that something is there and where, not how bright it is, and field stars
+  may look smeared.
+- If the engine skipped the stack (`deep_stack_skipped_reason`: `too_few_frames` or
+  `target_saturated`), the switch is shown disabled with the reason. Bundles without either field
+  (older than 1.1.0) show no switch at all.
+- The browser cache key went from version 1 to 2 with this change, so bundles cached before it
+  (without the stack) are not reused.
+
+`DESIGN.md` §7.14 has the rules and wording.
+
 ### Rebuilding the sky maps
 
 ```sh
