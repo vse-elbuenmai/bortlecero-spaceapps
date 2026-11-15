@@ -91,3 +91,5 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 - [Cloud Tasks queue limits and retries](https://docs.cloud.google.com/tasks/docs/configuring-queues).
 - [Google Cloud Free Tier and trial limits](https://docs.cloud.google.com/free/docs/free-cloud-features).
 - [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
+- [Google Cloud Tasks HTTP Target & OIDC Authentication](https://cloud.google.com/tasks/docs/creating-http-target-tasks#oidc) — referenced for the `CloudTasksJobDispatcher` and `OIDCWorkerAuthVerifier` contract.
+- [Google Cloud Firestore Transactions](https://cloud.google.com/firestore/docs/manage-data/transactions) — referenced for the `FirestoreJobStore` atomic deduplication, admission, and lease-claim contract.
