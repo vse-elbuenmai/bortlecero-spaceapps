@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -34,6 +36,23 @@ BENCHMARKS = (
 )
 
 
+def _resolve_commit_sha() -> str:
+    """Return the CI or local Git commit SHA, falling back to 'unknown'."""
+    env_sha = os.environ.get("GITHUB_SHA", "").strip()
+    if env_sha:
+        return env_sha
+    try:
+        sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        return sha or "unknown"
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
 def build_hosting(source: Path, destination: Path) -> str:
     """Build fresh output so obsolete or unrelated files cannot enter a release."""
     bundles = {
@@ -53,7 +72,11 @@ def build_hosting(source: Path, destination: Path) -> str:
 
         release = staged / "releases" / version
         release.mkdir(parents=True)
-        manifest = {"version": version, "bundles": {}}
+        manifest = {
+            "version": version,
+            "commit_sha": _resolve_commit_sha(),
+            "bundles": {},
+        }
         for target, bundle in bundles.items():
             path = release / f"{target}.json"
             path.write_bytes(bundle)

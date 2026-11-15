@@ -6,16 +6,16 @@ This guide explains how the Bortle Cero SPHEREx web viewer (`mockup/`) and inges
 
 | Component | Source | Live Staging URL / Resource | Hosting Mechanism |
 | :--- | :--- | :--- | :--- |
-| **Static Web Viewer** | `mockup/` + `scripts/build_hosting.py` | `https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html` | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`) |
-| **Ingestion API** | `src/spherex_ingest/` + `Dockerfile` | `https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` | Cloud Run (`spherex-ingest-staging`) |
+| **Static Web Viewer** | `mockup/` + `scripts/build_hosting.py` | `https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html` | Public GCS bucket (`gs://bortle-cero-nasa-staging-26-viewer`, automated on push to `main` by `.github/workflows/cd-deploy.yml`; Firebase Hosting via `firebase.json` optional) |
+| **Ingestion API** | `src/spherex_ingest/` + `Dockerfile` | `https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app` | Cloud Run (`spherex-ingest-staging`, publicly invokable via `allUsers` `roles/run.invoker` for demo; async queue `POST /api/v1/jobs`) |
 | **Bundle / Cache Store** | `src/spherex_ingest/result_storage.py` | `gs://bortle-cero-nasa-staging-26-spherex-bundles-staging` | Private versioned GCS bucket |
 | **Container Registry** | `.github/workflows/cd-deploy.yml` | `us-central1-docker.pkg.dev/bortle-cero-nasa-staging-26/spherex-ingest` | Artifact Registry (SHA-tagged) |
 
 ### Cost-Control Guardrails (Free-Tier Friendly)
 
 - **Region**: `us-central1` (eligible for Google Cloud Free Tier on Cloud Run and Cloud Storage).
-- **Zero idle compute**: Cloud Run uses `minScale: 0` and `maxScale: 2` (`deploy/cloud-run/service.yaml`), so idle instances cost `$0`.
-- **Live IRSA gate**: `SPHEREX_LEGACY_SYNC_ENABLED=false` by default in Cloud Run so public requests do not trigger unbounded IRSA downloads.
+- **Zero idle compute**: Cloud Run uses `minScale: 0`, `maxScale: 2`, and `run.googleapis.com/cpu-throttling: "false"` (`deploy/cloud-run/service.yaml`), so idle instances cost `$0` while background async worker threads are not throttled between poll requests.
+- **Public demo IAM & async ingestion**: `spherex-ingest-staging` is publicly invokable (`allUsers` `roles/run.invoker`, `GCP_REQUIRE_INVOKER_IAM=false` default in `cd-deploy.yml`) with synchronous ingestion disabled (`SPHEREX_LEGACY_SYNC_ENABLED=false`) and arbitrary coordinate queries served via the bounded async job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
 - **Bucket lifecycle**: `gs://bortle-cero-nasa-staging-26-spherex-bundles-staging` deletes noncurrent versions after 7 days (keeping up to 3 newer versions) and `queries/` objects after 30 days.
 - **Budget alert**: A `20 MXN` monthly budget alert (`50% / 90% / 100%`) is configured on `bortle-cero-nasa-staging-26`.
 
@@ -28,7 +28,7 @@ The static viewer in `mockup/` is packaged by `scripts/build_hosting.py` into `d
 ### When `mockup/` Changes
 
 1. **Added new static files?** Update `PUBLIC_FILES` in `scripts/build_hosting.py` so the new HTML/CSS/JS/image assets are included in `dist/hosting/`.
-2. **Updated benchmark bundles?** Regenerate bundles into `mockup/data/<target_id>/bundle.json` and run `scripts/build_hosting.py` to compute a new content-addressed `releases/<sha256>/` directory and `benchmark-manifest.json`.
+2. **Updated benchmark bundles?** Regenerate bundles into `mockup/data/<target_id>/bundle.json` and run `scripts/build_hosting.py` to compute a new content-addressed `releases/<sha256>/` directory and `benchmark-manifest.json` (which records `version`, `commit_sha`, and `bundles`).
 3. **Connecting to the Cloud Run backend:**
    - `mockup/viewer-config.json` controls `apiBaseUrl` and `liveQueries`.
    - Keep `liveQueries: false` until you intend to expose live coordinate queries publicly.
@@ -47,9 +47,19 @@ uv run python -m http.server 8765 --directory dist/hosting
 
 ### Publish to Google Cloud Storage
 
+Merging to `main` deploys the static viewer automatically via `.github/workflows/cd-deploy.yml` (`deploy-viewer`), setting `Cache-Control: public, max-age=31536000, immutable` on `releases/**` and `Cache-Control: no-cache` on mutable entrypoints and manifest (`index.html`, `*.js`, `*.css`, `*.json`, `sky/sky.json`). To publish manually:
+
 ```bash
 uv run python scripts/build_hosting.py
-gcloud storage cp -r dist/hosting/* gs://bortle-cero-nasa-staging-26-viewer/
+gcloud storage rsync --recursive --delete-unmatched-destination-objects dist/hosting gs://bortle-cero-nasa-staging-26-viewer
+gcloud storage objects update "gs://bortle-cero-nasa-staging-26-viewer/releases/**" --cache-control="public, max-age=31536000, immutable"
+gcloud storage objects update \
+  "gs://bortle-cero-nasa-staging-26-viewer/index.html" \
+  "gs://bortle-cero-nasa-staging-26-viewer/*.js" \
+  "gs://bortle-cero-nasa-staging-26-viewer/*.css" \
+  "gs://bortle-cero-nasa-staging-26-viewer/*.json" \
+  "gs://bortle-cero-nasa-staging-26-viewer/sky/sky.json" \
+  --cache-control="no-cache"
 ```
 
 Verify the live deployment:
@@ -59,7 +69,7 @@ curl -fsS -o /dev/null -w "%{http_code}\n" https://storage.googleapis.com/bortle
 curl -fsS https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/benchmark-manifest.json
 ```
 
-*(Optional: If Firebase Hosting is later enabled in the Firebase Console for `bortle-cero-nasa-staging-26`, you can deploy `dist/hosting/` with `firebase deploy --only hosting --project bortle-cero-nasa-staging-26` using `firebase.json`.)*
+*(Optional alternative: If Firebase Hosting is enabled for `bortle-cero-nasa-staging-26`, you can deploy `dist/hosting/` with `firebase deploy --only hosting --project bortle-cero-nasa-staging-26` using `firebase.json`.)*
 
 ---
 
@@ -71,7 +81,7 @@ Backend deployments to Cloud Run are automated via **keyless OIDC Workload Ident
 
 Every merge to `main` triggers `.github/workflows/cd-deploy.yml`:
 1. **Verify**: Runs `uv sync --frozen --extra dev`, `pytest`, and `ruff check`.
-2. **Deploy Static Viewer (`deploy-viewer`)**: Runs `scripts/build_hosting.py` and syncs `dist/hosting/` to `gs://bortle-cero-nasa-staging-26-viewer` (`GCP_VIEWER_BUCKET`, defaulting to `<GCP_PROJECT_ID>-viewer`), then verifies `index.html` (`200`) and `benchmark-manifest.json`.
+2. **Deploy Static Viewer (`deploy-viewer`)**: Runs `scripts/build_hosting.py`, syncs `dist/hosting/` to `gs://bortle-cero-nasa-staging-26-viewer` (`GCP_VIEWER_BUCKET`, defaulting to `<GCP_PROJECT_ID>-viewer`), sets `Cache-Control: public, max-age=31536000, immutable` on `releases/**` and `Cache-Control: no-cache` on entrypoints/manifest, and verifies `index.html` (`200`) and `benchmark-manifest.json`.
 3. **Build & Push**: Builds the `Dockerfile` and pushes a commit-SHA-tagged image to Artifact Registry.
 4. **Deploy (`deploy-or-promote`)**: Renders `deploy/cloud-run/service.yaml` with the exact `@sha256:...` digest, deploys `spherex-ingest-staging`, and verifies `/api/v1/health`, `/api/v1/benchmarks`, and the `/api/v1/blink` `503` gate (using `GCP_REQUIRE_INVOKER_IAM`, default `false` for public demo environments).
 
@@ -88,7 +98,7 @@ Every merge to `main` triggers `.github/workflows/cd-deploy.yml`:
 
 ### Manual Rollback or Promotion
 
-Use **GitHub Actions -> `CD / Build & Deploy Cloud Run` -> Run workflow** (`workflow_dispatch`):
+Use **GitHub Actions -> `CD / Cloud Run Keyless Delivery` -> Run workflow** (`workflow_dispatch`):
 - `action: promote` with a specific `image_digest` (`...@sha256:...`)
 - `action: rollback` with a known-good Cloud Run `revision` or `image_digest`
 

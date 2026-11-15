@@ -30,45 +30,47 @@ shared `D:\dev\lab\.venvs\astro` on Miguel's laptop). Any static server works fo
 
 ## Benchmark hosting
 
-Build the Firebase Hosting directory from the repository root.
+Stage the public static viewer directory from the repository root:
 
 ```sh
 uv run python scripts/build_hosting.py
-firebase emulators:start --only hosting --project demo-spherex
+uv run python -m http.server 8765 --directory dist/hosting
 ```
 
 The build copies an explicit list of public HTML, CSS, JavaScript, and sky maps into
-`dist/hosting`. `benchmark-manifest.json` maps the five targets to static bundles under
-`releases/<release SHA-256>/`. The release changes only when the content of at least one bundle
-changes. Firebase Hosting tells browsers to revalidate HTML, scripts, runtime configuration, sky
-assets and the manifest. Versioned bundles use `public, max-age=31536000, immutable`.
-The standalone Aladin page and its legacy data remain available in the local checkout.
+`dist/hosting`. `benchmark-manifest.json` records `version`, `commit_sha`, and the five `bundles`
+under `releases/<release SHA-256>/`. The release hash changes only when the content of at least one
+bundle changes. The standalone Aladin page and its legacy data remain available in the local
+checkout.
+
+In staging, the static viewer is hosted on the public GCS bucket
+`gs://bortle-cero-nasa-staging-26-viewer` (`https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/index.html`)
+and deployed automatically on every push to `main` by `.github/workflows/cd-deploy.yml`, setting
+`Cache-Control: no-cache` on mutable entrypoints and manifest (`index.html`, `*.js`, `*.css`,
+`*.json`, `sky/sky.json`) and `Cache-Control: public, max-age=31536000, immutable` on
+`releases/**`. Firebase Hosting via `firebase.json` (using `firebase emulators:start` or
+`firebase hosting:channel:deploy`) remains an optional alternative.
 
 On the public origin, the viewer opens benchmarks from the manifest and offers a benchmark-only
-status for other positions. Synchronous live queries are available for local development over
-HTTP on loopback addresses. To use them, start the API with
-`uv run spherex-ingest serve --host 127.0.0.1 --port 8000`, then set `liveQueries` to `true` and
-`apiBaseUrl` to `http://127.0.0.1:8000` in your local copy of `mockup/viewer-config.json`.
-The client accepts only a loopback HTTP API for this mode. Keep the committed capability disabled.
-Production coordinate queries depend on the asynchronous API and admission controls.
+status for other positions unless configured for live queries. For local development, start the API
+with `uv run spherex-ingest serve --host 127.0.0.1 --port 8000`, then set `liveQueries` to `true`
+and `apiBaseUrl` to `http://127.0.0.1:8000` in your local copy of `mockup/viewer-config.json` (keep
+the committed capability disabled when not targeting the public staging API). In staging,
+`spherex-ingest-staging` on Cloud Run (`https://spherex-ingest-staging-g7enhg3w4a-uc.a.run.app`) is
+publicly invokable (`allUsers` `roles/run.invoker`, `GCP_REQUIRE_INVOKER_IAM=false` default in
+`cd-deploy.yml`) for the NASA Space Apps demo, with synchronous ingestion disabled
+(`SPHEREX_LEGACY_SYNC_ENABLED=false`) and arbitrary coordinate queries served via the bounded async
+job queue (`POST /api/v1/jobs`, capped at 6 new jobs/min and 8 outstanding).
 
 Wait for all five bundles to pass the scientific validation in
-[issue #13](https://github.com/vse-elbuenmai/bortlecero-spaceapps/issues/13) before publishing a
-preview or production release. After approval, rebuild from the reviewed commit and use the
-Firebase CLI with the team's staging project. `STAGING_PROJECT_ID` below is a placeholder.
+[issue #13](https://github.com/vse-elbuenmai/bortlecero-spaceapps/issues/13) before approving a
+production release. Verify the live GCS deployment (or optional Firebase Hosting preview) at desktop
+and phone widths, checking all five modal views, the decoded first image, manifest paths, and
+`Cache-Control` headers:
 
 ```sh
-firebase hosting:channel:deploy benchmark-staging --project STAGING_PROJECT_ID --expires 1d
-```
-
-Open the resulting HTTPS preview at desktop and phone widths. Check all five modal views, the
-decoded first image and the manifest paths, and confirm no asset requests use HTTP and no requests
-go to the ingestion API. Check the cache headers on the preview with these commands, substituting
-the preview host and the manifest's release hash.
-
-```sh
-curl -I https://PREVIEW_HOST/benchmark-manifest.json
-curl -I https://PREVIEW_HOST/releases/RELEASE_HASH/barnards_star.json
+curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/benchmark-manifest.json
+curl -I https://storage.googleapis.com/bortle-cero-nasa-staging-26-viewer/releases/RELEASE_HASH/barnards_star.json
 ```
 
 Run the offline browser suite from the repository root with Node.js 22 and Playwright Chromium.

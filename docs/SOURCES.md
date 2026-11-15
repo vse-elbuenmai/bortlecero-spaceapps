@@ -79,17 +79,12 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [GitHub Actions Node.js setup](https://github.com/actions/setup-node) | MIT | Provisioning Node.js for browser CI | 2026-11-15 |
 | [Docker Official Image for Python](https://github.com/docker-library/python) | PSF-2.0 for Python | Digest-pinned CPython 3.14 base image for the ingestion service | 2026-11-15 |
 
-## Public ingestion operations
-
-- [Cloud Tasks queue limits and retries](https://docs.cloud.google.com/tasks/docs/configuring-queues).
-- [Google Cloud Free Tier and trial limits](https://docs.cloud.google.com/free/docs/free-cloud-features).
-- [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
-
 ## Deployment references
 
 | Source | Used for | Added |
 |---|---|---|
-| [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification, HTTP probes, and bounded scratch volume | 2026-11-15 |
+| [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [CPU allocation](https://docs.cloud.google.com/run/docs/configuring/cpu-allocation), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification (`cpu-throttling: "false"`), HTTP probes, and bounded scratch volume | 2026-11-15 |
+| [Cloud Storage object metadata and `Cache-Control`](https://docs.cloud.google.com/storage/docs/metadata#cache-control) | Setting `no-cache` on mutable viewer entrypoints/manifest and `immutable` on `releases/**` in `cd-deploy.yml` | 2026-11-15 |
 | [Astral uv Docker guide](https://docs.astral.sh/uv/guides/integration/docker/) | Multi-stage container build with locked runtime dependencies | 2026-11-15 |
 | [`google-github-actions/auth`](https://github.com/google-github-actions/auth) | Keyless OIDC/Workload Identity Federation authentication from GitHub Actions to Google Cloud | 2026-11-15 |
 | [Google Cloud Workload Identity Federation with GitHub Actions](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines) | Least-privilege OIDC pool/provider attribute mapping and repository conditions | 2026-11-15 |
