@@ -108,7 +108,7 @@ Every merge to `main` triggers `.github/workflows/cd-deploy.yml`:
 Use **GitHub Actions -> `CD / Cloud Run Keyless Delivery` -> Run workflow** (`workflow_dispatch`):
 - `action: promote` with a specific `image_digest` (`...@sha256:...`)
 - `action: rollback` with a known-good API `revision` and, when needed, the compatible `worker_revision`.
-- For `promote` or an image-based `rollback`, supply `image_digest` and the image's original full Git `code_sha`.
+- For `promote` or an image-based `rollback`, supply `image_digest` and the image's original full Git `code_sha`. A manual `deploy` also accepts these inputs to reuse a previously built backend image when retrying delivery.
 
 See [OPERATIONS-RUNBOOK.md](OPERATIONS-RUNBOOK.md) for full incident and rollback procedures.
 

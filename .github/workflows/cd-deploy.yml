@@ -22,7 +22,7 @@ on:
           - rollback
         default: deploy
       image_digest:
-        description: "Full Artifact Registry image@sha256:... (required for promote; optional for rollback)"
+        description: "Full immutable image digest to reuse (required for promote)"
         type: string
         required: false
         default: ""
@@ -66,7 +66,7 @@ jobs:
   build-and-push:
     name: "Build & Push (SHA-tagged image)"
     needs: verify
-    if: ${{ github.event_name == 'push' || (github.event.inputs.action || 'deploy') == 'deploy' }}
+    if: ${{ github.event_name == 'push' || ((github.event.inputs.action || 'deploy') == 'deploy' && github.event.inputs.image_digest == '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ github.event.inputs.environment || 'staging' }}
@@ -125,7 +125,7 @@ jobs:
           INPUT_DIGEST: ${{ github.event.inputs.image_digest }}
           INPUT_CODE_SHA: ${{ github.event.inputs.code_sha }}
         run: |
-          if [ "${ACTION}" = "deploy" ]; then
+          if [[ "${ACTION}" == "deploy" && -z "${INPUT_DIGEST}" ]]; then
             echo "digest=${BUILT_DIGEST}" >> "${GITHUB_OUTPUT}"
             echo "code_sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
           else

@@ -54,8 +54,13 @@ curl -fsS --max-time 45 -H "Authorization: Bearer ${worker_token}" "${WORKER_URL
 
 # An authenticated delivery to a nonexistent ID verifies IAM, OIDC and the Firestore connection.
 # It submits no ingestion and contacts no upstream archive.
-task_token="$(gcloud auth print-identity-token \
-  --impersonate-service-account="${TASKS_SA}" --audiences="${WORKER_URL}" --include-email)"
+deploy_access_token="$(gcloud auth print-access-token)"
+task_token="$(curl -fsS --max-time 20 \
+  -H "Authorization: Bearer ${deploy_access_token}" -H "Content-Type: application/json" \
+  --data "{\"audience\":\"${WORKER_URL}\",\"includeEmail\":true}" \
+  "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${TASKS_SA}:generateIdToken" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+unset deploy_access_token
 probe_status="$(curl -sS --max-time 45 -o "${rendered}" -w '%{http_code}' \
   -H "Authorization: Bearer ${task_token}" \
   -H "X-CloudTasks-TaskName: deployment-probe" -H "Content-Type: application/json" \
