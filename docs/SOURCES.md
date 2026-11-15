@@ -100,3 +100,9 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 - [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
 - [Google Cloud Tasks HTTP Target & OIDC Authentication](https://cloud.google.com/tasks/docs/creating-http-target-tasks#oidc) — referenced for the `CloudTasksJobDispatcher` and `OIDCWorkerAuthVerifier` contract.
 - [Google Cloud Firestore Transactions](https://cloud.google.com/firestore/docs/manage-data/transactions) — referenced for the `FirestoreJobStore` atomic deduplication, admission, and lease-claim contract.
+- [Cloud Tasks to private Cloud Run services](https://docs.cloud.google.com/run/docs/triggering/using-tasks).
+- [Cloud Run billing settings](https://docs.cloud.google.com/run/docs/configuring/billing-settings) and [Cloud Run pricing](https://cloud.google.com/run/pricing).
+- [Cloud Run IAM access control](https://docs.cloud.google.com/run/docs/securing/managing-access), [deterministic service URLs](https://docs.cloud.google.com/run/docs/triggering/https-request), and [service configuration YAML](https://docs.cloud.google.com/run/docs/reference/yaml/v1).
+- [Firestore TTL policies](https://docs.cloud.google.com/firestore/docs/ttl) and [Firestore pricing](https://cloud.google.com/firestore/pricing).
+- [Cloud Billing budgets and alerts](https://docs.cloud.google.com/billing/docs/how-to/budgets).
+- [IAM Credentials generateIdToken](https://docs.cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken) for the deployment probe.

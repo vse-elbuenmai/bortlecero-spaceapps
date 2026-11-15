@@ -733,6 +733,9 @@
   const messages = {
     "live-disabled": "Live SPHEREx IRSA queries are currently disabled in the viewer configuration.",
     "no-observations": "No SPHEREx observations cover this position in the requested collections.",
+    "job-lost": "This search is no longer available. Search again to reload the frames.",
+    "upstream-unavailable": "The SPHEREx archive is temporarily unavailable. Please try again later.",
+    "search-timeout": "This search is taking longer than expected. Search again to check for frames.",
     unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
   };
   let targetRequest;
@@ -823,7 +826,10 @@
     $("loading").hidden = true;
 
     if (result.status !== "ready") {
-      setTargetStatus(messages[result.status] || messages.unavailable);
+      const message = result.status === "queue-busy"
+        ? `The search queue is busy. Try again in ${result.retryAfter} seconds.`
+        : messages[result.status] || messages.unavailable;
+      setTargetStatus(message);
       document.dispatchEvent(new CustomEvent("viewer:ready", { detail: { status: result.status } }));
       return;
     }

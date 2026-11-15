@@ -6,7 +6,10 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
+from functools import lru_cache
 from typing import Any
+
+from google.api_core.exceptions import AlreadyExists
 
 from spherex_ingest.domain.jobs import JobRecord, WorkerExecutionResult, WorkerTaskPayload
 
@@ -84,6 +87,7 @@ class CloudTasksJobDispatcher:
         self._tasks_client = tasks_client
 
     @classmethod
+    @lru_cache(maxsize=4)
     def from_environment(
         cls,
         *,
@@ -124,6 +128,7 @@ class CloudTasksJobDispatcher:
         ).model_dump_json()
 
         task: dict[str, Any] = {
+            "name": f"{self.queue_path}/tasks/{job.job_id}",
             "http_request": {
                 "http_method": "POST",
                 "url": self.worker_url,
@@ -136,8 +141,11 @@ class CloudTasksJobDispatcher:
             },
             "dispatch_deadline": {"seconds": self.dispatch_deadline_seconds},
         }
-        # Support both real CloudTasksClient and simple fake clients in tests.
-        self._client().create_task(parent=self.queue_path, task=task)
+        try:
+            self._client().create_task(parent=self.queue_path, task=task)
+        except AlreadyExists:
+            # A prior submission may have succeeded before its response was lost.
+            return
         logger.info(
             "Enqueued Cloud Task for job_id=%s correlation_id=%s",
             job.job_id,

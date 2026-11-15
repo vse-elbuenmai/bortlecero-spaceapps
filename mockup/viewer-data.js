@@ -160,6 +160,55 @@
     return bundle.frames_chronological.length ? { status: "ready", bundle } : { status: "no-observations" };
   }
 
+  const pollLimitMs = 5 * 60 * 1000;
+  const retryDelaysMs = local ? [100, 200] : [1000, 2000];
+
+  function jobFailure(code) {
+    const status = {
+      no_observations: "no-observations",
+      upstream_unavailable: "upstream-unavailable",
+      job_not_found: "job-lost",
+      job_expired: "job-lost",
+      timeout: "search-timeout",
+    }[code];
+    return { status: status || "unavailable" };
+  }
+
+  function retryAfterSeconds(response) {
+    const value = response.headers.get("Retry-After");
+    if (!value) return 30;
+    if (/^\d+$/.test(value)) return Math.max(1, Number(value));
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(1, Math.ceil((date - Date.now()) / 1000)) : 30;
+  }
+
+  // Retrying a read never submits a second ingestion job.
+  async function readJob(url, signal, timeout) {
+    for (const delay of [...retryDelaysMs, null]) {
+      try {
+        const response = await fetchData(url, signal, timeout);
+        const retryable = response.status === 404 || response.status === 429 || response.status >= 500;
+        if (!retryable || delay === null) return response;
+        const wait = response.status === 429 ? retryAfterSeconds(response) * 1000 : delay;
+        // A longer Retry-After belongs in the status message.
+        if (wait > 10000) return response;
+        await waitMs(wait, signal);
+      } catch (error) {
+        if (signal.aborted || delay === null) throw error;
+        await waitMs(delay, signal);
+      }
+    }
+  }
+
+  async function readJobFailure(response) {
+    if (response.status === 429) {
+      return { status: "queue-busy", retryAfter: retryAfterSeconds(response) };
+    }
+    if (response.status === 404 || response.status === 410) return { status: "job-lost" };
+    const { detail } = await response.json().catch(() => ({}));
+    return jobFailure(detail?.code);
+  }
+
   // onProgress hears each phase the server reports: submitting, queued, running, result.
   async function runAsyncJob(baseHref, payload, fallbackFn, signal, onProgress = () => {}) {
     onProgress({ phase: "submitting" });
@@ -173,59 +222,60 @@
         body: JSON.stringify(payload),
       },
     );
-    if (jobResp.status === 404 || jobResp.status === 405) {
+    if (local && (jobResp.status === 404 || jobResp.status === 405)) {
       onProgress({ phase: "running" });
       return fallbackFn();
     }
-    if (jobResp.status === 422) {
+    if (jobResp.status === 429) return readJobFailure(jobResp);
+    if (!jobResp.ok) {
       const { detail } = await jobResp.json().catch(() => ({}));
-      return { status: detail?.code === "no_observations" ? "no-observations" : "unavailable" };
+      return jobFailure(detail?.code);
     }
-    if (!jobResp.ok) return { status: "unavailable" };
 
     let job = await jobResp.json();
     onProgress({ phase: job.status, cached: job.cached === true });
+    const deadline = AbortSignal.timeout(pollLimitMs);
+    const readSignal = AbortSignal.any([signal, deadline]);
     const pollIntervalMs = local ? 150 : 1500;
-    while (job.status === "queued" || job.status === "running") {
-      if (!job.job_id) return { status: "unavailable" };
-      await waitMs(pollIntervalMs, signal);
-      const pollResp = await fetchData(
-        new URL(`api/v1/jobs/${encodeURIComponent(job.job_id)}`, baseHref),
-        signal,
-        15000,
-      );
-      if (!pollResp.ok) return { status: "unavailable" };
-      job = await pollResp.json();
-      onProgress({ phase: job.status });
-    }
-
-    if (job.status === "succeeded") {
-      onProgress({ phase: "result" });
-      let bundle = job.result && Array.isArray(job.result.frames_chronological) ? job.result : null;
-      if (!bundle) {
+    try {
+      while (job.status === "queued" || job.status === "running") {
         if (!job.job_id) return { status: "unavailable" };
-        const resultResp = await fetchData(
-          new URL(`api/v1/jobs/${encodeURIComponent(job.job_id)}/result`, baseHref),
-          signal,
-          30000,
+        await waitMs(pollIntervalMs, readSignal);
+        const pollResp = await readJob(
+          new URL(`api/v1/jobs/${encodeURIComponent(job.job_id)}`, baseHref),
+          readSignal, 15000,
         );
-        if (resultResp.status === 422) {
-          const { detail } = await resultResp.json().catch(() => ({}));
-          return { status: detail?.code === "no_observations" ? "no-observations" : "unavailable" };
-        }
-        if (!resultResp.ok) return { status: "unavailable" };
-        bundle = await resultResp.json();
+        if (!pollResp.ok) return await readJobFailure(pollResp);
+        job = await pollResp.json();
+        onProgress({ phase: job.status });
       }
-      if (!bundle || !Array.isArray(bundle.frames_chronological)) return { status: "unavailable" };
-      return bundle.frames_chronological.length
-        ? { status: "ready", bundle, cached: job.cached === true }
-        : { status: "no-observations" };
-    }
 
-    if (job.status === "failed") {
-      return { status: job.error_code === "no_observations" ? "no-observations" : "unavailable" };
+      if (job.status === "succeeded") {
+        onProgress({ phase: "result" });
+        let bundle = job.result && Array.isArray(job.result.frames_chronological) ? job.result : null;
+        if (!bundle) {
+          if (!job.job_id) return { status: "unavailable" };
+          const resultResp = await readJob(
+            new URL(`api/v1/jobs/${encodeURIComponent(job.job_id)}/result`, baseHref),
+            readSignal, 30000,
+          );
+          if (!resultResp.ok) return await readJobFailure(resultResp);
+          bundle = await resultResp.json();
+        }
+        if (!bundle || !Array.isArray(bundle.frames_chronological)) return { status: "unavailable" };
+        return bundle.frames_chronological.length
+          ? { status: "ready", bundle, cached: job.cached === true }
+          : { status: "no-observations" };
+      }
+
+      if (job.status === "failed" || job.status === "expired") {
+        return jobFailure(job.error_code || (job.status === "expired" ? "job_expired" : ""));
+      }
+      return { status: "unavailable" };
+    } catch (error) {
+      if (deadline.aborted && !signal.aborted) return { status: "search-timeout" };
+      throw error;
     }
-    return { status: "unavailable" };
   }
 
   async function loadBundle(payload, fallbackFn, signal, onProgress) {
