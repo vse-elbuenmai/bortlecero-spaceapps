@@ -164,6 +164,7 @@ jobs:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION }}
           DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          REQUIRE_INVOKER_IAM: ${{ vars.GCP_REQUIRE_INVOKER_IAM || 'false' }}
         run: |
           SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
             --project "${PROJECT_ID}" \
@@ -174,8 +175,12 @@ jobs:
             --audiences="${SERVICE_URL}")
 
           UNAUTH_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${SERVICE_URL}/api/v1/health")
-          echo "Unauthenticated /api/v1/health -> HTTP ${UNAUTH_CODE}"
-          echo "${UNAUTH_CODE}" | grep -qE "^(401|403)$"
+          echo "Unauthenticated /api/v1/health -> HTTP ${UNAUTH_CODE} (require_invoker_iam=${REQUIRE_INVOKER_IAM})"
+          if [ "${REQUIRE_INVOKER_IAM}" = "true" ]; then
+            echo "${UNAUTH_CODE}" | grep -qE "^(401|403)$"
+          else
+            test "${UNAUTH_CODE}" = "200"
+          fi
 
           curl -fsS -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/api/v1/health" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['status']=='ok' and d.get('revision') and d['legacy_sync_enabled'] is False, d; print('Health OK:', d['revision'])"
@@ -186,6 +191,50 @@ jobs:
           GATE_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/api/v1/blink?ra=331&dec=-56")
           echo "Live-query gate -> HTTP ${GATE_CODE}"
           test "${GATE_CODE}" = "503"
+
+  deploy-viewer:
+    name: "Deploy Static Viewer (GCS)"
+    needs: verify
+    if: ${{ github.event_name == 'push' || (github.event.inputs.action || 'deploy') == 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Stage static viewer release
+        run: python3 scripts/build_hosting.py
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Sync static viewer to GCS bucket
+        env:
+          VIEWER_BUCKET: ${{ vars.GCP_VIEWER_BUCKET || format('{0}-viewer', vars.GCP_PROJECT_ID) }}
+        run: |
+          gcloud storage rsync \
+            --recursive \
+            --delete-unmatched-destination-objects \
+            dist/hosting "gs://${VIEWER_BUCKET}"
+
+      - name: Verify live public static viewer
+        env:
+          VIEWER_BUCKET: ${{ vars.GCP_VIEWER_BUCKET || format('{0}-viewer', vars.GCP_PROJECT_ID) }}
+        run: |
+          VIEWER_URL="https://storage.googleapis.com/${VIEWER_BUCKET}"
+          HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "${VIEWER_URL}/index.html")
+          echo "Public viewer index.html -> HTTP ${HTTP_CODE}"
+          test "${HTTP_CODE}" = "200"
+
+          curl -fsS "${VIEWER_URL}/benchmark-manifest.json" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('version') and len(d.get('bundles', {}))==5, d; print('Viewer manifest OK:', d['version'][:12])"
 
   rollback:
     name: "Rollback Cloud Run Service"

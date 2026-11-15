@@ -71,8 +71,9 @@ Backend deployments to Cloud Run are automated via **keyless OIDC Workload Ident
 
 Every merge to `main` triggers `.github/workflows/cd-deploy.yml`:
 1. **Verify**: Runs `uv sync --frozen --extra dev`, `pytest`, and `ruff check`.
-2. **Build & Push**: Builds the `Dockerfile` and pushes a commit-SHA-tagged image to Artifact Registry.
-3. **Deploy**: Renders `deploy/cloud-run/service.yaml` with the exact `@sha256:...` digest and deploys `spherex-ingest-staging`.
+2. **Deploy Static Viewer (`deploy-viewer`)**: Runs `scripts/build_hosting.py` and syncs `dist/hosting/` to `gs://bortle-cero-nasa-staging-26-viewer` (`GCP_VIEWER_BUCKET`, defaulting to `<GCP_PROJECT_ID>-viewer`), then verifies `index.html` (`200`) and `benchmark-manifest.json`.
+3. **Build & Push**: Builds the `Dockerfile` and pushes a commit-SHA-tagged image to Artifact Registry.
+4. **Deploy (`deploy-or-promote`)**: Renders `deploy/cloud-run/service.yaml` with the exact `@sha256:...` digest, deploys `spherex-ingest-staging`, and verifies `/api/v1/health`, `/api/v1/benchmarks`, and the `/api/v1/blink` `503` gate (using `GCP_REQUIRE_INVOKER_IAM`, default `false` for public demo environments).
 
 ### When the Backend Changes
 
