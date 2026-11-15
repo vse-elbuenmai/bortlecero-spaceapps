@@ -37,39 +37,37 @@ class ZodiAndFlagCleaner:
 
         clean_image = image - zodi
 
-        overflow_flagged = (flags & SPHERExFlagBits.saturation_mask()) != 0
         finite_mask = np.isfinite(clean_image)
         is_transient = (flags & (SPHERExFlagBits.TRANSIENT | SPHERExFlagBits.SNOWBALL)) != 0
 
-        has_saturation = bool(np.any(overflow_flagged) or np.any(~finite_mask))
+        # A dead pixel (NONFUNC) is NaN and also carries OVERFLOW and SUR_ERROR. It is a
+        # detector defect, not a saturated star, so it never counts as saturation.
+        dead_pixel = (flags & SPHERExFlagBits.NONFUNC) != 0
 
-        if np.any(finite_mask):
-            p95 = float(np.nanpercentile(clean_image[finite_mask], 95.0))
-            med = float(np.nanmedian(clean_image[finite_mask]))
-            mad = float(np.nanmedian(np.abs(clean_image[finite_mask] - med)))
-            high_flux_thresh = max(p95, med + 10.0 * max(mad * 1.4826, 1e-3))
-            high_flux_seed = overflow_flagged | (
-                finite_mask & (~is_transient) & (clean_image >= high_flux_thresh)
-            )
-        else:
-            high_flux_seed = overflow_flagged
+        # Pixels the archive itself marks as part of a saturated or near-saturated star
+        # (OVERFLOW, NONLINEAR, BLOOM). Saturation is read from these flags, never guessed
+        # from brightness: a faint target shares its cutout with bright field stars.
+        star_flagged = ((flags & SPHERExFlagBits.saturation_mask()) != 0) & (~dead_pixel)
+        overflow_flagged = ((flags & SPHERExFlagBits.OVERFLOW) != 0) & (~dead_pixel)
 
-        dilated_halo = binary_dilation(high_flux_seed, iterations=2)
-        nan_core_adjacent = (~finite_mask) & dilated_halo
+        # Saturated pixels: over the full-well limit, or the NaN core on or next to them.
+        nan_core = (~finite_mask) & (~dead_pixel) & binary_dilation(star_flagged, iterations=1)
+        saturation_mask = overflow_flagged | nan_core
 
-        if has_saturation:
-            saturation_mask = (
-                overflow_flagged | nan_core_adjacent | dilated_halo
-            ) & (~is_transient)
-        else:
-            saturation_mask = overflow_flagged | nan_core_adjacent
+        # On real saturated stars the on-board jump detector also sets TRANSIENT, and often
+        # SUR_ERROR, on the bloom ring around the core. Those pixels hold valid stellar flux
+        # (hundreds to thousands of MJy/sr), so every star-flagged pixel keeps its value even
+        # when it also carries a defect bit. Around the star, other defect bits are trusted
+        # as cosmic rays only when the pixel is a TRANSIENT with no saturation bit of its own.
+        # The bright wings reach a few pixels beyond the flagged ring, hence the margin.
+        star_footprint = binary_dilation(star_flagged, iterations=4)
+        protected_pixels = saturation_mask | star_flagged | (star_footprint & (~is_transient))
 
         raw_bad_mask = (flags & SPHERExFlagBits.bad_artifact_mask()) != 0
-        protected_pixels = saturation_mask | (dilated_halo & (~is_transient))
         bad_pixel_mask = raw_bad_mask & (~protected_pixels)
 
         residual_bg = 0.0
-        valid_bg_mask = finite_mask & (~saturation_mask) & (~bad_pixel_mask)
+        valid_bg_mask = finite_mask & (~star_footprint) & (~saturation_mask) & (~bad_pixel_mask)
         if self._subtract_residual_bg and np.count_nonzero(valid_bg_mask) >= 9:
             _, median_bg, _ = sigma_clipped_stats(
                 clean_image[valid_bg_mask],

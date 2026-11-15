@@ -598,25 +598,33 @@
   }
 
   // ---------- target loader ----------
+  const messages = {
+    "benchmark-only": "Only the five prepared benchmark targets are available. Choose a benchmark to see its SPHEREx frames.",
+    "no-observations": "No SPHEREx observations cover this position in the requested collections.",
+    unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
+  };
+  let targetRequest;
+  function setTargetStatus(message) {
+    const status = $("modal-empty");
+    if (!status) return;
+    status.hidden = !message;
+    $("modal-empty-msg").textContent = message || "";
+    $("open-barnard").hidden = message === "Loading SPHEREx frames…";
+  }
+
   async function loadTarget(targetInput) {
     let targetId = null;
-    let ra = null, dec = null, name = null;
+    let ra = null, dec = null;
 
     if (typeof targetInput === "string") {
       const lower = targetInput.trim().toLowerCase();
-      targetId = BENCHMARK_MAP[lower] || lower;
+      targetId = Object.hasOwn(BENCHMARK_MAP, lower) ? BENCHMARK_MAP[lower] : null;
     } else if (targetInput && typeof targetInput === "object") {
-      name = targetInput.name;
-      ra = targetInput.ra ?? targetInput.ra_deg;
-      dec = targetInput.dec ?? targetInput.dec_deg;
+      ra = targetInput.ra ?? targetInput.ra_deg ?? null;
+      dec = targetInput.dec ?? targetInput.dec_deg ?? null;
 
-      if (targetInput.target_id) {
-        targetId = BENCHMARK_MAP[targetInput.target_id.toLowerCase()] || targetInput.target_id;
-      } else if (targetInput.key) {
-        targetId = BENCHMARK_MAP[targetInput.key.toLowerCase()] || targetInput.key;
-      } else if (name) {
-        targetId = BENCHMARK_MAP[name.toLowerCase()] || null;
-      }
+      const key = (targetInput.target_id || targetInput.key || targetInput.name)?.toLowerCase();
+      if (Object.hasOwn(BENCHMARK_MAP, key)) targetId = BENCHMARK_MAP[key];
 
       if (!targetId && ra !== null && dec !== null) {
         const found = BENCHMARK_COORDS.find(
@@ -626,56 +634,32 @@
       }
     }
 
+    targetRequest?.abort();
+    const { signal } = (targetRequest = new AbortController());
+    setPlaying(false);
+    state.bundle = null;
+    const help = document.querySelector(".modal-how");
+    if (help) help.hidden = true;
+    if ($("modal-empty")) {
+      $("viewer").hidden = true;
+      setTargetStatus("Loading SPHEREx frames…");
+    }
     $("loading").hidden = false;
-    $("loading").querySelector("p").textContent = `Loading frames for ${name || targetId || "target"}…`;
-
-    let bundle = null;
-
-    // Candidate URL sources in order of priority:
-    // 1. Live FastAPI service
-    // 2. Static precomputed bundle in data/<target_id>/bundle.json
-    // 3. Fallback data/barnard/frames.json
-    const candidates = [];
-    if (targetId) {
-      candidates.push(`http://localhost:8000/api/v1/blink/${targetId}`);
-      candidates.push(`data/${targetId}/bundle.json`);
-    } else if (ra !== null && dec !== null) {
-      candidates.push(`http://localhost:8000/api/v1/blink?ra=${ra}&dec=${dec}&size_arcsec=180`);
+    let result;
+    try {
+      result = await window.viewerData.load({ targetId, ra, dec }, signal);
+    } catch (error) {
+      if (signal.aborted) return;
+      throw error;
     }
-    if (targetId === "barnards_star") {
-      candidates.push("data/barnard/frames.json");
-    }
-
-    for (const url of candidates) {
-      try {
-        const resp = await fetch(url, { signal: AbortSignal.timeout(3500) });
-        if (resp.ok) {
-          const raw = await resp.json();
-          bundle = normalizeBundle(raw);
-          break;
-        }
-      } catch {
-        // try next candidate
-      }
-    }
-
+    if (signal.aborted) return;
     $("loading").hidden = true;
 
-    if (!bundle || !bundle.frames_chronological || bundle.frames_chronological.length === 0) {
-      // Show empty state
-      $("viewer").hidden = true;
-      $("modal-empty").hidden = false;
-      $("modal-title").textContent = name || (targetId ? targetId.replace(/_/g, " ") : "Your position");
-      $("modal-coords").textContent = ra !== null && dec !== null
-        ? `${fmtDeg(ra, 4)}, ${fmtDeg(dec, 4)}`
-        : "";
-      const emptyMsg = $("modal-empty-msg");
-      if (emptyMsg) {
-        emptyMsg.textContent =
-          "No precomputed SPHEREx frames available for this target. Start the local ingestion service to process on the fly: uv run spherex-ingest serve --host 0.0.0.0 --port 8000";
-      }
+    if (result.status !== "ready") {
+      setTargetStatus(messages[result.status] || messages.unavailable);
       return;
     }
+    const bundle = normalizeBundle(result.bundle);
 
     // Set bundle into viewer
     state.bundle = bundle;
@@ -689,14 +673,16 @@
     state.cx = (grid.width_px || grid.size_px || 31) / 2;
     state.cy = (grid.height_px || grid.size_px || 31) / 2;
 
-    $("modal-empty").hidden = true;
-    $("viewer").hidden = false;
-    document.querySelector(".modal-how").hidden = false;
+    setTargetStatus("");
+    if ($("modal-empty")) $("viewer").hidden = false;
+    if (help) help.hidden = false;
 
     // Header & metadata
-    $("modal-title").textContent = bundle.target.name;
     const tgt = bundle.target;
-    $("modal-coords").textContent = `Gaia DR3 (${tgt.ref_epoch_jyear?.toFixed(1) || "2016.0"}) ${tgt.ra_deg.toFixed(4)}°, ${fmtDeg(tgt.dec_deg)} · FOV ${((grid.width_px || 31) * (grid.pixel_scale_arcsec || 6.15) / 60).toFixed(1)}′`;
+    if ($("modal-title")) {
+      $("modal-title").textContent = tgt.name;
+      $("modal-coords").textContent = `Gaia DR3 (${tgt.ref_epoch_jyear?.toFixed(1) || "2016.0"}) ${tgt.ra_deg.toFixed(4)}°, ${fmtDeg(tgt.dec_deg)} · FOV ${((grid.width_px || 31) * (grid.pixel_scale_arcsec || 6.15) / 60).toFixed(1)}′`;
+    }
     $("obj-name").textContent = bundle.target.name;
     $("obj-coords").textContent = `RA ${tgt.ra_deg.toFixed(4)}°, Dec ${fmtDeg(tgt.dec_deg)}`;
 
@@ -708,7 +694,7 @@
     show(0);
     layout();
 
-    if (!reduceMotion) setPlaying(true);
+    if (!reduceMotion && !$("viewer").hidden) setPlaying(true);
   }
 
   // ---------- events ----------
@@ -815,7 +801,10 @@
     if (!reduceMotion && !state.diffMode) setPlaying(true);
   });
 
-  document.addEventListener("viewer:close", () => setPlaying(false));
+  document.addEventListener("viewer:close", () => {
+    if ($("viewer-modal")) targetRequest?.abort();
+    setPlaying(false);
+  });
 
   document.addEventListener("viewer:load-target", (e) => {
     if (e.detail) loadTarget(e.detail);
@@ -830,6 +819,6 @@
   window.loadTarget = loadTarget;
   window.viewerState = state;
 
-  // Initial load: Barnard's Star bundle
-  loadTarget("barnards_star");
+  // The legacy Aladin page opens its inline Barnard viewer without a target event.
+  if (!$("viewer-modal")) loadTarget("barnards_star");
 })();

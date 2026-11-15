@@ -16,8 +16,8 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | Source | Used for | Added |
 |---|---|---|
 | [SPHEREx at the NASA/IPAC Infrared Science Archive (IRSA)](https://irsa.ipac.caltech.edu/Missions/spherex.html), including the [SPHEREx Explanatory Supplement](https://irsa.ipac.caltech.edu/data/SPHEREx/docs/SPHEREx_Expsupp.pdf), [archive user guide](https://caltech-ipac.github.io/spherex-archive-documentation/), SIAv2 (`https://irsa.ipac.caltech.edu/SIA`), and Cutout Service (`spherex_dr1`, `spherex_qr3`, `spherex_dr1_deep`, `spherex_qr3_deep`) | Live querying and retrieval of SPHEREx Level 2b calibrated spectral image Multi-Extension FITS cutouts (`IMAGE`, `FLAGS`, `VARIANCE`, `ZODI`, `EPSF`, `WCS-WAVE`). | 2026-11-14 |
-| SPHEREx **DR1** Spectral Images, NASA/IPAC IRSA, [doi:10.26131/IRSA678](https://doi.org/10.26131/IRSA678) (collection `spherex_dr1`) | Two cutouts of Barnard's Star (2025-08-25 and 2026-03-19, detector 6) in the mockup, `mockup/data/barnard/` | 2026-11-14 |
-| SPHEREx **QR3** Spectral Images, NASA/IPAC IRSA (collection `spherex_qr3`). DOI still to be looked up. | One cutout of Barnard's Star (2026-08-19, detector 6) in the mockup | 2026-11-14 |
+| SPHEREx **DR1** Spectral Images, NASA/IPAC IRSA, [doi:10.26131/IRSA678](https://doi.org/10.26131/IRSA678) (collection `spherex_dr1`) | Two cutouts of Barnard's Star (2025-08-25 and 2026-03-19, detector 6) in the mockup, `mockup/data/barnard/`. One cutout of Epsilon Indi B (2025-04-24, detector 2; `IMAGE`, `FLAGS` and `ZODI` planes only, 29 × 29 px) kept as a regression-test fixture in `tests/data/real_cutouts.npz`, with its provenance in `tests/data/real_cutouts.json` | 2026-11-14, 2026-11-15 |
+| SPHEREx **QR3** Spectral Images, NASA/IPAC IRSA (collection `spherex_qr3`). DOI still to be looked up. | One cutout of Barnard's Star (2026-08-19, detector 6) in the mockup. One cutout of Barnard's Star (2026-08-18, detector 3; `IMAGE`, `FLAGS` and `ZODI` planes only, 29 × 29 px) kept as a regression-test fixture in `tests/data/real_cutouts.npz` | 2026-11-14, 2026-11-15 |
 | [IRSA tutorials for SPHEREx](https://caltech-ipac.github.io/irsa-tutorials/) (`spherex_intro`, `spherex_cutouts`), Caltech/IPAC, BSD-3-Clause | The query, cutout URL and wavelength-at-a-pixel recipe (`WCS(..., key="W")`) used in `mockup/prepare_barnard.py`. Recipe followed, no notebook copied as-is. | 2026-11-14 |
 | SPHEREx DR1 all-sky data cube for visualization (HiPS, `ivo://IPAC/P/SPHEREx/DR1/cube`), SPHEREx Science Data Center, served by IRSA at `irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube` | The two SPHEREx sky layers of the mockup, frames 95, 55 and 10: order-1 tiles turned into all-sky maps by `mockup/prepare_sky.py` (`mockup/sky/spherex-*.webp`); the same frames are streamed by plan B (`mockup/aladin.html`) | 2026-11-14 |
 | [Deep Star Maps 2020](https://svs.gsfc.nasa.gov/4851), NASA/Goddard Space Flight Center Scientific Visualization Studio (Ernie Wright), `starmap_2020_4k.exr`. Gaia DR2: ESA/Gaia/DPAC. | The "Visible light" layer of the sky view: tone-mapped (asinh) and converted by `mockup/prepare_sky.py` into `mockup/sky/visible_*.webp`. A drawing from the Hipparcos-2, Tycho-2 and Gaia DR2 catalogues, not a photograph. | 2026-11-14 |
@@ -47,6 +47,9 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | Source | Used for | Added |
 |---|---|---|
 | [The full sky in the ultraviolet](https://menard.pha.jhu.edu/uvmap/), Brice Ménard (2026), its "inside" view | The approach of the sky view: one panorama of the whole sky painted inside a sphere with plain WebGL. Only the approach, seen by using the page: no code, images or data taken. | 2026-11-14 |
+| [Cloud Storage generation preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions) and [object lifecycle management](https://docs.cloud.google.com/storage/docs/lifecycle) | Atomic manifest publication and retention for private live-query results. | 2026-11-15 |
+| [Python temporary files](https://docs.python.org/3/library/tempfile.html#tempfile.NamedTemporaryFile) and [atomic replacement](https://docs.python.org/3/library/os.html#os.replace) | Publish validated cache entries and self-contained local exports from temporary sibling files. | 2026-11-15 |
+| [IAU FITS Standard](https://fits.gsfc.nasa.gov/fits_standard.html) and [Astropy FITS file handling](https://docs.astropy.org/en/stable/io/fits/api/files.html) | Validate FITS block alignment and the last HDU's byte extent before caching a cutout. | 2026-11-15 |
 
 ## Software and libraries
 
@@ -54,6 +57,8 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 |---|---|---|---|
 | [Space Grotesk](https://github.com/floriankarsten/space-grotesk), by Florian Karsten | SIL Open Font License 1.1 | Typeface of the interface, chosen in `DESIGN.md` (self-hosted; how it is installed is added here when it is) | 2026-11-14 |
 | [Astral `uv`](https://github.com/astral-sh/uv) | Apache-2.0 / MIT | Python environment, package, and lockfile management | 2026-11-14 |
+| [Google Cloud Storage for Python](https://github.com/googleapis/google-cloud-python/tree/main/packages/google-cloud-storage) | Apache-2.0 | Private result bucket access through Application Default Credentials and object generation preconditions. | 2026-11-15 |
+| [SQLite transactions](https://www.sqlite.org/lang_transaction.html) and [page limits](https://www.sqlite.org/pragma.html#pragma_max_page_count) | Public domain | Cross-process local result publication and storage capacity. | 2026-11-15 |
 | [Astropy (`astropy`)](https://www.astropy.org/) (Astropy Collaboration et al. 2013, 2022) | BSD-3-Clause | FITS I/O, World Coordinate Systems (`WCS` & `WCS-WAVE` `WAVE-TAB`), proper motion & parallax epoch propagation (`SkyCoord.apply_space_motion`), and physical units | 2026-11-14 |
 | [reproject](https://reproject.readthedocs.io/) (Robitaille et al.) | BSD-3-Clause | Reprojecting multi-epoch SPHEREx cutouts (including $180^\circ$ `SPS_EPA` spacecraft flips) onto a common North-up celestial TAN grid | 2026-11-14 |
 | [PyVO (`pyvo`)](https://pyvo.readthedocs.io/) | BSD-3-Clause | IVOA Simple Image Access v2 (`SIA2Service`) queries against IRSA (`https://irsa.ipac.caltech.edu/SIA`) | 2026-11-14 |
@@ -69,3 +74,30 @@ the NASA Space Apps rules require. A source is added in the same commit that int
 | [Pytest (`pytest`)](https://docs.pytest.org/) & [Ruff (`ruff`)](https://docs.astral.sh/ruff/) | MIT | Automated unit/integration testing and static analysis | 2026-11-14 |
 | [GitHub Actions (`actions/checkout`, `actions/setup-python`)](https://github.com/actions) | MIT | Standard continuous integration workflow execution actions | 2026-11-14 |
 | [Astral `setup-uv` Action](https://github.com/astral-sh/setup-uv) | Apache-2.0 / MIT | GitHub Action to set up Astral `uv` binary and dependency cache in CI runners | 2026-11-14 |
+| [Firebase Hosting configuration](https://firebase.google.com/docs/hosting/full-config) | Managed Google service | Serving the static benchmark viewer with HTTPS and release cache headers | 2026-11-15 |
+| [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 | Offline Chromium tests for the hosted viewer, benchmark fallback and ingestion statuses | 2026-11-15 |
+| [GitHub Actions Node.js setup](https://github.com/actions/setup-node) | MIT | Provisioning Node.js for browser CI | 2026-11-15 |
+| [Docker Official Image for Python](https://github.com/docker-library/python) | PSF-2.0 for Python | Digest-pinned CPython 3.14 base image for the ingestion service | 2026-11-15 |
+
+## Public ingestion operations
+
+- [Cloud Tasks queue limits and retries](https://docs.cloud.google.com/tasks/docs/configuring-queues).
+- [Google Cloud Free Tier and trial limits](https://docs.cloud.google.com/free/docs/free-cloud-features).
+- [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
+
+## Deployment references
+
+| Source | Used for | Added |
+|---|---|---|
+| [Cloud Run runtime contract](https://docs.cloud.google.com/run/docs/container-contract), [YAML reference](https://docs.cloud.google.com/run/docs/reference/yaml/v1), [health checks](https://docs.cloud.google.com/run/docs/configuring/healthchecks), and [in-memory volumes](https://docs.cloud.google.com/run/docs/configuring/services/in-memory-volume-mounts) | Port, graceful shutdown, staging service specification, HTTP probes, and bounded scratch volume | 2026-11-15 |
+| [Astral uv Docker guide](https://docs.astral.sh/uv/guides/integration/docker/) | Multi-stage container build with locked runtime dependencies | 2026-11-15 |
+| [`google-github-actions/auth`](https://github.com/google-github-actions/auth) | Keyless OIDC/Workload Identity Federation authentication from GitHub Actions to Google Cloud | 2026-11-15 |
+| [Google Cloud Workload Identity Federation with GitHub Actions](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines) | Least-privilege OIDC pool/provider attribute mapping and repository conditions | 2026-11-15 |
+
+## Public ingestion operations
+
+- [Cloud Tasks queue limits and retries](https://docs.cloud.google.com/tasks/docs/configuring-queues).
+- [Google Cloud Free Tier and trial limits](https://docs.cloud.google.com/free/docs/free-cloud-features).
+- [Cloud Run job cost guidance](https://docs.cloud.google.com/run/docs/jobs-cost-optimization).
+- [Google Cloud Tasks HTTP Target & OIDC Authentication](https://cloud.google.com/tasks/docs/creating-http-target-tasks#oidc) — referenced for the `CloudTasksJobDispatcher` and `OIDCWorkerAuthVerifier` contract.
+- [Google Cloud Firestore Transactions](https://cloud.google.com/firestore/docs/manage-data/transactions) — referenced for the `FirestoreJobStore` atomic deduplication, admission, and lease-claim contract.

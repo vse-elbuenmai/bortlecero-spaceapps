@@ -9,7 +9,6 @@ const REST_FOV = 120; // degrees across the screen when showing "the whole sky"
 const MAX_FOV = 170;
 const SPIN_DEG_PER_S = 1.5;
 const SHARPNESS = 0.5; // closest zoom: one screen pixel shows no less than half a map pixel
-const PREPARED_RADIUS_DEG = 0.04; // half the side of the prepared Barnard frames
 
 // Test objects: position, epoch and proper motion (mas/yr), moved to today before travelling.
 // Barnard's Star, Epsilon Indi B and R Draconis: Gaia DR3, live query of the ESA archive on
@@ -34,7 +33,7 @@ const RAD = Math.PI / 180;
 const state = {
   ra: 266.4, dec: -20, fov: REST_FOV, // view centre (degrees) and field of view across the screen
   layer: "visible", fade: null, // fade: { from, start } while two layers cross-fade
-  spinning: !reduceMotion, trip: null, target: null, prepared: null,
+  spinning: !reduceMotion, trip: null, target: null,
   gl: null, uniforms: null, textures: {}, mapWidth: 2048, meta: null, dirty: true, last: 0,
 };
 // Handy in the browser console, and used to check that stars land where the maths says they do.
@@ -552,18 +551,7 @@ function bindEvents() {
 async function start() {
   bindEvents();
   setSpinning(state.spinning);
-  const [frames, meta] = await Promise.all([
-    fetch("data/barnards_star/bundle.json")
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((b) => b || fetch("data/barnard/frames.json").then((r) => (r.ok ? r.json() : null)).catch(() => null)),
-    fetch(TEXTURES + "sky.json").then((r) => r.json()).catch(() => null),
-  ]);
-  if (frames) {
-    const g = frames.grid || {};
-    state.prepared = { ra: g.center_ra_deg || g.center_ra, dec: g.center_dec_deg || g.center_dec };
-  }
-  state.meta = meta;
+  state.meta = await fetch(TEXTURES + "sky.json").then((r) => r.json()).catch(() => null);
   setLayer(state.layer);
   try {
     if (!initGl()) throw new Error("WebGL 2 is not available");

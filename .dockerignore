@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!src/
+!src/spherex_ingest/
+!src/spherex_ingest/**/*.py

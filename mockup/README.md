@@ -1,8 +1,7 @@
-# Mockup: Barnard's Star blink viewer
+# SPHEREx blink viewer
 
-A **mockup** so the team can see the viewer with real data while the real pipeline (download and
-ingest) and the real frontend are being built. It is not the project's architecture: stack and
-structure are still for the team to decide (see `AGENTS.md`).
+The viewer displays prepared SPHEREx bundles for the five challenge benchmarks and lets visitors
+look around the sky by test object or coordinates.
 
 - `prepare_barnard.py` — downloads a few SPHEREx cutouts of Barnard's Star from IRSA, picks one
   per visit at nearly the same wavelength, re-aligns them north-up, stretches them and writes
@@ -28,6 +27,58 @@ uv run python -m http.server 8765 --directory mockup
 
 Use Astral `uv` (`uv run ...`) or the project's Python (`.venv/bin/python` on Linux, `.venv\Scripts\python` on Windows, or the
 shared `D:\dev\lab\.venvs\astro` on Miguel's laptop). Any static server works for step 2.
+
+## Benchmark hosting
+
+Build the Firebase Hosting directory from the repository root.
+
+```sh
+uv run python scripts/build_hosting.py
+firebase emulators:start --only hosting --project demo-spherex
+```
+
+The build copies an explicit list of public HTML, CSS, JavaScript, and sky maps into
+`dist/hosting`. `benchmark-manifest.json` maps the five targets to static bundles under
+`releases/<release SHA-256>/`. The release changes only when the content of at least one bundle
+changes. Firebase Hosting tells browsers to revalidate HTML, scripts, runtime configuration, sky
+assets and the manifest. Versioned bundles use `public, max-age=31536000, immutable`.
+The standalone Aladin page and its legacy data remain available in the local checkout.
+
+On the public origin, the viewer opens benchmarks from the manifest and offers a benchmark-only
+status for other positions. Synchronous live queries are available for local development over
+HTTP on loopback addresses. To use them, start the API with
+`uv run spherex-ingest serve --host 127.0.0.1 --port 8000`, then set `liveQueries` to `true` and
+`apiBaseUrl` to `http://127.0.0.1:8000` in your local copy of `mockup/viewer-config.json`.
+The client accepts only a loopback HTTP API for this mode. Keep the committed capability disabled.
+Production coordinate queries depend on the asynchronous API and admission controls.
+
+Wait for all five bundles to pass the scientific validation in
+[issue #13](https://github.com/vse-elbuenmai/bortlecero-spaceapps/issues/13) before publishing a
+preview or production release. After approval, rebuild from the reviewed commit and use the
+Firebase CLI with the team's staging project. `STAGING_PROJECT_ID` below is a placeholder.
+
+```sh
+firebase hosting:channel:deploy benchmark-staging --project STAGING_PROJECT_ID --expires 1d
+```
+
+Open the resulting HTTPS preview at desktop and phone widths. Check all five modal views, the
+decoded first image and the manifest paths, and confirm no asset requests use HTTP and no requests
+go to the ingestion API. Check the cache headers on the preview with these commands, substituting
+the preview host and the manifest's release hash.
+
+```sh
+curl -I https://PREVIEW_HOST/benchmark-manifest.json
+curl -I https://PREVIEW_HOST/releases/RELEASE_HASH/barnards_star.json
+```
+
+Run the offline browser suite from the repository root with Node.js 22 and Playwright Chromium.
+
+```sh
+uv run python scripts/build_hosting.py
+npm --prefix tests/browser ci
+npm --prefix tests/browser exec -- playwright install chromium
+npm --prefix tests/browser test
+```
 
 ## What the data shows (run of 2026-11-14)
 
