@@ -17,11 +17,11 @@ const SESAME = "https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-ox/S?";
 // 2026-11-14. WISE 0855−0714 is not in Gaia: position for 2025.5 from the team's study notes
 // (Luhman & Esplin 2016; Kirkpatrick et al. 2021). RW Aurigae: SIMBAD, epoch 2000.
 const OBJECTS = {
-  barnard: { name: "Barnard's Star", ra: 269.44850253, dec: 4.73942005, epoch: 2016.0, pmra: -801.551, pmdec: 10362.394 },
-  epsindib: { name: "Epsilon Indi B", ra: 331.0764526, dec: -56.79381207, epoch: 2016.0, pmra: 3981.977, pmdec: -2466.832 },
-  wise0855: { name: "WISE 0855−0714", ra: 133.76, dec: -7.2422, epoch: 2025.5, pmra: -8118, pmdec: 680 },
-  rwaur: { name: "RW Aurigae", ra: 76.95652603, dec: 30.40143817, epoch: 2000.0, pmra: 0, pmdec: 0 },
-  rdra: { name: "R Draconis", ra: 248.16737837, dec: 66.75500675, epoch: 2016.0, pmra: -20.643, pmdec: 6.149 },
+  barnard: { key: "barnards_star", name: "Barnard's Star", ra: 269.44850253, dec: 4.73942005, epoch: 2016.0, pmra: -801.551, pmdec: 10362.394 },
+  epsindib: { key: "epsilon_indi_b", name: "Epsilon Indi B", ra: 331.0764526, dec: -56.79381207, epoch: 2016.0, pmra: 3981.977, pmdec: -2466.832 },
+  wise0855: { key: "wise_0855_0714", name: "WISE 0855−0714", ra: 133.76, dec: -7.2422, epoch: 2025.5, pmra: -8118, pmdec: 680 },
+  rwaur: { key: "rw_aurigae", name: "RW Aurigae", ra: 76.95652603, dec: 30.40143817, epoch: 2000.0, pmra: 0, pmdec: 0 },
+  rdra: { key: "r_draconis", name: "R Draconis", ra: 248.16737837, dec: 66.75500675, epoch: 2016.0, pmra: -20.643, pmdec: 6.149 },
 };
 
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -286,7 +286,7 @@ function parseAngle(text, isRa) {
 function today(o) {
   const years = new Date().getUTCFullYear() + (new Date().getUTCMonth() + 0.5) / 12 - o.epoch;
   const dec = o.dec + (o.pmdec / 3.6e6) * years;
-  return { name: o.name, simbad: o.simbad, dec, ra: (o.ra + ((o.pmra / 3.6e6) * years) / Math.cos(o.dec * RAD) + 360) % 360 };
+  return { key: o.key, name: o.name, simbad: o.simbad, dec, ra: (o.ra + ((o.pmra / 3.6e6) * years) / Math.cos(o.dec * RAD) + 360) % 360 };
 }
 
 async function resolveName(name) {
@@ -365,21 +365,54 @@ function arrive(target) {
   setTimeout(() => openModal(target), reduceMotion ? 0 : 500);
 }
 
+function findPreparedBenchmark(target) {
+  if (!target) return null;
+  if (target.key) {
+    const byKey = Object.entries(OBJECTS).find(([k, o]) => o.key === target.key || k === target.key);
+    if (byKey) return { chipKey: byKey[0], ...byKey[1] };
+  }
+  if (target.target_id) {
+    const byTid = Object.entries(OBJECTS).find(([k, o]) => o.key === target.target_id || k === target.target_id);
+    if (byTid) return { chipKey: byTid[0], ...byTid[1] };
+  }
+  if (target.name) {
+    const lowerName = target.name.toLowerCase();
+    const byName = Object.entries(OBJECTS).find(([k, o]) => o.name.toLowerCase() === lowerName || k.toLowerCase() === lowerName);
+    if (byName) return { chipKey: byName[0], ...byName[1] };
+  }
+  if (target.ra !== undefined && target.dec !== undefined) {
+    for (const [k, obj] of Object.entries(OBJECTS)) {
+      const d = Math.hypot((target.ra - obj.ra) * Math.cos(obj.dec * RAD), target.dec - obj.dec);
+      if (d <= 0.15) return { chipKey: k, ...obj };
+    }
+  }
+  return null;
+}
+
 function isPrepared(target) {
-  const p = state.prepared;
-  return Boolean(p) && Math.hypot((target.ra - p.ra) * Math.cos(p.dec * RAD), target.dec - p.dec) <= PREPARED_RADIUS_DEG;
+  return findPreparedBenchmark(target) !== null;
 }
 
 function openModal(target) {
-  const prepared = isPrepared(target);
-  $("modal-title").textContent = prepared ? "Barnard's Star" : target.name || "Your position";
+  const bench = findPreparedBenchmark(target);
+  const targetId = bench ? bench.key : (target.target_id || null);
+  const targetName = bench ? bench.name : (target.name || "Your position");
+
+  $("modal-title").textContent = targetName;
   $("modal-coords").textContent = `${fmtRa(target.ra)}, ${fmtDec(target.dec)} · position for today` +
     (target.simbad ? ` · SIMBAD: ${target.simbad}` : "");
-  $("modal-empty").hidden = prepared;
-  viewer.hidden = !prepared;
-  document.querySelector(".modal-how").hidden = !prepared;
+
   modal.showModal();
-  if (prepared) document.dispatchEvent(new CustomEvent("viewer:open")); // mockup.js lays out and plays
+
+  // Dispatch viewer:load-target to mockup.js
+  document.dispatchEvent(new CustomEvent("viewer:load-target", {
+    detail: {
+      target_id: targetId,
+      name: targetName,
+      ra: target.ra,
+      dec: target.dec,
+    }
+  }));
 }
 
 function wholeSky() {
@@ -435,8 +468,9 @@ function bindEvents() {
     fieldError("dec", decBad ? "Dec must be between −90° and +90°" : "");
     if (raBad || decBad) return (raBad ? $("ra") : $("dec")).focus();
     const target = { ra, dec };
-    markChip(isPrepared(target) ? "barnard" : null);
-    travel(isPrepared(target) ? { ...target, name: "Barnard's Star" } : target);
+    const bench = findPreparedBenchmark(target);
+    markChip(bench ? bench.chipKey : null);
+    travel(bench ? { ...target, ...bench } : target);
   });
   // A name and a pair of coordinates are two ways to say the same thing: typing one clears the other.
   $("name").addEventListener("input", () => { $("ra").value = $("dec").value = ""; });
@@ -512,10 +546,16 @@ async function start() {
   bindEvents();
   setSpinning(state.spinning);
   const [frames, meta] = await Promise.all([
-    fetch("data/barnard/frames.json").then((r) => r.json()).catch(() => null),
+    fetch("data/barnards_star/bundle.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((b) => b || fetch("data/barnard/frames.json").then((r) => (r.ok ? r.json() : null)).catch(() => null)),
     fetch(TEXTURES + "sky.json").then((r) => r.json()).catch(() => null),
   ]);
-  if (frames) state.prepared = { ra: frames.grid.center_ra, dec: frames.grid.center_dec };
+  if (frames) {
+    const g = frames.grid || {};
+    state.prepared = { ra: g.center_ra_deg || g.center_ra, dec: g.center_dec_deg || g.center_dec };
+  }
   state.meta = meta;
   setLayer(state.layer);
   try {
