@@ -15,10 +15,18 @@ from fastapi.testclient import TestClient
 from google.api_core.exceptions import PreconditionFailed
 
 from spherex_ingest import result_storage
-from spherex_ingest.api import app, get_default_service, get_output_dir
+from spherex_ingest.admission import InMemoryAdmissionController
+from spherex_ingest.api import (
+    app,
+    get_admission_controller,
+    get_default_service,
+    get_output_dir,
+    get_public_limits,
+)
 from spherex_ingest.domain.models import CutoutFetchResult, DroppedFrameDTO
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS
 from spherex_ingest.infrastructure.result_objects import CloudResultObjects, LocalResultObjects
+from spherex_ingest.limits import PublicLimits
 from spherex_ingest.result_storage import ResultKey, ResultStore, StoredBlinkResult
 from spherex_ingest.service import SPHERExBlinkIngestionService
 
@@ -210,8 +218,15 @@ def test_live_api_results_are_cached_by_parameters_outside_curated_bundles(
     curated_dir = tmp_path / "curated"
     path = service.bundle_exporter.save_bundle(bundle, curated_dir)
     original = path.read_bytes()
+    limits = PublicLimits(max_new_jobs_per_minute=20, max_outstanding_jobs=8)
     monkeypatch.setitem(app.dependency_overrides, get_default_service, lambda: service)
     monkeypatch.setitem(app.dependency_overrides, get_output_dir, lambda: curated_dir)
+    monkeypatch.setitem(app.dependency_overrides, get_public_limits, lambda: limits)
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_admission_controller,
+        lambda: InMemoryAdmissionController(limits),
+    )
     monkeypatch.setenv("SPHEREX_RESULTS_DIR", str(tmp_path / "private"))
     monkeypatch.delenv("SPHEREX_RESULTS_BUCKET", raising=False)
 
@@ -220,12 +235,12 @@ def test_live_api_results_are_cached_by_parameters_outside_curated_bundles(
         assert client.get(benchmark).status_code == 200
         assert not calls
         for _ in range(2):
-            response = client.get(benchmark, params={"max_frames": 11, "size_arcsec": 200})
+            response = client.get(benchmark, params={"max_frames": 11, "size_arcsec": 150})
             assert response.status_code == 200
-            assert response.json()["target"]["cutout_size_arcsec"] == 200
+            assert response.json()["target"]["cutout_size_arcsec"] == 150
         assert len(calls) == 1
         assert calls[-1][1] == 11
-        response = client.get(benchmark, params={"max_frames": 12, "size_arcsec": 200})
+        response = client.get(benchmark, params={"max_frames": 12, "size_arcsec": 150})
         assert response.status_code == 200
         assert len(calls) == 2
         coords = {"ra": 330, "dec": -56}

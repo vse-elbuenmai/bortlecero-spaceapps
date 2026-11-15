@@ -30,7 +30,9 @@ from spherex_ingest.domain.models import (
     RawCutoutFrame,
     TargetSpec,
 )
+from spherex_ingest.infrastructure.bounded_http import fetch_bytes, retry_limit, retry_sleep
 from spherex_ingest.infrastructure.mef_parser import SPHERExMEFParser
+from spherex_ingest.limits import WorkLimitExceeded, active_budget
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +97,21 @@ class IRSASiaCutoutProvider:
         frames: list[RawCutoutFrame] = []
         dropped_frames: list[DroppedFrameDTO] = []
 
-        with httpx.Client(timeout=self.timeout_sec, follow_redirects=True) as client:
-            for collection in target.collections:
+        budget = active_budget.get()
+        with httpx.Client(
+            timeout=self.timeout_sec, follow_redirects=True, max_redirects=3 if budget else 20
+        ) as client:
+            for index, collection in enumerate(target.collections):
+                collection_limit = max_frames_per_collection
+                if budget:
+                    budget.remaining_time()
+                    if not budget.exposures_left:
+                        break
+                    remaining_collections = len(target.collections) - index
+                    share = (
+                        budget.exposures_left + remaining_collections - 1
+                    ) // remaining_collections
+                    collection_limit = min(collection_limit, share) if collection_limit else share
                 logger.info(
                     "Querying IRSA SIAv2 collection='%s' at RA=%.6f, Dec=%.6f",
                     collection,
@@ -110,9 +125,11 @@ class IRSASiaCutoutProvider:
                         ra_deg=query_ra_deg,
                         dec_deg=query_dec_deg,
                         seen_filenames=seen_filenames,
-                        max_frames=max_frames_per_collection,
+                        max_frames=collection_limit,
                         priority_bands=priority_bands,
                     )
+                except WorkLimitExceeded:
+                    raise
                 except Exception as exc:
                     logger.warning(
                         "SIAv2 query failed for collection '%s' after retries: %s",
@@ -129,6 +146,8 @@ class IRSASiaCutoutProvider:
                     continue
 
                 for cand in candidates:
+                    if budget:
+                        budget.consume_exposure()
                     cutout_url = self.build_cutout_url(
                         base_access_url=cand["access_url"],
                         ra_deg=query_ra_deg,
@@ -145,6 +164,8 @@ class IRSASiaCutoutProvider:
                             target_dec_deg=query_dec_deg,
                         )
                         frames.append(frame)
+                    except WorkLimitExceeded:
+                        raise
                     except Exception as exc:
                         logger.warning(
                             "Skipping failed cutout '%s' from %s: %s",
@@ -211,32 +232,45 @@ class IRSASiaCutoutProvider:
             logger.warning("Ignoring unreadable SIAv2 cache entry %s: %s", cache_file, exc)
 
         last_exc: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
+        attempts = retry_limit(self.max_retries)
+        for attempt in range(1, attempts + 1):
             try:
                 pos_param = f"CIRCLE {ra_deg:.4f} {dec_deg:.4f} 0.01"
-                resp = httpx.get(
-                    self.sia_url,
-                    params={"POS": pos_param, "COLLECTION": collection},
-                    timeout=self.timeout_sec,
-                    follow_redirects=True,
-                )
-                resp.raise_for_status()
-                table = self._parse_sia_table(resp.content)
+                if active_budget.get():
+                    with httpx.Client(follow_redirects=True, max_redirects=3) as client:
+                        raw_bytes = fetch_bytes(
+                            client,
+                            self.sia_url,
+                            self.timeout_sec,
+                            params={"POS": pos_param, "COLLECTION": collection},
+                        )
+                else:
+                    resp = httpx.get(
+                        self.sia_url,
+                        params={"POS": pos_param, "COLLECTION": collection},
+                        timeout=self.timeout_sec,
+                        follow_redirects=True,
+                    )
+                    resp.raise_for_status()
+                    raw_bytes = resp.content
+                table = self._parse_sia_table(raw_bytes)
+            except WorkLimitExceeded:
+                raise
             except Exception as exc:
                 last_exc = exc
-                if attempt < self.max_retries:
+                if attempt < attempts:
                     delay = 1.5 * attempt
                     logger.warning(
                         "SIAv2 attempt %d/%d for '%s' failed (%s); retrying in %.1fs...",
                         attempt,
-                        self.max_retries,
+                        attempts,
                         collection,
                         exc,
                         delay,
                     )
-                    time.sleep(delay)
+                    retry_sleep(delay)
             else:
-                self._publish_cache_entry(cache_file, resp.content)
+                self._publish_cache_entry(cache_file, raw_bytes)
                 return table
 
         assert last_exc is not None
@@ -402,7 +436,6 @@ class IRSASiaCutoutProvider:
                     source_url=cutout_url,
                     frame_id=stem,
                 )
-
         try:
             return parse_cutout(cache_path.read_bytes())
         except FileNotFoundError:
@@ -411,19 +444,24 @@ class IRSASiaCutoutProvider:
             logger.warning("Ignoring unreadable FITS cache entry %s: %s", cache_path, exc)
 
         last_exc: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
+        attempts = retry_limit(self.max_retries)
+        for attempt in range(1, attempts + 1):
             try:
-                response = client.get(cutout_url)
-                response.raise_for_status()
-                data = response.content
+                if active_budget.get():
+                    data = fetch_bytes(client, cutout_url, self.timeout_sec)
+                else:
+                    response = client.get(cutout_url)
+                    response.raise_for_status()
+                    data = response.content
                 frame = parse_cutout(data)
+            except WorkLimitExceeded:
+                raise
             except Exception as exc:
                 last_exc = exc
-                if attempt < self.max_retries:
-                    time.sleep(1.0 * attempt)
+                if attempt < attempts:
+                    retry_sleep(1.0 * attempt)
             else:
                 self._publish_cache_entry(cache_path, data)
                 return frame
-
         assert last_exc is not None
         raise last_exc
