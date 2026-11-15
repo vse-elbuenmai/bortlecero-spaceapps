@@ -18,8 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from spherex_ingest import __version__
-from spherex_ingest.domain.models import BlinkBundleDTO, TargetSpec
+from spherex_ingest.domain.models import BUNDLE_SCHEMA_VERSION, BlinkBundleDTO, TargetSpec
 from spherex_ingest.domain.targets import BENCHMARK_TARGETS, get_benchmark_target
+from spherex_ingest.result_storage import ResultKey, get_result_store
 from spherex_ingest.service import SPHERExBlinkIngestionService
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,35 @@ def require_legacy_sync() -> None:
 
 ServiceDep = Annotated[SPHERExBlinkIngestionService, Depends(get_default_service)]
 OutputDirDep = Annotated[Path, Depends(get_output_dir)]
+
+
+def _get_or_ingest_result(
+    service: SPHERExBlinkIngestionService,
+    target_input: TargetSpec | str,
+    size_arcsec: float,
+    max_frames: int,
+    *,
+    force_refresh: bool = False,
+) -> BlinkBundleDTO:
+    target = service.resolve_target(target_input, cutout_size_arcsec=size_arcsec)
+    if force_refresh:
+        return service.ingest_target(
+            target_or_query=target,
+            cutout_size_arcsec=size_arcsec,
+            max_frames_per_collection=max_frames,
+        )
+    key = ResultKey.from_target(target, max_frames)
+    store = get_result_store()
+    cached = store.lookup(key)
+    if cached is not None:
+        return cached
+    bundle = service.ingest_target(
+        target_or_query=target,
+        cutout_size_arcsec=size_arcsec,
+        max_frames_per_collection=max_frames,
+    )
+    return store.publish(key, bundle)
+
 
 app = FastAPI(
     title="Bortle Cero · SPHEREx Blink Comparator Ingestion API",
@@ -151,11 +181,7 @@ def get_benchmark_blink_bundle(
         ),
     ] = False,
 ) -> BlinkBundleDTO:
-    """Return the complete `BlinkBundleDTO` for one of the benchmark targets.
-
-    Serves directly from `output/{target_id}/bundle.json` in <50ms when precomputed
-    on disk (unless `force_refresh=true`), or executes the live pipeline on demand.
-    """
+    """Serve the curated default bundle or a separately stored live query result."""
     target = get_benchmark_target(target_id)
     if target is None:
         raise HTTPException(
@@ -167,21 +193,32 @@ def get_benchmark_blink_bundle(
         )
 
     precomputed_path = output_dir / target.target_id / "bundle.json"
-    if not force_refresh and precomputed_path.is_file():
+    if (
+        not force_refresh
+        and size_arcsec == 180.0
+        and max_frames == 24
+        and precomputed_path.is_file()
+    ):
         try:
-            return BlinkBundleDTO.model_validate_json(
-                precomputed_path.read_text(encoding="utf-8")
+            curated = BlinkBundleDTO.model_validate_json(precomputed_path.read_bytes())
+            if (
+                curated.target.target_id == target.target_id
+                and curated.target.cutout_size_arcsec == size_arcsec
+                and curated.schema_version == BUNDLE_SCHEMA_VERSION
+            ):
+                return curated
+            logger.warning("Precomputed bundle has unexpected parameters at %s", precomputed_path)
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "Failed to load precomputed bundle at %s, falling back to live pipeline: %s",
+                precomputed_path,
+                exc,
             )
-        except (OSError, ValueError):
-            logger.warning("Failed to load precomputed bundle at %s", precomputed_path)
 
     require_legacy_sync()
     try:
-        return service.ingest_target(
-            target_or_query=target,
-            cutout_size_arcsec=size_arcsec,
-            max_frames_per_collection=max_frames,
-            output_dir=output_dir,
+        return _get_or_ingest_result(
+            service, target, size_arcsec, max_frames, force_refresh=force_refresh
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -265,11 +302,7 @@ def query_custom_blink_bundle(
         )
 
     try:
-        return service.ingest_target(
-            target_or_query=target_input,
-            cutout_size_arcsec=size_arcsec,
-            max_frames_per_collection=max_frames,
-        )
+        return _get_or_ingest_result(service, target_input, size_arcsec, max_frames)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
