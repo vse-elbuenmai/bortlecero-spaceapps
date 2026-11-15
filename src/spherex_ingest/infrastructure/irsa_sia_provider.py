@@ -148,11 +148,18 @@ class IRSASiaCutoutProvider:
                 for cand in candidates:
                     if budget:
                         budget.consume_exposure()
+                    fetch_size_arcsec = round(
+                        min(
+                            1800.0,
+                            max(target.cutout_size_arcsec * 1.45, target.cutout_size_arcsec + 60.0),
+                        ),
+                        1,
+                    )
                     cutout_url = self.build_cutout_url(
                         base_access_url=cand["access_url"],
                         ra_deg=query_ra_deg,
                         dec_deg=query_dec_deg,
-                        size_arcsec=target.cutout_size_arcsec,
+                        size_arcsec=fetch_size_arcsec,
                     )
                     try:
                         frame = self._download_and_parse(
@@ -366,7 +373,9 @@ class IRSASiaCutoutProvider:
         max_frames: int,
         priority_bands: tuple[int, ...] = (),
     ) -> list[dict[str, Any]]:
-        """Select a temporally spread subset across early and late epochs when capped."""
+        """Select a band-balanced, temporally spread subset across epochs when capped."""
+        if max_frames <= 0:
+            return []
         if len(rows) <= max_frames:
             return rows
 
@@ -382,15 +391,49 @@ class IRSASiaCutoutProvider:
                 combined.sort(key=lambda r: (r["t_min"], r["band"], r["filename"]))
                 return combined
 
-        indices = [
-            int(round(i * (len(rows) - 1) / max(1, max_frames - 1))) for i in range(max_frames)
-        ]
-        seen_idx: set[int] = set()
+        by_band: dict[int, list[dict[str, Any]]] = {}
+        for row in rows:
+            band = int(row.get("band", 1))
+            by_band.setdefault(band, []).append(row)
+
+        present_bands = sorted(by_band)
+        for band in present_bands:
+            by_band[band].sort(key=lambda r: (r["t_min"], r["band"], r["filename"]))
+
+        quotas = {band: 0 for band in present_bands}
+        remaining = max_frames
+        while remaining > 0:
+            progressed = False
+            for band in present_bands:
+                if remaining == 0:
+                    break
+                if quotas[band] < len(by_band[band]):
+                    quotas[band] += 1
+                    remaining -= 1
+                    progressed = True
+            if not progressed:
+                break
+
         selected: list[dict[str, Any]] = []
-        for idx in indices:
-            if idx not in seen_idx:
-                seen_idx.add(idx)
-                selected.append(rows[idx])
+        for band in present_bands:
+            quota = quotas[band]
+            if quota <= 0:
+                continue
+            band_rows = by_band[band]
+            if quota >= len(band_rows):
+                selected.extend(band_rows)
+                continue
+            indices = [
+                int(round(i * (len(band_rows) - 1) / max(1, quota - 1)))
+                for i in range(quota)
+            ]
+            seen_idx: set[int] = set()
+            for idx in indices:
+                if idx not in seen_idx:
+                    seen_idx.add(idx)
+                    selected.append(band_rows[idx])
+
+        selected.sort(key=lambda r: (r["t_min"], r["band"], r["filename"]))
         return selected
 
     @staticmethod

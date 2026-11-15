@@ -222,7 +222,9 @@ class KinematicsAndPhotometryAnalyzer:
         aperture_flux_err_ujy: float | None = None
         snr_val: float | None = None
 
-        if 0.0 <= ap_center_x < nx and 0.0 <= ap_center_y < ny:
+        # Skip aperture photometry when the stellar core is saturated: core pixels are
+        # NaN/OVERFLOW and summing the 98th-percentile halo infill is not a valid flux.
+        if not is_saturated_core and 0.0 <= ap_center_x < nx and 0.0 <= ap_center_y < ny:
             omega_pix_sr = (self._pixel_scale_arcsec / ARCSEC_PER_RADIAN) ** 2
             scale_factor = omega_pix_sr * MJY_TO_UJY
 

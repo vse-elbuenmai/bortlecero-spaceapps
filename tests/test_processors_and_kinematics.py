@@ -483,6 +483,7 @@ def test_core_saturation_only_flagged_within_stellar_core_radius(
         common_wcs=common_wcs,
     )
     assert not meas_edge.is_saturated_core, "Saturation at 3 px falsely flagged is_saturated_core"
+    assert meas_edge.aperture_flux_ujy is not None
 
     # 2. Inject saturation at center pixel (16, 16) -> must flag is_saturated_core=True
     sat_mask_core = np.array(reproj_edge.saturation_mask, copy=True)
@@ -496,6 +497,65 @@ def test_core_saturation_only_flagged_within_stellar_core_radius(
         common_wcs=common_wcs,
     )
     assert meas_core.is_saturated_core, "Core saturation at center pixel was not flagged"
+    assert meas_core.aperture_flux_ujy is None
+    assert meas_core.aperture_flux_err_ujy is None
+    assert meas_core.snr is None
+
+
+def test_kinematics_saturated_core_measures_halo_centroid_with_none_photometry(
+    raw_cutout_factory: Callable[..., RawCutoutFrame],
+) -> None:
+    """Verify saturated cores still yield valid halo centroids while photometry stays None."""
+    barnard = BENCHMARK_TARGETS["barnards_star"]
+    cleaner = ZodiAndFlagCleaner(subtract_residual_bg=True)
+    analyzer = KinematicsAndPhotometryAnalyzer(pixel_scale_arcsec=6.15)
+    reprojector = NorthUpCommonReprojector(default_pixel_scale_arcsec=6.15)
+
+    mjd_obs = 60800.0
+    pred_ra, pred_dec = analyzer.propagate_position(barnard, mjd_obs)
+    common_wcs, shape_out = reprojector.build_common_wcs(
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        cutout_size_arcsec=180.0,
+    )
+
+    raw = raw_cutout_factory(
+        frame_id="barnard_saturated_halo",
+        center_ra_deg=pred_ra,
+        center_dec_deg=pred_dec,
+        star_ra_deg=pred_ra,
+        star_dec_deg=pred_dec,
+        mjd_avg=mjd_obs,
+        peak_flux_mjy_sr=400.0,
+        saturate_core=True,
+    )
+    reproj = reprojector.reproject_frame(
+        cleaned=cleaner.clean(raw),
+        input_wcs=raw.spatial_wcs,
+        variance_mjy2_sr2=raw.variance_mjy2_sr2,
+        zodi_mjy_sr=raw.zodi_mjy_sr,
+        common_wcs=common_wcs,
+        shape_out=shape_out,
+    )
+
+    meas = analyzer.measure_centroid_and_photometry(
+        target=barnard,
+        mjd=mjd_obs,
+        reprojected=reproj,
+        common_wcs=common_wcs,
+    )
+
+    assert meas.is_saturated_core is True
+    assert meas.measured_centroid_x is not None
+    assert meas.measured_centroid_y is not None
+    assert meas.measured_ra_deg is not None
+    assert meas.measured_dec_deg is not None
+    assert meas.centroid_offset_arcsec is not None
+    assert abs(meas.measured_centroid_x - meas.predicted_pixel_x) < 0.5
+    assert abs(meas.measured_centroid_y - meas.predicted_pixel_y) < 0.5
+    assert meas.aperture_flux_ujy is None
+    assert meas.aperture_flux_err_ujy is None
+    assert meas.snr is None
 
 
 def test_kinematics_noise_floor_bounds_snr_and_prevents_zero_division(
