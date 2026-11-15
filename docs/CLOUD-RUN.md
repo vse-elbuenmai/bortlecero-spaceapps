@@ -85,4 +85,5 @@ gcloud run services proxy spherex-ingest-staging --port 8189 --project bortle-ce
 ```
 
 See [deploy/gcp/README.md](../deploy/gcp/README.md) for the provisioned GCS lifecycle, budget alert,
-and GitHub `staging` Environment configuration.
+and GitHub `staging` Environment configuration, and [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) for
+the end-to-end frontend + backend deployment workflow.
