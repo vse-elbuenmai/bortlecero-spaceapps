@@ -17,6 +17,7 @@ from spherex_ingest._atomic_files import atomic_write_bytes
 from spherex_ingest.domain.models import (
     BlinkBundleDTO,
     CommonGridSpecDTO,
+    DeepStackDTO,
     DifferenceMapDTO,
     DroppedFrameDTO,
     FrameMetadataDTO,
@@ -24,6 +25,11 @@ from spherex_ingest.domain.models import (
     TargetSpec,
 )
 from spherex_ingest.limits import active_budget
+from spherex_ingest.processors.stacker import (
+    SKIP_TARGET_SATURATED,
+    DeepStackResult,
+    TargetTrackedStacker,
+)
 
 DEFAULT_CITATIONS: tuple[str, ...] = (
     "SPHEREx Explanatory Supplement & Data Release 1 / Quick Release 3 (NASA/IPAC IRSA, 2026)",
@@ -36,9 +42,15 @@ DEFAULT_CITATIONS: tuple[str, ...] = (
 class FrontendBundleExporter:
     """Serializes processed SPHEREx blink frames into a frontend-ready BlinkBundleDTO."""
 
-    def __init__(self, min_diff_baseline_days: float = 1.0, upscale_factor: int = 4) -> None:
+    def __init__(
+        self,
+        min_diff_baseline_days: float = 1.0,
+        upscale_factor: int = 4,
+        stacker: TargetTrackedStacker | None = None,
+    ) -> None:
         self._min_diff_baseline_days = min_diff_baseline_days
         self._upscale_factor = max(1, upscale_factor)
+        self._stacker = stacker or TargetTrackedStacker()
 
     def build_bundle(
         self,
@@ -120,6 +132,29 @@ class FrontendBundleExporter:
 
         ny, nx = grid_shape
         pixel_scale_arcsec = float(abs(common_wcs.wcs.cdelt[1]) * 3600.0)
+
+        if budget:
+            budget.remaining_time()
+        deep_stack: DeepStackDTO | None = None
+        stack_skipped_reason: str | None = None
+        if retained_frames:
+            stack_result, stack_skipped_reason = self._stacker.stack(
+                retained_frames, pixel_scale_arcsec=pixel_scale_arcsec
+            )
+            if stack_result is not None:
+                deep_stack = self._to_deep_stack_dto(stack_result)
+                warnings.append(
+                    f"The deep stack adds {len(stack_result.frame_ids)} exposures taken between "
+                    f"{stack_result.wavelength_min_um:.2f} and "
+                    f"{stack_result.wavelength_max_um:.2f} um while following the predicted "
+                    "motion of the target. It shows whether a source is there and where, "
+                    "not how bright it is."
+                )
+            elif stack_skipped_reason == SKIP_TARGET_SATURATED:
+                warnings.append(
+                    "No deep stack was built: the target saturates the detector, and adding "
+                    "exposures cannot recover a saturated core."
+                )
         center_ra = float(common_wcs.wcs.crval[0])
         center_dec = float(common_wcs.wcs.crval[1])
 
@@ -142,6 +177,8 @@ class FrontendBundleExporter:
             frames_by_band=dict(frames_by_band_dict),
             difference_maps=difference_maps,
             dropped_frames=all_dropped,
+            deep_stack=deep_stack,
+            deep_stack_skipped_reason=stack_skipped_reason,
             scientific_warnings=warnings,
             citations=list(DEFAULT_CITATIONS),
         )
@@ -419,6 +456,53 @@ class FrontendBundleExporter:
             bad_pixel_mask=np.flipud(frame.bad_pixel_mask).astype(bool).tolist(),
             png_base64=png_b64,
             source_url=frame.source_url,
+        )
+
+    def _to_deep_stack_dto(self, stack: DeepStackResult) -> DeepStackDTO:
+        """Convert a deep stack into its JSON form, with its own display stretch."""
+        image = stack.image_mjy_sr
+        ny = image.shape[0]
+        finite = image[np.isfinite(image)]
+        vmin = float(np.percentile(finite, 10.0))
+        vmax = float(np.percentile(finite, 99.5))
+        if vmax <= vmin + 1e-6:
+            vmax = vmin + 1.0
+        softening = max(stack.noise_mjy_sr * 3.0, (vmax - vmin) * 0.08, 1e-3)
+
+        def flip_y(y: float | None) -> float | None:
+            return round((ny - 1) - y, 3) if y is not None else None
+
+        def rounded(value: float | None, digits: int) -> float | None:
+            return round(value, digits) if value is not None else None
+
+        return DeepStackDTO(
+            frame_count=len(stack.frame_ids),
+            frame_ids=list(stack.frame_ids),
+            detector_bands=list(stack.detector_bands),
+            wavelength_min_um=round(stack.wavelength_min_um, 4),
+            wavelength_max_um=round(stack.wavelength_max_um, 4),
+            mjd_start=stack.mjd_start,
+            mjd_end=stack.mjd_end,
+            obs_time_start_iso=stack.obs_time_start_iso,
+            obs_time_end_iso=stack.obs_time_end_iso,
+            max_tracking_shift_px=round(stack.max_tracking_shift_px, 3),
+            target_pixel_x=round(stack.target_pixel_x, 3),
+            target_pixel_y=flip_y(stack.target_pixel_y),
+            noise_mjy_sr=round(stack.noise_mjy_sr, 6),
+            single_frame_noise_mjy_sr=round(stack.single_frame_noise_mjy_sr, 6),
+            noise_reduction_factor=round(stack.noise_reduction_factor, 2),
+            peak_snr=rounded(stack.peak_snr, 2),
+            sky_fixed_peak_snr=rounded(stack.sky_fixed_peak_snr, 2),
+            detected=stack.detected,
+            detection_threshold_sigma=stack.detection_threshold_sigma,
+            measured_centroid_x=rounded(stack.measured_centroid_x, 3),
+            measured_centroid_y=flip_y(stack.measured_centroid_y),
+            centroid_offset_arcsec=rounded(stack.centroid_offset_arcsec, 3),
+            rejected_pixel_count=stack.rejected_pixel_count,
+            matrix_mjy_sr=self._matrix_to_nullable_list(image),
+            png_base64=self._render_arcsinh_png_base64(
+                image, vmin=vmin, vmax=vmax, softening=softening
+            ),
         )
 
     @staticmethod

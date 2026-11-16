@@ -3,6 +3,7 @@
 from spherex_ingest.domain.models import (
     BlinkBundleDTO,
     CommonGridSpecDTO,
+    DeepStackDTO,
     DifferenceMapDTO,
     FrameMetadataDTO,
     ProcessedBlinkFrame,
@@ -25,6 +26,7 @@ __all__ = [
     "BundleExporterProtocol",
     "CommonGridSpecDTO",
     "CutoutProviderProtocol",
+    "DeepStackDTO",
     "DifferenceMapDTO",
     "FrameMetadataDTO",
     "FrameProcessorProtocol",
