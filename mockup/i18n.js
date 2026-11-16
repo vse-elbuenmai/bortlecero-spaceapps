@@ -1,8 +1,8 @@
 // Interface language of the viewer: English by default (what the public and the judges see), with
 // Spanish as a switch. No library: a dictionary, a `t()` function and a pass over `data-i18n`.
 //
-// - Static text in the HTML carries `data-i18n="key"` (its text) or `data-i18n-html="key"` (its
-//   inner HTML, only for our own copy), and `data-i18n-attr="aria-label:key,title:key2"` for attributes.
+// - Static text in the HTML carries `data-i18n="key"` (its text), and
+//   `data-i18n-attr="aria-label:key,title:key2"` for attributes.
 // - Text built in JS goes through `t("key", { name: value })`; `{name}` in the string is replaced.
 // - Object names (SIMBAD), units, ISO dates and numbers are data, not interface: never translated.
 // - Changing the language re-applies the static text and fires `i18n:change` on `document`, so the
@@ -658,7 +658,6 @@
   // Static text: everything marked in the HTML
   function apply(root = document) {
     root.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
-    root.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
     root.querySelectorAll("[data-i18n-attr]").forEach((el) => {
       el.dataset.i18nAttr.split(",").forEach((pair) => {
         const [attr, key] = pair.split(":").map((s) => s.trim());

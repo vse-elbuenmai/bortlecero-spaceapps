@@ -132,8 +132,12 @@ Contraste medido sobre `--bc-cosmos` claro (`#eef3f9`); todo texto pasa AA.
 Reglas:
 
 - **Lo que no cambia:** `--bc-abismo` (el lienzo), las marcas sobre la imagen (`--viz-*`) con su halo
-  oscuro, la barra de espectro y los rótulos sobre la imagen o el cielo (`--bc-hud-*`): van sobre
-  negro en los dos temas.
+  oscuro, la barra de espectro y todo lo que se dibuja sobre la imagen o el cielo (`--bc-hud-*`:
+  rótulos, barra de escala, retícula del viaje, barra de carga, anillo de foco del lienzo): van
+  sobre negro en los dos temas. **Regla para lo nuevo:** lo que se pinte encima de la imagen o del
+  cielo usa `--viz-*` o `--bc-hud-*`, nunca un token de tema.
+- En claro, la leyenda dibuja cada marca sobre una ficha del negro de la imagen, tal como se ve
+  encima de ella.
 - **Nada de colores crudos en el CSS.** Los translúcidos salen de tokens (`--bc-glass`,
   `--bc-noche-glass`, `--bc-well`, `--bc-backdrop`, `--bc-dim`, `--bc-shadow`); un acento con
   transparencia se escribe `color-mix(in srgb, var(--bc-acento) 25%, transparent)`.
@@ -785,6 +789,9 @@ Es contrato, no recomendación.
   --bc-hud-surface: #0d1625;
   --bc-hud-accent: #7ba8d4;
   --bc-hud-star: #b8d4f0;
+  --bc-hud-track: #1a2840;
+  --viz-flag-bad: rgba(150, 166, 186, 0.45);
+  --viz-flag-sat: rgba(248, 113, 113, 0.5);
 
   /* datos sobre la imagen */
   --viz-predicha: #6dd5c0;

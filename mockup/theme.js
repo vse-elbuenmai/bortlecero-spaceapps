@@ -22,7 +22,6 @@
       const name = t(light ? "theme.to_dark" : "theme.to_light");
       btn.setAttribute("aria-label", name);
       btn.dataset.tip = name;
-      btn.setAttribute("aria-pressed", String(light));
     });
   }
 

@@ -40,7 +40,7 @@
         <!-- Interface language: English by default; the button names the other language (i18n.js) -->
         <button id="lang-toggle" class="link-btn lang-btn" type="button" lang="es" data-lang-toggle
           aria-label="Cambiar a español" title="Cambiar a español">ES</button>
-        <button id="theme-toggle" class="icon-btn" type="button" data-theme-toggle aria-pressed="false"
+        <button id="theme-toggle" class="icon-btn" type="button" data-theme-toggle
           aria-label="Switch to the light theme" data-tip="Switch to the light theme"></button>
         <button id="credits-open" class="link-btn" type="button" data-i18n="header.credits">Credits</button>
         <button id="tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
@@ -207,7 +207,7 @@
         <!-- The dialog covers the header, so the language switch is repeated here -->
         <button id="modal-lang-toggle" class="link-btn lang-btn" type="button" lang="es" data-lang-toggle
           aria-label="Cambiar a español" title="Cambiar a español">ES</button>
-        <button id="modal-theme-toggle" class="icon-btn" type="button" data-theme-toggle aria-pressed="false"
+        <button id="modal-theme-toggle" class="icon-btn" type="button" data-theme-toggle
           aria-label="Switch to the light theme" data-tip="Switch to the light theme"></button>
         <button id="modal-tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
           title="Tour &amp; Help" data-tip="Guide"
@@ -368,7 +368,8 @@
             <output id="speed-out" for="speed">1 fps</output>
           </label>
           <button id="diff-toggle" class="chip diff-toggle adv" type="button" aria-pressed="false"
-            title="Toggle difference map between epochs" data-i18n="diff.button">Difference Map</button>
+            title="Toggle difference map between epochs" data-i18n="diff.button"
+            data-i18n-attr="title:diff.toggle_title">Difference Map</button>
           <div class="zoom-group">
             <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"
               data-i18n-attr="aria-label:common.zoom_out,data-tip:common.zoom_out"><svg
@@ -456,7 +457,7 @@
         </div>
 
         <div class="panel-block" id="frame-meta" aria-live="off">
-          <p class="eyebrow" id="frame-count">Frame</p>
+          <p class="eyebrow" id="frame-count" data-i18n="panel.frame">Frame</p>
           <dl class="meta">
             <div>
               <dt data-i18n="meta.date">Date</dt>

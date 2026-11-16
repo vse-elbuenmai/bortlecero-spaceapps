@@ -414,11 +414,14 @@ async function resolveName(name) {
   return querySesame(SESAME.replace("-ox/S?", "-ox/SNV?") + encoded, name);
 }
 
-function fieldError(id, text) {
+// `key` is an i18n key (or "" to clear); it is kept on the element so a language switch redraws it
+function fieldError(id, key, vars) {
   const input = $(id), err = $(id + "-err");
-  input.setAttribute("aria-invalid", String(Boolean(text)));
-  err.hidden = !text;
-  err.textContent = text ? "⚠ " + text : "";
+  input.setAttribute("aria-invalid", String(Boolean(key)));
+  err.hidden = !key;
+  err.dataset.key = key || "";
+  err.dataset.vars = key && vars ? JSON.stringify(vars) : "";
+  err.textContent = key ? "⚠ " + t(key, vars) : "";
 }
 const say = (text) => { msg.hidden = !text; msg.textContent = text || ""; };
 
@@ -634,7 +637,12 @@ document.addEventListener("i18n:change", () => {
   const toggle = $("search-toggle");
   toggle.textContent = t(toggle.getAttribute("aria-expanded") === "true" ? "search.hide" : "search.show");
   if (parked) setRestore(parked, { loading: $("viewer-restore-label").textContent !== parked.name });
-  if (viewerTarget && modal.open) {
+  ["object", "name", "ra", "dec"].forEach((id) => {
+    const { key, vars } = $(id + "-err").dataset;
+    if (key) fieldError(id, key, vars ? JSON.parse(vars) : undefined);
+  });
+  // While the frames load the dialog shows today's position; once they are in, mockup.js owns that line
+  if (viewerTarget && modal.open && !(window.viewerState && window.viewerState.bundle)) {
     const target = viewerTarget;
     $("modal-coords").textContent = t("viewer.coords_today", { ra: fmtRa(target.ra), dec: fmtDec(target.dec) }) +
       (target.simbad ? t("viewer.coords_simbad", { name: target.simbad }) : "");
@@ -660,12 +668,12 @@ function bindEvents() {
       } catch {
         if (search !== searches) return;
         say("");
-        return fieldError("name", t("search.name_down"));
+        return fieldError("name", "search.name_down");
       }
       if (search !== searches) return;
       if (!found) {
         say("");
-        return fieldError("name", t("search.name_not_found", { name }));
+        return fieldError("name", "search.name_not_found", { name });
       }
       const bench = findPreparedBenchmark(found);
       setObject(bench ? bench.chipKey : null);
@@ -675,9 +683,9 @@ function bindEvents() {
     if (objectKey) return travel(today(OBJECTS[objectKey]));
     const ra = parseAngle($("ra").value, true), dec = parseAngle($("dec").value, false);
     const raBad = Number.isNaN(ra) || ra < 0 || ra >= 360, decBad = Number.isNaN(dec) || dec < -90 || dec > 90;
-    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", t("search.need_input"));
-    fieldError("ra", raBad ? t("search.ra_range") : "");
-    fieldError("dec", decBad ? t("search.dec_range") : "");
+    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", "search.need_input");
+    fieldError("ra", raBad ? "search.ra_range" : "");
+    fieldError("dec", decBad ? "search.dec_range" : "");
     if (raBad || decBad) return (raBad ? $("ra") : $("dec")).focus();
     const target = { ra, dec };
     const bench = findPreparedBenchmark(target);
@@ -865,6 +873,7 @@ async function start() {
   } catch (err) {
     console.error(err);
     state.gl = null;
+    skyFallback.dataset.i18n = "sky.webgl_error"; // so a language switch keeps the error, not "Loading the sky…"
     skyFallback.textContent = t("sky.webgl_error");
   }
   resize();

@@ -5,8 +5,9 @@
   cursor: grab; touch-action: none; outline-offset: -4px; }
 .sky-canvas:active { cursor: grabbing; }
 .sky-fallback { position: fixed; inset: 0; margin: 0; padding: var(--bc-sp-m); display: grid; place-content: center;
-  text-align: center; font-size: var(--bc-fs-sm); color: var(--bc-texto); pointer-events: none; }
+  text-align: center; font-size: var(--bc-fs-sm); color: var(--bc-hud-fg); pointer-events: none; }
 .sky-fallback[hidden] { display: none; }
+.sky-canvas:focus-visible { outline-color: var(--bc-hud-star); }
 
 /* Surfaces that float over the sky */
 .glass { background: var(--bc-glass); border: 1px solid color-mix(in srgb, var(--bc-acento) 23%, transparent);
@@ -56,7 +57,7 @@
   pointer-events: none; }
 .reticle svg { width: 100%; height: 100%; overflow: visible; }
 .reticle-ring, .reticle-halo, .reticle-ping { fill: none; }
-.reticle-ping { stroke: var(--bc-estrella); stroke-width: 1.5; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.reticle-ping { stroke: var(--bc-hud-star); stroke-width: 1.5; opacity: 0; transform-box: fill-box; transform-origin: center; }
 /* On arrival the ring lands with a small overshoot and sends out three slow pings, then rests:
    nothing here moves for more than five seconds (WCAG 2.2.2). */
 .reticle.is-arriving svg { animation: reticle-land 0.6s cubic-bezier(.2, .9, .3, 1.25) both; }
@@ -66,7 +67,7 @@
 @keyframes reticle-ping { from { opacity: 0.7; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
 @keyframes note-in { from { opacity: 0; } to { opacity: 1; } }
 .reticle-halo { stroke: var(--viz-halo); stroke-width: 4; }
-.reticle-ring { stroke: var(--bc-estrella); stroke-width: 2; stroke-dasharray: 26 8.56; }
+.reticle-ring { stroke: var(--bc-hud-star); stroke-width: 2; stroke-dasharray: 26 8.56; }
 .reticle-label { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); white-space: nowrap;
   padding: 2px 8px; background: var(--bc-hud-bg); border-radius: var(--bc-radius-sm);
   font-size: var(--bc-fs-xs); color: var(--bc-hud-strong); }

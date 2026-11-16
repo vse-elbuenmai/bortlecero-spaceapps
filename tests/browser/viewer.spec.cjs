@@ -974,6 +974,8 @@ test("the language switch turns the interface Spanish, keeps the data and is rem
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await expect(page.locator("#lang-toggle")).toHaveText("EN");
   await expect(page.locator("#modal-title")).toHaveText("WISE 0855−0714");
+  // The coordinates line stays the loaded bundle's (Gaia), not the "position for today" of the trip
+  await expect(page.locator("#modal-coords")).toHaveText(/^Gaia DR3 \(.*campo/);
   await expect(page.locator("#frame-count")).toHaveText("Foto 1 / 2");
   await expect(page.locator("#m-det")).toHaveText("Banda 2");
   await expect(page.getByRole("radio", { name: "Fotos sueltas" })).toBeVisible();
@@ -999,6 +1001,13 @@ test("the language switch turns the interface Spanish, keeps the data and is rem
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await expect(page.locator("#search-title")).toHaveText("¿Hacia dónde quieres mirar?");
+
+  // A field error on screen is redrawn in the new language, not left behind
+  await page.locator("#search-form button[type=submit]").click();
+  await expect(page.locator("#object-err")).toHaveText("⚠ Elige un objeto de prueba, escribe un nombre o introduce AR y Dec.");
+  await page.locator("#lang-toggle").click();
+  await expect(page.locator("#object-err")).toHaveText("⚠ Choose a test object, type an object name, or enter RA and Dec.");
+  await page.locator("#lang-toggle").click();
 
   // The sky guide follows the language too: its tab, greeting, quick questions and errors
   await page.route("**/api/v1/assistant", (route) => route.fulfill({
@@ -1047,6 +1056,9 @@ test("the theme switch turns the frame light, keeps the image black and is remem
   expect(await bg("#viewer-modal")).toBe("rgb(238, 243, 249)");
   expect(await bg("#stage")).toBe("rgb(4, 7, 11)");
   expect(await page.locator(".hud-tl").evaluate((el) => getComputedStyle(el).color)).toBe("rgb(200, 216, 236)");
+  // What is drawn over the black image keeps its dark-theme colour: the scale bar, the travel reticle
+  expect(await bg("#scalebar")).toBe("rgb(200, 216, 236)");
+  expect(await page.locator(".reticle-ring").evaluate((el) => getComputedStyle(el).stroke)).toBe("rgb(184, 212, 240)");
   await page.locator("#modal-theme-toggle").click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
   expect(await bg("#viewer-modal")).toBe("rgb(8, 12, 20)");
