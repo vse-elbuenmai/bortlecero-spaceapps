@@ -624,18 +624,21 @@ recurso educativo, no la herramienta científica: no da medidas que el visor no 
 
   | Reacción | Quién la pone | Cara | Movimiento |
   |---|---|---|---|
-  | `idle` | la página, al abrir la pestaña | sonrisa suave | flota 5 px dos veces (4.4 s) y se queda quieta |
+  | `idle` | la página, al abrir la pestaña y 4 s después de cada reacción | sonrisa suave | «respira» sin parar (sube 7 px, se mece ±2° y se estira, ciclo de 3.2 s) y cada 2.5–5 s hace un gesto al azar: se menea, da un saltito, mira a los lados, gira sobre su eje, se estira o parpadea |
   | `thinking` | la página, mientras espera | boca «:3» | se balancea ±6° con tres puntos que saltan, hasta que llega la respuesta |
-  | `talking` | la página, mientras escribe | alterna boca abierta, sonrisa y «o» cada 150 ms | rebota 3 px mientras dura el texto (4 s como máximo) |
-  | `happy` | el modelo | sonrisa abierta | dos saltitos con un destello |
+  | `talking` | la página, mientras escribe | alterna boca abierta y sonrisa cada 260 ms | se balancea apenas 1.5 px, en ciclos de 0.9 s, mientras dura el texto (4 s como máximo) |
+  | `happy` | el modelo | sonrisa abierta | se agacha, salta y da una vuelta completa sobre su propio eje (1.1 s), con un destello |
   | `explaining` | el modelo | sonrisa pequeña | asiente una vez |
   | `excited` | el modelo | ojos cerrados, risa | tres saltos con giro y tres destellos |
   | `curious` | el modelo | boca «o» | ladea la cabeza 10° y se queda así |
   | `sorry` | el modelo | sonrisa pequeña | se encoge, se inclina y pierde color, y se queda así |
 
-  Sólo `thinking` y `talking` se repiten en bucle, y duran lo que dura la espera o el texto; las
-  demás se mueven una vez y se quedan quietas (§6, WCAG 2.2.2). Con `prefers-reduced-motion` no se
-  mueve nada y la boca no alterna: sólo cambia la cara. La hoja no trae una cara triste, por eso
+  Las reacciones del modelo se mueven una vez y, 4 s después, el personaje vuelve a `idle`.
+  **Excepción al §6, decidida por el equipo el 15 nov:** en `idle` el personaje se mueve sin parar
+  para que no parezca una imagen fija. Cumple WCAG 2.2.2 porque el botón «Hide» del panel lo oculta
+  (el criterio acepta pausar, detener **u ocultar**). Los gestos se detienen con la pestaña del
+  navegador oculta o el panel cerrado. Con `prefers-reduced-motion` no se mueve nada, no hay gestos
+  y la boca no alterna: sólo cambia la cara. La hoja no trae una cara triste, por eso
   `sorry` usa la sonrisa pequeña con la postura caída.
 - **Globo:** a la derecha del personaje, un registro (`role="log"`, `aria-live="polite"`) de
   168 px de alto como máximo que se desplaza, fondo `--bc-noche`, borde `--bc-border`. La guía en

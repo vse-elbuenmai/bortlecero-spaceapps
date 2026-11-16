@@ -16,20 +16,33 @@
   };
   // Which face each mood shows. "talking" cycles its faces so the mouth moves while it types.
   // The body's movement for each mood lives in sky.css ([data-mood]).
-  //   idle       nothing asked yet, or the conversation is resting (floats twice, then rests)
+  //   idle       nothing asked yet, or resting: breathes and makes a random gesture every few seconds
   //   thinking   waiting for the answer (sways with three dots until it arrives)
-  //   talking    the answer is being written out (bobs and moves its mouth while it types)
-  //   happy | explaining | excited | curious | sorry   chosen by Gemini for each answer (play once)
+  //   talking    the answer is being written out (a gentle bob; the mouth opens and closes)
+  //   happy | explaining | excited | curious | sorry   chosen by Gemini for each answer (play once,
+  //              then back to idle after REST_AFTER_MS)
   const MOODS = {
     idle: { faces: ["smile"] },
     thinking: { faces: ["cute"] },
-    talking: { faces: ["open", "smile", "oh", "smile"], every: 150 },
+    talking: { faces: ["open", "smile"], every: 260 },
     happy: { faces: ["open"] },
     explaining: { faces: ["calm"] },
     excited: { faces: ["joy"] },
     curious: { faces: ["oh"] },
     sorry: { faces: ["calm"] },
   };
+  // Idle gestures: a CSS class on #guide-fidget (sky.css) and, for some, a face for a moment.
+  // "blink" flashes the closed-eyes face, the closest the sheet has to a blink.
+  const FIDGETS = [
+    { cls: "fidget-wiggle", ms: 900 },
+    { cls: "fidget-hop", ms: 700, face: "open" },
+    { cls: "fidget-look", ms: 1600, face: "oh" },
+    { cls: "fidget-twirl", ms: 1200 },
+    { cls: "fidget-stretch", ms: 1000, face: "cute" },
+    { cls: "", ms: 160, face: "joy" },
+  ];
+  const FIDGET_GAP_MS = [2500, 5000]; // random pause between gestures
+  const REST_AFTER_MS = 4000;         // after an answer's reaction, go back to idle
 
   const MAX_HISTORY = 10; // turns sent back for context; the server accepts at most 10
   const TYPE_MS_PER_CHAR = 18;
@@ -42,6 +55,7 @@
   const tabs = [$("tab-search"), $("tab-guide")];
   const character = $("guide-character");
   const face = $("guide-face");
+  const fidget = $("guide-fidget");
   const log = $("guide-log");
   const form = $("guide-form");
   const input = $("guide-input");
@@ -82,10 +96,48 @@
   // ---------- Character reactions ----------
   Object.values(FACES).forEach((src) => { new Image().src = src; }); // no flicker on the first swap
   let faceTimer = 0;
+  let fidgetTimer = 0;
+  let restTimer = 0;
+  let lastFidget = -1;
+
+  const guideVisible = () => !document.hidden && !$("panel-guide").hidden && !$("search-body").hidden;
+
+  function stopFidgets() {
+    clearTimeout(fidgetTimer);
+    fidget.className = "guide-fidget";
+  }
+
+  // While idle, wait a few seconds, play one gesture, and repeat. Nothing runs while the tab
+  // is hidden or the panel is closed, and never with reduced motion.
+  function scheduleFidget() {
+    clearTimeout(fidgetTimer);
+    if (reduceMotion.matches || character.dataset.mood !== "idle") return;
+    const [min, max] = FIDGET_GAP_MS;
+    fidgetTimer = setTimeout(() => {
+      if (character.dataset.mood !== "idle") return;
+      if (!guideVisible()) return scheduleFidget();
+      let pick;
+      do pick = Math.floor(Math.random() * FIDGETS.length); while (pick === lastFidget);
+      lastFidget = pick;
+      const { cls, ms, face: f } = FIDGETS[pick];
+      fidget.className = "guide-fidget";
+      void fidget.offsetWidth;
+      if (cls) fidget.classList.add(cls);
+      if (f) face.src = FACES[f];
+      fidgetTimer = setTimeout(() => {
+        if (character.dataset.mood !== "idle") return;
+        fidget.className = "guide-fidget";
+        face.src = FACES[MOODS.idle.faces[0]];
+        scheduleFidget();
+      }, ms);
+    }, min + Math.random() * (max - min));
+  }
 
   function setMood(mood) {
     const { faces, every } = MOODS[mood] || MOODS.explaining;
     clearInterval(faceTimer);
+    clearTimeout(restTimer);
+    stopFidgets();
     face.src = FACES[faces[0]];
     if (faces.length > 1 && every && !reduceMotion.matches) {
       let i = 0;
@@ -98,6 +150,10 @@
     character.dataset.mood = "";
     void character.offsetWidth;
     character.dataset.mood = mood;
+    if (mood === "idle") scheduleFidget();
+    else if (mood !== "thinking" && mood !== "talking") {
+      restTimer = setTimeout(() => { if (!busy) setMood("idle"); }, REST_AFTER_MS);
+    }
   }
 
   // ---------- Conversation ----------
