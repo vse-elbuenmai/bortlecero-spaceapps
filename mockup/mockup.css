@@ -37,6 +37,9 @@
   --bc-hud-bg: rgba(4, 7, 11, 0.7);
   --bc-hud-fg: #c8d8ec;
   --bc-hud-strong: #f0f6ff;
+  --bc-hud-surface: #0d1625;  /* the guide character's box */
+  --bc-hud-accent: #7ba8d4;
+  --bc-hud-star: #b8d4f0;
   /* Space Grotesk is not self-hosted yet in the mockup: system-ui fallback. */
   --bc-font: "Space Grotesk", system-ui, sans-serif;
   --bc-font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;

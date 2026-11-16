@@ -26,6 +26,19 @@ from spherex_ingest.admission import (
     AdmissionDenied,
     InMemoryAdmissionController,
 )
+from spherex_ingest.assistant import (
+    MAX_HISTORY_TURNS,
+    MAX_MESSAGE_CHARS,
+    MAX_REPLY_CHARS,
+    AssistantDisabled,
+    AssistantRateLimited,
+    AssistantTurn,
+    AssistantUpstreamError,
+    GeminiAssistant,
+    SlidingWindowLimiter,
+    assistant_from_environment,
+    limiter_from_environment,
+)
 from spherex_ingest.domain.jobs import (
     AdmissionLimitExceeded,
     JobDispatcherProtocol,
@@ -776,3 +789,95 @@ def run_internal_worker_ingest(
         status_code=result.http_status,
         content={"job_id": result.job_id, "status": result.status},
     )
+
+
+# ---------- Sky guide (Gemini assistant) ----------
+
+
+class AssistantTurnDTO(BaseModel):
+    """One earlier message of the conversation, sent back by the page for context."""
+
+    role: str = Field(pattern="^(user|model)$", description="'user' (visitor) or 'model' (guide)")
+    text: str = Field(min_length=1, max_length=MAX_REPLY_CHARS)
+
+
+class AssistantRequestDTO(BaseModel):
+    """A visitor's question to the sky guide."""
+
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    history: list[AssistantTurnDTO] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+
+class AssistantResponseDTO(BaseModel):
+    """The guide's answer and the reaction the animated character should show."""
+
+    reply: str
+    mood: str = Field(description="happy | explaining | excited | curious | sorry")
+    model: str = Field(description="Gemini model that wrote the answer")
+
+
+@lru_cache(maxsize=1)
+def get_assistant() -> GeminiAssistant | None:
+    """The Gemini assistant, or None when GEMINI_API_KEY is not configured."""
+    try:
+        return assistant_from_environment()
+    except AssistantDisabled:
+        return None
+
+
+@lru_cache(maxsize=1)
+def get_assistant_limiter() -> SlidingWindowLimiter:
+    return limiter_from_environment()
+
+
+def _client_id(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@app.post(
+    "/api/v1/assistant",
+    response_model=AssistantResponseDTO,
+    tags=["assistant"],
+    summary="Ask the sky guide (Google Gemini) a question",
+)
+def ask_assistant(
+    payload: AssistantRequestDTO,
+    request: Request,
+    assistant: Annotated[GeminiAssistant | None, Depends(get_assistant)],
+    limiter: Annotated[SlidingWindowLimiter, Depends(get_assistant_limiter)],
+) -> AssistantResponseDTO:
+    """Forward the question to Gemini with the guide's instructions; the key stays server-side."""
+    if assistant is None:
+        raise _error_http_exception(
+            status_code=503,
+            code="assistant_disabled",
+            message="The sky guide is not configured on this server.",
+        )
+    history = [AssistantTurn(role=t.role, text=t.text) for t in payload.history]
+    try:
+        limiter.check(_client_id(request))
+        answer = assistant.answer(payload.message.strip(), history)
+    except AssistantRateLimited as exc:
+        raise _error_http_exception(
+            status_code=429,
+            code="daily_limit" if exc.daily else "rate_limited",
+            message=(
+                "The sky guide has answered all the questions it can today."
+                if exc.daily
+                else "Too many questions in a minute; please wait a moment."
+            ),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except AssistantUpstreamError as exc:
+        correlation_id = uuid.uuid4().hex[:12]
+        logger.warning("Sky guide failed (correlation_id=%s): %s", correlation_id, exc)
+        raise _error_http_exception(
+            status_code=502,
+            code="assistant_unavailable",
+            message="The sky guide could not answer right now.",
+            correlation_id=correlation_id,
+        ) from exc
+    return AssistantResponseDTO(reply=answer.reply, mood=answer.mood, model=answer.model)

@@ -999,6 +999,23 @@ test("the language switch turns the interface Spanish, keeps the data and is rem
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await expect(page.locator("#search-title")).toHaveText("¿Hacia dónde quieres mirar?");
+
+  // The sky guide follows the language too: its tab, greeting, quick questions and errors
+  await page.route("**/api/v1/assistant", (route) => route.fulfill({
+    status: 503, json: { detail: { code: "assistant_disabled", message: "off" } },
+  }));
+  await expect(page.locator("#tab-search")).toHaveText("01 / Tu trozo de cielo");
+  await page.locator("#tab-guide").click();
+  await expect(page.locator("#tab-guide")).toHaveText("02 / ¿No sabes por dónde empezar?");
+  await expect(page.locator("#guide-log .guide-msg-model").first()).toContainText("Soy Stacy, tu guía del cielo");
+  await page.locator(".guide-quick .chip").nth(2).click();
+  await expect(page.locator("#guide-input")).toHaveValue("¿Qué es la misión SPHEREx?");
+  await page.locator("#guide-send").click();
+  await expect(page.locator("#guide-log .guide-msg-user")).toHaveAttribute("data-who", "Tú");
+  await expect(page.locator("#guide-log .guide-msg-error")).toHaveText(/Todavía no estoy configurada/);
+  await page.locator("#lang-toggle").click();
+  await expect(page.locator("#guide-log .guide-msg-user")).toHaveAttribute("data-who", "You");
+  await expect(page.locator("#guide-log .guide-msg-error")).toHaveText(/I'm not set up on this server yet/);
 });
 
 test("the theme switch turns the frame light, keeps the image black and is remembered", async ({ page }) => {
@@ -1042,4 +1059,9 @@ test("the theme switch turns the frame light, keeps the image black and is remem
   // The label follows the language
   await page.locator("#lang-toggle").click();
   await expect(page.locator("#theme-toggle")).toHaveAttribute("aria-label", "Cambiar al tema oscuro");
+
+  // The sky guide: its speech takes the light theme, the character's box stays dark like the image
+  await page.locator("#tab-guide").click();
+  expect(await bg("#guide-log")).toBe("rgb(248, 250, 253)");
+  expect(await bg("#guide-character")).toBe("rgb(13, 22, 37)");
 });
