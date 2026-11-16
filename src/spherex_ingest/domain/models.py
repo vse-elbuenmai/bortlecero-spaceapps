@@ -10,7 +10,7 @@ import numpy as np
 from astropy.wcs import WCS
 from pydantic import BaseModel, ConfigDict, Field
 
-BUNDLE_SCHEMA_VERSION = "1.0.0"
+BUNDLE_SCHEMA_VERSION = "1.1.0"
 
 
 class SPHERExFlagBits(IntFlag):
@@ -243,6 +243,42 @@ class DifferenceMapDTO(BaseModel):
     png_base64: str | None = None
 
 
+class DeepStackDTO(BaseModel):
+    """Co-addition of the usable exposures, each shifted to follow the target's predicted motion.
+
+    Shows whether a source too faint for any single exposure is there and where. It mixes
+    wavelengths, so it carries a detection significance and a position, never a flux.
+    Pixel coordinates use the same display convention as ``FrameMetadataDTO``.
+    """
+
+    mode: str = "target_tracked"
+    frame_count: int
+    frame_ids: list[str]
+    detector_bands: list[int]
+    wavelength_min_um: float
+    wavelength_max_um: float
+    mjd_start: float
+    mjd_end: float
+    obs_time_start_iso: str
+    obs_time_end_iso: str
+    max_tracking_shift_px: float
+    target_pixel_x: float
+    target_pixel_y: float
+    noise_mjy_sr: float
+    single_frame_noise_mjy_sr: float
+    noise_reduction_factor: float
+    peak_snr: float | None = None
+    sky_fixed_peak_snr: float | None = None
+    detected: bool = False
+    detection_threshold_sigma: float = 5.0
+    measured_centroid_x: float | None = None
+    measured_centroid_y: float | None = None
+    centroid_offset_arcsec: float | None = None
+    rejected_pixel_count: int = 0
+    matrix_mjy_sr: list[list[float | None]]
+    png_base64: str | None = None
+
+
 class DroppedFrameDTO(BaseModel):
     """Record of a frame dropped during cutout retrieval or quality filtering."""
 
@@ -286,5 +322,7 @@ class BlinkBundleDTO(BaseModel):
     frames_by_band: dict[str, list[FrameMetadataDTO]]
     difference_maps: list[DifferenceMapDTO]
     dropped_frames: list[DroppedFrameDTO] = Field(default_factory=list)
+    deep_stack: DeepStackDTO | None = None
+    deep_stack_skipped_reason: str | None = None
     scientific_warnings: list[str]
     citations: list[str]

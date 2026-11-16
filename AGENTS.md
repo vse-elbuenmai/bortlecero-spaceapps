@@ -23,6 +23,7 @@ R Draconis.
   (`aladin.html`). Cómo correrlo y qué se comprobó: [mockup/README.md](mockup/README.md).
 - **Pipeline de Ingesta de Datos (`src/spherex_ingest/`):** implementada en Python 3.12+ (gestionada con Astral `uv`) siguiendo principios **SOLID** e inspirada en la arquitectura de tareas desacopladas de SPHEREx SSDC (`pipeline.pdf`).
   - **Modo Híbrido (CLI + API FastAPI):** permite tanto pre-generar paquetes estáticos (`JSON` + matrices numéricas reproyectadas + imágenes `PNG` en base64 + mapas de diferencia $\Delta I$) para los 5 objetos de prueba, como consultar cualquier coordenada $(\text{RA}, \text{Dec})$ vía la cola asíncrona `/api/v1/jobs` (topada a 6 trabajos nuevos/min y 8 pendientes) o en desarrollo local con caché en `.cache/fits/`.
+  - **Suma profunda (`processors/stacker.py`, esquema 1.1.0):** además de las fotos sueltas, el paquete lleva `deep_stack`, la suma de las exposiciones útiles siguiendo el movimiento predicho del objeto (el modo cometa del apilado). Sirve para detectar lo que no se ve en ninguna foto suelta, como WISE 0855. Mezcla longitudes de onda: da detección y posición, nunca brillo. No se construye si el objeto satura o hay menos de tres tomas (`deep_stack_skipped_reason`). El visor la muestra con el interruptor «Single frames | Stack of N».
   - **Guía técnica en español para el equipo de Frontend:** ver [docs/GUIA-EQUIPO-INGESTA.md](docs/GUIA-EQUIPO-INGESTA.md).
 - **Comandos con Astral `uv`:**
   ```bash

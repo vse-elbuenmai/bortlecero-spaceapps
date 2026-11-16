@@ -36,6 +36,40 @@
     { target_id: "r_draconis", ra: 248.1674, dec: 66.7550, name: "R Draconis" },
   ];
 
+  // The six SPHEREx bands (µm), as IRSA gives them for the instrument in flight (Bock et al. 2026).
+  // "shows" is what each one is good for in this tool; it feeds the band table of the guided tour.
+  const SPECTRUM_UM = [0.75, 5.0];
+  const BANDS = {
+    1: { lo: 0.75, hi: 1.09, shows: "Just past visible red. Ordinary stars shine brightest here." },
+    2: { lo: 1.10, hi: 1.62, shows: "Near infrared. Cool red dwarfs such as Barnard's Star stand out." },
+    3: { lo: 1.63, hi: 2.41, shows: "Sees through interstellar dust far better than visible light." },
+    4: { lo: 2.42, hi: 3.82, shows: "Water ice in cold clouds; methane absorbs here in brown dwarfs." },
+    5: { lo: 3.83, hi: 4.41, shows: "Ices (CO₂). The coldest brown dwarfs start to show: WISE 0855 only appears in Bands 5 and 6." },
+    6: { lo: 4.42, hi: 5.00, shows: "Ices (CO). Closest to WISE's W2, the band Backyard Worlds uses to find brown dwarfs." },
+  };
+  // The viewer opens on Band 6: the one WISE and Backyard Worlds use to find cold, moving objects, the
+  // one where WISE 0855 is visible, and the colour of the "SPHEREx 4.77 µm" sky behind the dialog.
+  const DEFAULT_BAND = 6;
+  const fmtRange = (b) => `${BANDS[b].lo.toFixed(2)}–${BANDS[b].hi.toFixed(2)} µm`;
+
+  // A thin bar for SPHEREx's whole range with the band's stretch lit: the "where is this band" legend.
+  function bandSpectrumBar(band) {
+    const bar = document.createElement("span");
+    bar.className = "spec-bar";
+    const info = BANDS[band];
+    if (info) {
+      const span = SPECTRUM_UM[1] - SPECTRUM_UM[0];
+      const seg = document.createElement("span");
+      seg.className = "spec-seg";
+      seg.style.left = `${((info.lo - SPECTRUM_UM[0]) / span) * 100}%`;
+      seg.style.width = `${((info.hi - info.lo) / span) * 100}%`;
+      bar.append(seg);
+    } else {
+      bar.classList.add("is-all"); // all bands: the whole bar is lit
+    }
+    return bar;
+  }
+
   const $ = (id) => document.getElementById(id);
   const stage = $("stage"), plate = $("plate"), img = $("frame-img"), flagsImg = $("flags-img");
   const overlay = $("overlay"), live = $("frame-meta");
@@ -57,6 +91,7 @@
     overlays: { predicted: true, measured: true, path: true, flags: false }, // marks drawn over the image
     legacyFlags: false,    // the current frame brings its flags as an image (frames.json)
     mode: "basic",         // detail level: "basic" or "advanced"
+    stackMode: false,      // showing bundle.deep_stack instead of the single frames (DESIGN §7.15)
   };
 
   const fmtDeg = (v, d = 4) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d) + "°";
@@ -71,6 +106,57 @@
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
     return el;
   };
+  const finite = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+  // ---------- deep stack: every usable exposure co-added along the predicted motion ----------
+  // Optional block of schema 1.1.0. Old bundles have neither field and the viewer behaves as before.
+  const STACK_SKIPPED = {
+    too_few_frames: "too few usable exposures",
+    target_saturated: "the star saturates the detector, so stacking cannot help",
+  };
+  const STACK_CAVEAT_TRACK_SIGMA = 1;    // σ the motion-following stack must gain to say it matters
+  const STACK_CAVEAT_TRACK_SHIFT_PX = 0.3;
+  const stackOf = (bundle) => {
+    const s = bundle && bundle.deep_stack;
+    return s && typeof s === "object" && typeof s.png_base64 === "string" && s.png_base64 ? s : null;
+  };
+  const sigma = (v) => `${Number(v.toFixed(1))}σ`;
+
+  function stackBands(bands) {
+    const list = [...new Set((Array.isArray(bands) ? bands : []).map(Number).filter(Number.isFinite))]
+      .sort((a, b) => a - b);
+    if (!list.length) return null;
+    if (list.length === 1) return `band ${list[0]}`;
+    const contiguous = list.every((b, k) => !k || b === list[k - 1] + 1);
+    return `bands ${contiguous ? `${list[0]}–${list[list.length - 1]}` : list.join(", ")}`;
+  }
+
+  function stackWave(s) {
+    const lo = finite(s.wavelength_min_um), hi = finite(s.wavelength_max_um);
+    if (lo === null && hi === null) return null;
+    if (lo === null || hi === null || Math.abs(hi - lo) < 0.005) return `${(lo ?? hi).toFixed(2)} µm`;
+    return `${lo.toFixed(2)}–${hi.toFixed(2)} µm`;
+  }
+
+  function stackVerdict(s) {
+    const peak = finite(s.peak_snr), off = finite(s.centroid_offset_arcsec);
+    const threshold = finite(s.detection_threshold_sigma) ?? 5;
+    if (s.detected === true) {
+      return {
+        detected: true,
+        short: "✓ Detected" + (peak !== null ? " " + peak.toFixed(1) + "σ" : ""),
+        long: "Detected in the stack" + (peak !== null ? `: ${peak.toFixed(1)}σ` : "") +
+          (off !== null ? `, ${off.toFixed(1)}″ from the predicted position` : "") + ".",
+      };
+    }
+    return {
+      detected: false,
+      short: "— Not detected" + (peak !== null ? ", " + peak.toFixed(1) + "σ" : ""),
+      long: peak !== null
+        ? `Not detected in the stack (peak ${peak.toFixed(1)}σ, below the ${sigma(threshold)} threshold).`
+        : "Not detected in the stack.",
+    };
+  }
 
   // ---------- layout: integer screen pixels per SPHEREx pixel ----------
   function layout() {
@@ -112,6 +198,18 @@
 
     const P = (p) => [p.x + 0.5, p.y + 0.5]; // standard pixel center alignment
 
+    // The stack follows the target, so there is no path: one prediction and, if found, one centroid
+    if (state.stackMode) {
+      const s = stackOf(state.bundle);
+      if (!s) return;
+      if (state.overlays.predicted) {
+        drawPredicted(...P({ x: finite(s.target_pixel_x) ?? (w - 1) / 2, y: finite(s.target_pixel_y) ?? (h - 1) / 2 }));
+      }
+      const sx = finite(s.measured_centroid_x), sy = finite(s.measured_centroid_y);
+      if (state.overlays.measured && sx !== null && sy !== null) drawMeasured(...P({ x: sx, y: sy }));
+      return;
+    }
+
     const frames = state.activeFrames;
     if (!frames || frames.length === 0) return;
     const cur = frames[state.i];
@@ -145,22 +243,28 @@
     if (state.overlays.predicted) {
       const curPx = cur.predicted_pixel_x ?? (cur.predicted ? cur.predicted.x : w / 2);
       const curPy = cur.predicted_pixel_y ?? (cur.predicted ? cur.predicted.y : h / 2);
-      const [px, py] = P({ x: curPx, y: curPy });
-      const r = 2.2;
-      overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred-halo" }));
-      overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred" }));
+      drawPredicted(...P({ x: curPx, y: curPy }));
     }
 
     // Measured centroid marker (only rendered when centroid measurement succeeded)
     const mxVal = cur.measured_centroid_x ?? (cur.measured ? cur.measured.x : null);
     const myVal = cur.measured_centroid_y ?? (cur.measured ? cur.measured.y : null);
     if (state.overlays.measured && mxVal !== null && myVal !== null) {
-      const [mx, my] = P({ x: mxVal, y: myVal });
-      const g = 0.9, a = 2.6;
-      const d = `M${mx} ${my - a}V${my - g}M${mx} ${my + g}V${my + a}M${mx - a} ${my}H${mx - g}M${mx + g} ${my}H${mx + a}`;
-      overlay.append(svgEl("path", { d, class: "mk-meas-halo" }));
-      overlay.append(svgEl("path", { d, class: "mk-meas" }));
+      drawMeasured(...P({ x: mxVal, y: myVal }));
     }
+  }
+
+  function drawPredicted(px, py) {
+    const r = 2.2;
+    overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred-halo" }));
+    overlay.append(svgEl("circle", { cx: px, cy: py, r, class: "mk-pred" }));
+  }
+
+  function drawMeasured(mx, my) {
+    const g = 0.9, a = 2.6;
+    const d = `M${mx} ${my - a}V${my - g}M${mx} ${my + g}V${my + a}M${mx - a} ${my}H${mx - g}M${mx + g} ${my}H${mx + a}`;
+    overlay.append(svgEl("path", { d, class: "mk-meas-halo" }));
+    overlay.append(svgEl("path", { d, class: "mk-meas" }));
   }
 
   function applyOverlays() {
@@ -200,6 +304,12 @@
   // ---------- show frame or difference map ----------
   function show(i, { announce = false } = {}) {
     if (!state.bundle) return;
+
+    const stack = state.stackMode ? stackOf(state.bundle) : null;
+    if (stack) {
+      showStack(stack, { announce });
+      return;
+    }
 
     if (state.diffMode && state.activeDiffMap) {
       const diffMap = state.activeDiffMap;
@@ -317,8 +427,122 @@
     drawOverlay();
   }
 
+  // ---------- deep stack view (DESIGN §7.15) ----------
+  function showStack(s, { announce = false } = {}) {
+    const n = finite(s.frame_count);
+    const wave = stackWave(s), bands = stackBands(s.detector_bands);
+    const d0 = (s.obs_time_start_iso || "").slice(0, 10), d1 = (s.obs_time_end_iso || "").slice(0, 10);
+    const span = d0 && d1 ? (d0 === d1 ? d0 : `${d0} → ${d1}`) : d0 || d1 || "";
+
+    img.src = s.png_base64;
+    img.alt = `SPHEREx stack of ${n ?? "several"} exposures of ${state.bundle.target.name}` +
+      (wave ? `, ${wave}` : "") + ", shifted to follow its predicted motion";
+    state.legacyFlags = false;
+    flagsImg.hidden = true;
+
+    live.setAttribute("aria-live", announce ? "polite" : "off");
+    $("frame-count").textContent = n !== null ? `Stack of ${n} exposures` : "Stack";
+    $("m-date").textContent = span || "N/A";
+    $("m-wave").textContent = wave || "N/A";
+    $("m-det").textContent = bands ? bands[0].toUpperCase() + bands.slice(1) : "N/A";
+    $("m-rel").textContent = "Target-tracked stack";
+    $("m-pa").textContent = "All north-up";
+    const off = finite(s.centroid_offset_arcsec);
+    $("m-off").textContent = off !== null ? off.toFixed(2) + "″" : "N/A";
+    $("hud-date").textContent = span || "Stack";
+
+    const verdict = stackVerdict(s);
+    setStatus("st-roll", "acento", "↻ All north-up", "Every exposure was turned north-up before stacking");
+    setStatus("st-core", "off", "— Not applicable");
+    setStatus("st-gaia", verdict.detected ? "ok" : "off", verdict.short, verdict.long);
+    setStatus("st-wave", "aviso", "⚠ Mixed", "The stack mixes wavelengths: it shows where the object is, not how bright");
+
+    const headline = $("stack-headline"), facts = $("stack-facts");
+    if (headline) headline.textContent = verdict.long;
+    if (facts) {
+      const items = [];
+      const fact = (text, adv = false) => items.push([text, adv]);
+      const factor = finite(s.noise_reduction_factor);
+      if (factor !== null) fact(`Noise ${factor.toFixed(1)}× lower than in a single frame`);
+      const peak = finite(s.peak_snr), fixed = finite(s.sky_fixed_peak_snr);
+      const shift = finite(s.max_tracking_shift_px);
+      if (peak !== null && fixed !== null && shift !== null &&
+          peak - fixed > STACK_CAVEAT_TRACK_SIGMA && shift > STACK_CAVEAT_TRACK_SHIFT_PX) {
+        fact(`Without following the predicted motion: ${fixed.toFixed(1)}σ`);
+      }
+      if (n !== null && n > 1) fact(`Expected from √${n}: ${Math.sqrt(n).toFixed(1)}× lower`, true);
+      const noise = finite(s.noise_mjy_sr), single = finite(s.single_frame_noise_mjy_sr);
+      if (noise !== null) {
+        fact(`Stack noise ${noise.toPrecision(2)} MJy/sr` + (single !== null ? ` (one frame ${single.toPrecision(2)})` : ""), true);
+      }
+      if (shift !== null) {
+        const scale = state.bundle.grid.pixel_scale_arcsec || 6.15;
+        fact(`Largest shift to follow the motion: ${shift.toFixed(2)} px (${(shift * scale).toFixed(1)}″)`, true);
+      }
+      const rejected = finite(s.rejected_pixel_count);
+      if (rejected !== null) fact(`Pixels rejected as outliers: ${rejected}`, true);
+      facts.replaceChildren(...items.map(([text, adv]) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        if (adv) li.className = "adv";
+        return li;
+      }));
+    }
+    drawOverlay();
+  }
+
+  // The switch "Single frames | Stack of N": on, what only makes sense for a sequence is paused and
+  // disabled in place, so the layout does not move; zoom and the legend keep working.
+  function setStackMode(on, { announce = false, render = true } = {}) {
+    on = Boolean(on && stackOf(state.bundle));
+    if (on && state.diffMode) setDiffMode(false);
+    if (on) setPlaying(false);
+    state.stackMode = on;
+
+    const sw = $("view-switch");
+    if (sw) {
+      sw.classList.toggle("is-stack", on);
+      sw.querySelectorAll("[role=radio]").forEach((b) =>
+        b.setAttribute("aria-checked", String((b.dataset.view === "stack") === on)));
+    }
+    $("viewer").classList.toggle("is-stack", on);
+    ["prev", "next", "play", "speed", "band-select"].forEach((id) => { if ($(id)) $(id).disabled = on; });
+    if (on) showStackSpectrum(stackOf(state.bundle));
+    else showBandSpectrum(state.activeBand);
+    const timeline = document.querySelector(".timeline-wrap");
+    if (timeline) timeline.inert = on;
+    if ($("stack-block")) $("stack-block").hidden = !on;
+    const result = document.querySelector(".panel .result");
+    if (result) result.hidden = on;
+    if (on) {
+      if ($("diff-toggle")) $("diff-toggle").disabled = true;
+    } else if (state.bundle) {
+      updateDiffToggleAvailability();
+    }
+
+    if (!render || !state.bundle) return;
+    show(state.i, { announce });
+    if (!on) summary();
+  }
+
+  // Shown when the bundle says anything about a stack; disabled, with the reason, when it was skipped.
+  function buildViewSwitch(bundle) {
+    const row = $("view-row");
+    if (!row) return;
+    const s = stackOf(bundle);
+    const reason = typeof bundle.deep_stack_skipped_reason === "string" ? bundle.deep_stack_skipped_reason : "";
+    row.hidden = !(s || bundle.deep_stack || reason);
+    const n = s ? finite(s.frame_count) : null;
+    const btn = $("view-stack"), note = $("view-note");
+    btn.textContent = n !== null ? `Stack of ${n}` : "Stack";
+    btn.disabled = !s;
+    note.hidden = Boolean(s);
+    note.textContent = s ? "" : `Stack unavailable: ${STACK_SKIPPED[reason] || "no stack image for this target"}.`;
+  }
+
   // ---------- playback ----------
   function setPlaying(on) {
+    if (on && state.stackMode) on = false; // a stack is one image: nothing to play
     state.playing = on;
     clearInterval(state.timer);
     const btn = $("play");
@@ -395,6 +619,7 @@
       b.className = "tl-dot";
       b.setAttribute("aria-label", `Frame ${k + 1}, ${frameDay(f)}`);
       b.addEventListener("click", () => {
+        if (state.stackMode) return; // the timeline is inert in the stack view
         if (state.diffMode) setDiffMode(false);
         setPlaying(false);
         show(k, { announce: true });
@@ -460,16 +685,66 @@
       o.textContent = label;
       return o;
     };
-    select.append(option("", `All bands · ${count(bundle.frames_chronological.length)}`));
-    bands.forEach((b) => select.append(option(String(b), `Band ${b} · ${count(framesOfBand(bundle, b).length)}`)));
+    // Each band says its range; "All bands" warns that it mixes colours (AGENTS.md, trap 2)
+    bands.forEach((b) => {
+      const range = BANDS[b] ? ` · ${fmtRange(b)}` : "";
+      select.append(option(String(b), `Band ${b}${range} · ${count(framesOfBand(bundle, b).length)}`));
+    });
+    select.append(option("", `All bands, mixed colours · ${count(bundle.frames_chronological.length)}`));
     select.value = state.activeBand === null ? "" : String(state.activeBand);
     select.closest(".band-row").hidden = bands.length === 0;
+    showBandSpectrum(state.activeBand);
+  }
+
+  // The legend beside the select: where the chosen band sits between 0.75 and 5.0 µm
+  function showBandSpectrum(band) {
+    const holder = $("band-spectrum");
+    if (!holder) return;
+    const label = document.createElement("span");
+    label.className = "spec-label mono";
+    label.textContent = BANDS[band] ? fmtRange(band) : `${SPECTRUM_UM[0].toFixed(2)}–${SPECTRUM_UM[1].toFixed(2)} µm`;
+    holder.replaceChildren(bandSpectrumBar(band), label);
+  }
+
+  // In the stack view the same legend shows the stretch the stack really covers: it adds exposures
+  // from several bands, so the band of the select (dimmed there) would be the wrong answer.
+  function showStackSpectrum(stack) {
+    const holder = $("band-spectrum");
+    const lo = Number(stack && stack.wavelength_min_um);
+    const hi = Number(stack && stack.wavelength_max_um);
+    if (!holder || !Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return;
+    const [min, max] = SPECTRUM_UM;
+    const clamp = (v) => Math.min(max, Math.max(min, v));
+    const bar = document.createElement("span");
+    bar.className = "spec-bar";
+    const seg = document.createElement("span");
+    seg.className = "spec-seg";
+    seg.style.left = `${((clamp(lo) - min) / (max - min)) * 100}%`;
+    seg.style.width = `${((clamp(hi) - clamp(lo)) / (max - min)) * 100}%`;
+    bar.append(seg);
+    const label = document.createElement("span");
+    label.className = "spec-label mono";
+    label.textContent = `Stack · ${lo.toFixed(2)}–${hi.toFixed(2)} µm`;
+    holder.replaceChildren(bar, label);
+  }
+
+  // Band 6 when it has two frames or more to blink. Otherwise the longest-wavelength band that does
+  // (the nearest in colour to Band 6), then any band with a frame, then all of them.
+  function defaultBand(bundle) {
+    const bands = (bundle.available_bands || []).map(Number);
+    const count = (b) => framesOfBand(bundle, b).length;
+    if (count(DEFAULT_BAND) >= 2) return DEFAULT_BAND;
+    const blinkable = bands.filter((b) => count(b) >= 2);
+    if (blinkable.length) return Math.max(...blinkable);
+    const any = bands.filter((b) => count(b) > 0);
+    return any.length ? Math.max(...any) : null;
   }
 
   function selectBand(band) {
     if (state.diffMode) setDiffMode(false);
     state.activeBand = band;
     $("band-select").value = band === null ? "" : String(band);
+    showBandSpectrum(band);
 
     state.activeFrames = band === null ? state.bundle.frames_chronological : framesOfBand(state.bundle, band);
 
@@ -655,6 +930,8 @@
         "2": frames,
       },
       difference_maps: [],
+      deep_stack: raw.deep_stack ?? null,
+      deep_stack_skipped_reason: raw.deep_stack_skipped_reason ?? null,
       scientific_warnings: [
         "180-degree spacecraft roll (SPS_EPA) flip reprojected onto North-up grid.",
         "Saturated core detected in Barnard's Star; reconstructed from PSF halo.",
@@ -768,17 +1045,20 @@
         ? `The search queue is busy. Try again in ${result.retryAfter} seconds.`
         : messages[result.status] || messages.unavailable;
       setTargetStatus(message);
+      document.dispatchEvent(new CustomEvent("viewer:ready", { detail: { status: result.status } }));
       return;
     }
     const bundle = normalizeBundle(result.bundle);
 
     // Set bundle into viewer
     state.bundle = bundle;
-    state.activeBand = null;
-    state.activeFrames = bundle.frames_chronological;
+    state.activeBand = defaultBand(bundle);
+    state.activeFrames = state.activeBand === null ? bundle.frames_chronological : framesOfBand(bundle, state.activeBand);
     state.diffMode = false;
     state.activeDiffMap = null;
     state.i = 0;
+    // Every new target opens on the single frames (DESIGN §7.15)
+    if ($("view-row")) setStackMode(false, { render: false });
 
     const grid = bundle.grid;
     state.cx = (grid.width_px || grid.size_px || 31) / 2;
@@ -798,6 +1078,7 @@
     $("obj-coords").textContent = `RA ${tgt.ra_deg.toFixed(4)}°, Dec ${fmtDeg(tgt.dec_deg)}`;
 
     renderWarningsAndCitations(bundle);
+    buildViewSwitch(bundle);
     buildBandOptions(bundle);
     buildTimeline();
     updateDiffToggleAvailability();
@@ -805,7 +1086,10 @@
     show(0);
     layout();
 
-    if (!reduceMotion && !$("viewer").hidden) setPlaying(true);
+    // A series that finishes loading while the viewer is minimized waits, paused, to be reopened
+    const dialog = $("viewer-modal");
+    if (!reduceMotion && !$("viewer").hidden && (!dialog || dialog.open)) setPlaying(true);
+    document.dispatchEvent(new CustomEvent("viewer:ready", { detail: { name: bundle.target.name } }));
   }
 
   // ---------- events ----------
@@ -897,8 +1181,30 @@
   });
   stage.addEventListener("pointerup", () => { drag = null; });
 
+  // Single frames or the deep stack: a radio group, arrows switch like the detail level
+  const viewSwitch = $("view-switch");
+  if (viewSwitch) {
+    viewSwitch.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-view]");
+      if (btn && !btn.disabled) setStackMode(btn.dataset.view === "stack", { announce: true });
+    });
+    viewSwitch.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      e.stopPropagation(); // the viewer's own arrows change frame
+      if ($("view-stack").disabled) return;
+      setStackMode(!state.stackMode, { announce: true });
+      viewSwitch.querySelector(`[data-view="${state.stackMode ? "stack" : "frames"}"]`).focus();
+    });
+  }
+
   $("viewer").addEventListener("keydown", (e) => {
     if (e.target.closest("input, button:not(.icon-btn)") && e.key === " ") return;
+    // The stack is one image: only zoom keys apply
+    if (state.stackMode && (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      return;
+    }
     const keys = {
       " ": () => {
         if (state.diffMode) setDiffMode(false);
@@ -934,13 +1240,17 @@
     if (!state.bundle) return;
     show(state.i);
     layout();
-    if (!reduceMotion && !state.diffMode) setPlaying(true);
+    if (!reduceMotion && !state.diffMode && !state.stackMode) setPlaying(true);
   });
 
   document.addEventListener("viewer:close", () => {
     if ($("viewer-modal")) targetRequest?.abort();
     setPlaying(false);
   });
+
+  // Minimized: hidden but not forgotten. A download in progress keeps going, and the frame, band,
+  // zoom and detail level stay as they were for when it is reopened.
+  document.addEventListener("viewer:minimize", () => setPlaying(false));
 
   document.addEventListener("viewer:load-target", (e) => {
     if (e.detail) loadTarget(e.detail);
@@ -999,7 +1309,9 @@
     {
       target: ".band-row",
       title: "Spectral Band Filter",
-      desc: "Filter observations across SPHEREx's 6 spectral detector bands (0.75 – 5.0 µm) to inspect identical wavelengths between different visits.",
+      desc: "SPHEREx sees the sky through six detectors, each one a band of infrared colours. Compare frames of one band, so a change in brightness is not just a change of colour. The viewer opens on Band 6, or on the nearest band with two images or more.",
+      wide: true,
+      build: buildBandTable,
     },
     {
       target: ".timeline-wrap",
@@ -1012,6 +1324,51 @@
       desc: "Detailed object metadata, proper motion displacement, astrometric offset against Gaia DR3, and scientific flags (e.g. saturated pixels or non-linear regimes).",
     },
   ];
+
+  // The band table of the tour: band, its range with the "where in the spectrum" bar, what it shows
+  function buildBandTable() {
+    const table = document.createElement("table");
+    table.className = "band-table";
+    const caption = document.createElement("caption");
+    caption.className = "visually-hidden";
+    caption.textContent = "The six SPHEREx bands, their wavelength range and what each one shows";
+    const head = table.createTHead().insertRow();
+    ["Band", "Range", "What it shows"].forEach((t) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = t;
+      head.append(th);
+    });
+    const body = table.createTBody();
+    Object.keys(BANDS).forEach((b) => {
+      const row = body.insertRow();
+      if (Number(b) === DEFAULT_BAND) row.className = "is-default";
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = b;
+      row.append(th);
+      const range = row.insertCell();
+      range.className = "band-range";
+      const text = document.createElement("span");
+      text.className = "mono";
+      text.textContent = fmtRange(b);
+      range.append(text, bandSpectrumBar(Number(b)));
+      row.insertCell().textContent = BANDS[b].shows;
+    });
+    const scale = document.createElement("p");
+    scale.className = "band-table-note";
+    scale.textContent = "Each bar is SPHEREx's whole range, 0.75 to 5.0 µm; the lit part is the band. Visible light ends at about 0.75 µm.";
+    // Folded on a phone, so the card stays short enough to leave the band select in view
+    const details = document.createElement("details");
+    details.className = "band-details disclosure";
+    details.open = window.innerWidth > 760;
+    const summary = document.createElement("summary");
+    summary.textContent = "The six bands";
+    details.append(summary, table, scale);
+    // Opening or closing it changes the card's height: place the card again
+    details.addEventListener("toggle", () => window.dispatchEvent(new Event("resize")));
+    return details;
+  }
 
   let currentTourSteps = [];
   let currentTourIndex = 0;
@@ -1079,7 +1436,13 @@
 
       if (counter) counter.textContent = `${currentTourIndex + 1} / ${currentTourSteps.length} · GUIDED TOUR`;
       if (title) title.textContent = step.title;
-      if (desc) desc.textContent = step.desc;
+      if (desc) {
+        const intro = document.createElement("p");
+        intro.textContent = step.desc;
+        desc.replaceChildren(intro);
+        if (step.build) desc.append(step.build());
+      }
+      card.classList.toggle("is-wide", Boolean(step.wide));
 
       if (prevBtn) prevBtn.disabled = currentTourIndex === 0;
       if (nextBtn) {
@@ -1141,7 +1504,8 @@
       spotlight.style.borderRadius = radius;
 
       // Position card
-      const cardW = Math.min(380, window.innerWidth - 32);
+      const cardW = Math.min(step.wide ? 560 : 380, window.innerWidth - 32);
+      card.style.width = `${cardW}px`; // before measuring: the band table changes height with the width
       const cardH = card.offsetHeight || 210;
       const vw = window.innerWidth;
       const vh = window.innerHeight;

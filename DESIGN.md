@@ -307,10 +307,10 @@ baja a `--bc-fs-micro`. Las celdas sustituyen a las pills, que cambiaban de núm
 
 | Celda | Valores y color |
 |---|---|
-| Roll | `↻ 180°, aligned` (acento) · `✓ 0°, as taken` (ok) · `↻ Aligned (0°)` en el mapa de diferencia |
-| Core | `⚠ Saturated` (aviso) · `✓ Not saturated` (ok) · `— Not applicable` (`--bc-muted`) |
-| vs Gaia | `✓ 0.31″ off` (ok, hasta 0.5″) · `⚠ 3.27″ off` (aviso) · `— Unmeasured` (`--bc-muted`) · `± Dipole ΔI` |
-| Wavelength | `✓ Same as before` (ok) · `⚠ 2.29→4.23 µm` (aviso, salto mayor de 0.05 µm) · `— First frame` · `Δλ 0.012 µm` |
+| Roll | `↻ 180°, aligned` (acento) · `✓ 0°, as taken` (ok) · `↻ Aligned (0°)` en el mapa de diferencia · `↻ All north-up` en la pila (§7.15) |
+| Core | `⚠ Saturated` (aviso) · `✓ Not saturated` (ok) · `— Not applicable` (`--bc-muted`; también en la pila) |
+| vs Gaia | `✓ 0.31″ off` (ok, hasta 0.5″) · `⚠ 3.27″ off` (aviso) · `— Unmeasured` (`--bc-muted`) · `± Dipole ΔI` · en la pila: `✓ Detected 10.2σ` (ok) · `— Not detected, 2.1σ` (`--bc-muted`) |
+| Wavelength | `✓ Same as before` (ok) · `⚠ 2.29→4.23 µm` (aviso, salto mayor de 0.05 µm) · `— First frame` · `Δλ 0.012 µm` · `⚠ Mixed` en la pila (aviso) |
 
 ### 7.5 Entrada de coordenadas
 
@@ -462,11 +462,33 @@ Sale de la prueba de `mockup/sky.js`.
   anillo «aterriza» (entra un poco grande y se asienta en 0.6 s) y suelta tres pulsos lentos que se
   abren y se apagan; después se queda quieto. El diálogo se abre 0.9 s después de llegar, para que
   se vea el aterrizaje, y al cerrarlo el anillo repite los pulsos para volver a señalar el sitio.
-- **Diálogo del visor:** `<dialog>` modal de 1180 px como máximo, fondo `--bc-cosmos`, borde
-  `--bc-border`, radio 16 px, fondo oscurecido `rgba(4, 7, 11, 0.72)`. Cabecera con el nombre, la
-  posición de hoy, el selector de nivel de detalle (§7.13) y un botón de cerrar de 44 × 44; por
-  debajo de 520 px el selector y el cierre pasan a su propia fila, encima del nombre. Si no hay
-  fotos para esa posición, lo dice y ofrece ir a un objeto que sí las tiene (§7.6).
+- **Diálogo del visor:** `<dialog>` modal **a pantalla completa** (clase `modal-full`; decidido por
+  Miguel el 15 nov: el visor es la herramienta principal, no una ventana emergente). Fondo
+  `--bc-cosmos`, sin borde ni radio, margen lateral `clamp(16px, 3vw, 48px)`. Dos columnas del
+  ancho de su contenido, centradas como pareja para que no se abra un hueco entre ellas en una
+  pantalla ancha: la imagen con sus controles a la izquierda, en una columna tan ancha como la
+  imagen, y el panel a la derecha en una columna de 360 a 600 px, separadas `clamp(32px, 4vw,
+  64px)`. El lienzo crece con la pantalla, primero por alto (`--stage: min(100dvh − 390px, 900px,
+  100vw − márgenes − 420px)`), para que los controles y la línea de fechas quepan sin desplazar;
+  controles, banda, fechas y avisos toman el mismo ancho que el lienzo. En ≤ 1100 px es una sola
+  columna de hasta 760 px, con el panel debajo. La cabecera se queda arriba al desplazar
+  (`position: sticky`, fondo `rgba(8, 12, 20, 0.94)` con desenfoque y borde inferior
+  `--bc-border-soft`) con el nombre, la posición de hoy, el selector de nivel de detalle (§7.13),
+  la guía, **minimizar** y **cerrar**, botones de 44 × 44; sus tooltips (§7.7) se abren hacia
+  abajo, porque hacia arriba saldrían de la pantalla. Por debajo de 520 px esos controles pasan a
+  su propia fila, sin encogerse. Si no hay fotos para esa posición, lo dice y ofrece ir a un
+  objeto que sí las tiene (§7.6).
+- **Desplegables de texto (`<details>`):** «How these frames were made» y la tabla de bandas de la
+  guía llevan la clase `disclosure`: el `summary` es una pill como el botón «Search» (§7.11), con
+  un ángulo de 8 px a la izquierda que apunta abajo cerrado y arriba abierto, para que se vea que
+  es un botón. «How these frames were made» empieza cerrado.
+- **Minimizar y cerrar:** *minimizar* (una raya baja) esconde el diálogo sin olvidar nada: una
+  descarga en curso sigue, y la foto, la banda, el zoom y el nivel quedan como estaban. En la barra
+  plegada de búsqueda aparece una pill con borde `--bc-estrella` y el nombre del objeto («· loading…»
+  mientras carga) que lo reabre al instante, sin viaje ni descarga; en el teléfono la pill ocupa el
+  sitio de la etiqueta «01 / Your patch of sky». Buscar otra vez la misma posición (a menos de 1″)
+  también reabre lo minimizado. **Escape minimiza**, para que una tecla no tire una carga de
+  minutos. *Cerrar* (la X) sí olvida: cancela la carga y vuelve al cielo con la búsqueda abierta.
 - **Créditos:** como no hay pie de página, el botón «Credits» de la cabecera abre un diálogo con el
   texto del §7.10.
 - **Enlace de salto:** «Skip to search».
@@ -510,6 +532,127 @@ se recuerda en el navegador (`localStorage`, clave `viewer-detail`).
 | Número de foto, fecha, longitud de onda, detector | Bloque «Object» (nombre y posición de Gaia, que la cabecera ya da) |
 | Las cuatro comprobaciones (§7.4) | «Scientific Warnings & Notes» |
 | «What moved» y «How these frames were made» | «Data & Astrometry Citations» |
+| Selector «Single frames \| Stack of N» y la pila con su veredicto, reducción de ruido y advertencia (§7.15) | En la pila: lo esperado por √N, el ruido en MJy/sr, el mayor desplazamiento aplicado y los píxeles rechazados |
+
+### 7.15 Pila profunda («deep stack»)
+
+Hay objetos (la enana marrón WISE 0855−0714 es el caso que lo motivó) que no se ven en ninguna foto
+sola: todas dicen `— Unmeasured`. El motor suma todas las fotos útiles desplazando cada una para que
+la posición predicha del objeto (movimiento propio + paralaje) quede quieta, como el modo cometa del
+apilado en astrofotografía; el ruido baja más o menos como √N. Llega en el paquete (esquema 1.1.0)
+como `deep_stack`, opcional, o `deep_stack_skipped_reason` si no se hizo.
+
+- **Selector:** un `radiogroup` de dos opciones, «Single frames» y «Stack of N» (N = `frame_count`),
+  con la misma pill y el mismo pulgar deslizante del nivel de detalle (§7.13); opciones de 38 px de
+  alto para llegar a 44 con el marco. Va en su propia fila, justo bajo la imagen y encima de los
+  controles, porque cambia lo que enseña la imagen. Flechas izquierda y derecha cambian de opción
+  (sin cambiar de foto). «Single frames» es el inicial y vuelve a serlo con cada objeto nuevo.
+- **Cuándo aparece:** con `deep_stack`, activo. Sin pila pero con `deep_stack_skipped_reason`, la
+  opción de la pila va deshabilitada (`opacity: 0.45`) y al lado, en `--bc-fs-xs` / `--bc-muted`,
+  el motivo: «Stack unavailable: too few usable exposures.» o «Stack unavailable: the star saturates
+  the detector, so stacking cannot help.». Sin ninguno de los dos campos (paquetes anteriores a
+  1.1.0) la fila no existe y el visor queda como antes.
+- **Qué cambia en la vista de pila:** la imagen es la de la pila, en la misma cuadrícula y con el
+  mismo estirado `asinh` y la misma paleta que las fotos, pero con su propia escala de brillo
+  (el motor la calcula sobre la suma, que tiene menos ruido). Encima, el anillo de la posición predicha (en `target_pixel_x/y`) y
+  la cruz del centro medido si lo hay; no hay trayectoria, porque la imagen sigue al objeto. Lo que
+  sólo tiene sentido en una serie se pausa y se deshabilita **en su sitio**, sin ocultarlo, para que
+  nada se mueva: reproducir, anterior / siguiente, velocidad, banda y «Difference Map». La línea de
+  fechas queda atenuada (0.45) e inerte y enseña sólo la primera y la última fecha. Zoom, arrastre y
+  leyenda siguen funcionando.
+- **Barra de espectro en la vista de pila** (decidido por Miguel el 15 nov): el desplegable de banda
+  queda atenuado con la banda que tenía, pero la barra de espectro (§7.14) enciende el tramo que la
+  pila cubre de verdad, de `wavelength_min_um` a `wavelength_max_um`, y su etiqueta dice
+  `Stack · 4.29–4.97 µm`. La pila suma fotos de varias bandas, así que la banda del desplegable
+  sería una respuesta equivocada. Al volver a «Single frames» la barra vuelve a la banda elegida.
+- **Panel:** el encabezado dice «Stack of N exposures»; la fecha es el intervalo
+  (`2025-05-05 → 2026-05-13`, también en la placa de la imagen), la longitud de onda el rango
+  (`3.82–4.98 µm`) y el detector las bandas (`Bands 5–6`). Las cuatro celdas del §7.4 siguen, con
+  los valores de la pila. «What moved» cede su sitio a **«What the stack shows»**:
+  - el veredicto en `--bc-fs-base` / `--bc-blanco`: «Detected in the stack: 10.2σ, 0.8″ from the
+    predicted position.» o «Not detected in the stack (peak 2.1σ, below the 5σ threshold).»;
+  - «Noise 3.1× lower than in a single frame» (no «÷3.1»: en letra pequeña el `÷` se lee como `+`);
+  - sólo si sumar sin seguir el movimiento da más de 1σ menos y el desplazamiento mayor pasa de
+    0.3 px: «Without following the predicted motion: 6.0σ»;
+  - en avanzado, en `--bc-muted`: lo esperado por √N, el ruido de la pila y de una foto en MJy/sr,
+    el mayor desplazamiento aplicado (px y ″) y los píxeles rechazados;
+  - siempre, en `--bc-fs-xs` / `--bc-muted`, la advertencia: «The stack mixes wavelengths, so it
+    shows that something is there and where, not how bright it is. Field stars may look slightly
+    smeared because the image follows the target.»
+- **Tolerancia:** cualquier número que llegue `null` o falte se omite o se escribe «N/A»; nunca se
+  inventa.
+
+### 7.14 Banda y su lugar en el espectro
+
+Cada banda de SPHEREx ve otro tramo de colores; comparar dos bandas no prueba que la estrella varíe
+(AGENTS.md, trampa 2). Por eso:
+
+- **Banda inicial: la 6** (4.42–5.00 µm), decidido por Miguel el 15 nov. Es la más cercana a la W2
+  de WISE, con la que Backyard Worlds busca enanas marrones; es donde se ve WISE 0855; y es el color
+  de la capa «SPHEREx 4.77 µm» del cielo. Si la serie tiene menos de dos fotos en la 6, abre en la
+  banda de mayor longitud de onda que tenga dos o más (sin parpadeo no hay herramienta).
+- **El desplegable** dice el rango de cada banda (`Band 6 · 4.42–5.00 µm · 3 frames`); «All bands,
+  mixed colours» va al final y avisa de que mezcla colores.
+- **Barra de espectro:** a la derecha del desplegable (debajo, a 14 px, en ≤ 520 px), una barra de 6 px y
+  radio 3 en `--bc-horizonte` que representa todo el rango de SPHEREx, de 0.75 a 5.0 µm, con el
+  tramo de la banda encendido en `--bc-estrella`; debajo, el rango en `--bc-font-mono` y
+  `--bc-muted`. Con «All bands» la barra entera va en `--bc-acento`. No usa colores de arcoíris: el
+  infrarrojo no tiene color propio y no inventamos uno.
+- **Tabla de bandas en la guía:** el paso «Spectral Band Filter» de la guía lleva una tabla de seis
+  filas (banda, rango con su barra, qué muestra), con la fila de la banda inicial sobre
+  `rgba(123, 168, 212, 0.1)`. Ese paso usa una tarjeta de 560 px, que se desplaza por dentro si la
+  pantalla es baja. La tabla va en un desplegable «The six bands» (`disclosure`), abierto en
+  escritorio y **cerrado en ≤ 760 px**, para que la tarjeta deje a la vista el selector de banda
+  que señala. Rangos: los de IRSA para el instrumento en vuelo (Bock et al. 2026).
+
+
+### 7.14 Guía del cielo (pestaña «02 / Don't know where to start?»)
+
+Segunda pestaña del buscador del §7.11, decidida por el equipo el 15 nov: un personaje animado que
+responde preguntas con un modelo de IA (Google Gemini) para quien no sabe por dónde empezar. Es un
+recurso educativo, no la herramienta científica: no da medidas que el visor no compruebe.
+
+- **Pestañas:** las etiquetas pequeñas del buscador son las pestañas («01 / Your patch of sky» y
+  «02 / Don't know where to start?»), en `--bc-muted` y, la elegida, en `--bc-acento` con una
+  línea de 2 px debajo. `role="tablist"`; flechas izquierda y derecha, Inicio y Fin cambian de
+  pestaña. Plegado, el panel muestra sólo la pestaña que estaba abierta; elegir una lo despliega.
+- **Personaje:** una estrella con cara, generada con IA por el equipo y con la marca de agua
+  visible «AI-generated» grabada en cada imagen (regla 2). Seis caras recortadas de su hoja de
+  expresiones, en `mockup/guide/stacy-*.webp`. Cuadro de 168 × 168 px (96 px en móvil) arriba a la
+  izquierda, radio 10 px, borde `--bc-border-soft` y un brillo radial azul detrás de la estrella
+  sobre `--bc-noche`; el brillo sube con `happy` y `excited` y baja con `sorry`.
+
+  | Reacción | Quién la pone | Cara | Movimiento |
+  |---|---|---|---|
+  | `idle` | la página, al abrir la pestaña | sonrisa suave | flota 5 px dos veces (4.4 s) y se queda quieta |
+  | `thinking` | la página, mientras espera | boca «:3» | se balancea ±6° con tres puntos que saltan, hasta que llega la respuesta |
+  | `talking` | la página, mientras escribe | alterna boca abierta, sonrisa y «o» cada 150 ms | rebota 3 px mientras dura el texto (4 s como máximo) |
+  | `happy` | el modelo | sonrisa abierta | dos saltitos con un destello |
+  | `explaining` | el modelo | sonrisa pequeña | asiente una vez |
+  | `excited` | el modelo | ojos cerrados, risa | tres saltos con giro y tres destellos |
+  | `curious` | el modelo | boca «o» | ladea la cabeza 10° y se queda así |
+  | `sorry` | el modelo | sonrisa pequeña | se encoge, se inclina y pierde color, y se queda así |
+
+  Sólo `thinking` y `talking` se repiten en bucle, y duran lo que dura la espera o el texto; las
+  demás se mueven una vez y se quedan quietas (§6, WCAG 2.2.2). Con `prefers-reduced-motion` no se
+  mueve nada y la boca no alterna: sólo cambia la cara. La hoja no trae una cara triste, por eso
+  `sorry` usa la sonrisa pequeña con la postura caída.
+- **Globo:** a la derecha del personaje, un registro (`role="log"`, `aria-live="polite"`) de
+  168 px de alto como máximo que se desplaza, fondo `--bc-noche`, borde `--bc-border`. La guía en
+  `--bc-blanco`; lo que escribió la persona, alineado a la derecha, en `--bc-muted` con «You:» en
+  `--bc-acento`; los errores en `--bc-aviso`, siempre con una frase amable. La respuesta aparece
+  letra por letra en 4 s como máximo (de golpe con movimiento reducido).
+- **Preguntas rápidas:** tres chips (§7.7) bajo el personaje. **Sólo llenan el cuadro de texto**
+  para que la persona las edite antes de enviar; nunca envían solas. En móvil van en una fila que
+  se desplaza de lado.
+- **Cuadro de texto:** `textarea` de 2 líneas y 500 caracteres como máximo con el botón principal
+  «Ask». Enter envía y Mayús + Enter hace un salto de línea. El botón se apaga mientras se espera.
+- **Aviso fijo** bajo el cuadro, en 12 px y `--bc-muted`: «Answers are written by an AI agent and
+  can be wrong. Don't share personal information.» Lo primero es la regla 2 del hackatón (lo
+  generado con IA se declara); lo segundo, porque en el plan gratuito de Gemini Google usa lo que
+  se le manda para mejorar sus productos.
+- **Clave:** la página nunca lleva la clave de Gemini. Pregunta a `POST /api/v1/assistant` de la
+  API propia, que guarda la clave y limita las preguntas por minuto.
 
 ---
 
