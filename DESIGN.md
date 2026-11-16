@@ -25,14 +25,19 @@ menú «Experiencias» de la familia Bortle Cero.
 3. **El estado nunca va sólo en el color.** Siempre lleva texto, icono o forma (regla heredada).
 4. **Accesible por defecto.** Contraste AA, foco visible, objetivos de 44 px, teclado completo y
    respeto a `prefers-reduced-motion`. En un parpadeo, además, límite de destellos (§8).
-5. **En inglés.** Todo texto visible, `alt`, `aria-label` y mensajes de error.
+5. **En inglés.** Todo texto visible, `alt`, `aria-label` y mensajes de error. El inglés es el idioma
+   por defecto y el que ve el jurado; el español existe como interruptor (§7.9) y vive, con el inglés,
+   en `mockup/i18n.js`. Los nombres de objetos, unidades, fechas y números son datos: no se traducen.
 
 ---
 
 ## 2. Color
 
-Sólo tema oscuro (`color-scheme: dark`). Una imagen astronómica se lee mejor sobre negro, y el sistema
-de origen no tiene tema claro.
+Tema oscuro por defecto (`color-scheme: dark`): una imagen astronómica se lee mejor sobre negro, y el
+sistema de origen no tiene tema claro. Desde el 15 nov hay además un **tema claro opcional** (§2.7),
+que cambia el marco (cabecera, paneles, diálogos, texto) y deja la imagen y el cielo en negro. Se
+activa con el botón sol/luna de la cabecera y se recuerda; no sigue la preferencia del sistema,
+porque el oscuro es el diseño y el claro una opción.
 
 ### 2.1 Superficies (de más oscura a más clara)
 
@@ -103,6 +108,42 @@ Reglas:
 - El estirado (asinh u otro) se aplica al preparar los datos y es el mismo para todas las fotos de una
   serie. Si cambia, el parpadeo miente.
 - Nada de filtros CSS sobre la imagen (`brightness`, `contrast`): alteran el dato sin decirlo.
+
+### 2.7 Tema claro («cielo diurno»)
+
+Decidido por Miguel el 15 nov entre dos propuestas (hueso cálido heredado de moiksys.com, o la
+misma familia azul del tema oscuro con la luz al revés): se eligió la segunda. Los acentos son el
+mismo azul oscurecido para que lean sobre claro; el ámbar sigue de complementario para avisos.
+Contraste medido sobre `--bc-cosmos` claro (`#eef3f9`); todo texto pasa AA.
+
+| Token | Claro | Contraste | Uso |
+|---|---|---|---|
+| `--bc-cosmos` | `#eef3f9` | · | fondo de página |
+| `--bc-noche` | `#f8fafd` | · | paneles, tarjetas, inputs |
+| `--bc-horizonte` | `#d5dfeb` | · | hover, superficie elevada |
+| `--bc-blanco` | `#0b1726` | 16.2:1 | títulos, valores |
+| `--bc-texto` | `#1e2e42` | 12.4:1 | lectura |
+| `--bc-estrella` | `#1b4a80` | 8.1:1 | botón principal, foco, activo |
+| `--bc-muted` | `#4a5b70` | 6.2:1 | secundario |
+| `--bc-acento` | `#2d63a3` | 5.5:1 | enlaces, eyebrows |
+| `--bc-ok` / `--bc-aviso` / `--bc-error` | `#15803d` / `#9a4f00` / `#b42318` | 4.5 / 5.4 / 5.9:1 | estado |
+| `--bc-border` / `--bc-border-soft` | `#b7c6d8` / `#d5dfeb` | · | bordes (nunca texto) |
+
+Reglas:
+
+- **Lo que no cambia:** `--bc-abismo` (el lienzo), las marcas sobre la imagen (`--viz-*`) con su halo
+  oscuro, la barra de espectro y todo lo que se dibuja sobre la imagen o el cielo (`--bc-hud-*`:
+  rótulos, barra de escala, retícula del viaje, barra de carga, anillo de foco del lienzo): van
+  sobre negro en los dos temas. **Regla para lo nuevo:** lo que se pinte encima de la imagen o del
+  cielo usa `--viz-*` o `--bc-hud-*`, nunca un token de tema.
+- En claro, la leyenda dibuja cada marca sobre una ficha del negro de la imagen, tal como se ve
+  encima de ella.
+- **Nada de colores crudos en el CSS.** Los translúcidos salen de tokens (`--bc-glass`,
+  `--bc-noche-glass`, `--bc-well`, `--bc-backdrop`, `--bc-dim`, `--bc-shadow`); un acento con
+  transparencia se escribe `color-mix(in srgb, var(--bc-acento) 25%, transparent)`.
+- La sombra clara es azulada (`rgba(27, 74, 128, 0.25)`), no negra.
+- El tema vive en `html[data-theme="light"]` (`mockup/theme.js`); un script de una línea en `<head>`
+  lo aplica antes del primer pintado.
 
 ---
 
@@ -491,6 +532,10 @@ Sale de la prueba de `mockup/sky.js`.
   minutos. *Cerrar* (la X) sí olvida: cancela la carga y vuelve al cielo con la búsqueda abierta.
 - **Créditos:** como no hay pie de página, el botón «Credits» de la cabecera abre un diálogo con el
   texto del §7.10.
+- **Idioma y tema:** en la cabecera, antes de «Credits», una pill de texto con el nombre del *otro*
+  idioma («ES» mientras se lee en inglés) y un botón redondo sol/luna con el tema que encendería.
+  Los dos se repiten en la cabecera del diálogo del visor, porque tapa la de la página; en ≤ 520 px
+  el del tema se esconde ahí (seis controles no caben en 328 px) y se llega a él minimizando.
 - **Enlace de salto:** «Skip to search».
 
 ### 7.12 Desplegable
@@ -653,6 +698,13 @@ recurso educativo, no la herramienta científica: no da medidas que el visor no 
   se le manda para mejorar sus productos.
 - **Clave:** la página nunca lleva la clave de Gemini. Pregunta a `POST /api/v1/assistant` de la
   API propia, que guarda la clave y limita las preguntas por minuto.
+- **Idioma:** las pestañas, el saludo, las preguntas rápidas, el aviso y los errores siguen el
+  interruptor de idioma (`mockup/i18n.js`, claves `guide.*`). Lo ya conversado no se retraduce: es
+  la conversación, no interfaz. El modelo contesta en el idioma en que le escriben.
+- **Tema claro:** el cuadro del personaje se queda oscuro en los dos temas (`--bc-hud-surface`),
+  como la imagen: el arte y su marca de agua se hicieron para fondo oscuro. Los puntos y los
+  destellos usan `--bc-hud-star` y `--bc-hud-strong`. El globo, los chips y el cuadro de texto
+  sí cambian con el tema.
 
 ---
 
@@ -718,6 +770,28 @@ Es contrato, no recomendación.
   --bc-ok: #4ade80;
   --bc-aviso: #d4a870;
   --bc-error: #f87171;
+
+  /* translúcidos y sombras (§2.7): los valores claros, en mockup/mockup.css */
+  --bc-glass: rgba(8, 12, 20, 0.78);
+  --bc-glass-soft: rgba(8, 12, 20, 0.6);
+  --bc-glass-strong: rgba(8, 12, 20, 0.94);
+  --bc-noche-glass: rgba(13, 22, 37, 0.6);
+  --bc-noche-solid: rgba(13, 22, 37, 0.95);
+  --bc-well: rgba(4, 7, 11, 0.35);
+  --bc-backdrop: rgba(4, 7, 11, 0.72);
+  --bc-dim: rgba(4, 7, 11, 0.78);
+  --bc-shadow: 0 18px 40px #03060acc;
+  --bc-estrella-hover: #d8eafe;
+  /* sobre la imagen y el cielo: iguales en los dos temas */
+  --bc-hud-bg: rgba(4, 7, 11, 0.7);
+  --bc-hud-fg: #c8d8ec;
+  --bc-hud-strong: #f0f6ff;
+  --bc-hud-surface: #0d1625;
+  --bc-hud-accent: #7ba8d4;
+  --bc-hud-star: #b8d4f0;
+  --bc-hud-track: #1a2840;
+  --viz-flag-bad: rgba(150, 166, 186, 0.45);
+  --viz-flag-sat: rgba(248, 113, 113, 0.5);
 
   /* datos sobre la imagen */
   --viz-predicha: #6dd5c0;

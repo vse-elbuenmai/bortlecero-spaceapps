@@ -951,3 +951,129 @@ test("viewer stops polling when the overall search deadline expires", async ({ p
   expect(response).toEqual({ status: "search-timeout" });
   expect(polls).toBe(1);
 });
+
+test("the language switch turns the interface Spanish, keeps the data and is remembered", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const bundle = withStack(makeBundle({ targetId: "wise_0855_0714", name: "WISE 0855−0714", ra: 133.76, dec: -7.2422 }));
+  await serve(page, localOrigin, source, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: "" } }),
+    "/api/v1/jobs": (route) => route.fulfill({ json: { job_id: "job-1", status: "succeeded", result: bundle } }),
+  });
+  // English by default: what the public and the judges see
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("#search-title")).toHaveText("Where do you want to look?");
+  await expect(page.locator("#lang-toggle")).toHaveText("ES");
+
+  await pickTarget(page, "wise0855");
+  await expect(page.locator("#viewer")).toBeVisible();
+  await expect(page.locator("#frame-count")).toHaveText("Frame 1 / 2");
+
+  // Switching with the viewer open (its own button, since the dialog covers the header) redraws
+  // the text it built; names, dates and numbers stay
+  await page.locator("#modal-lang-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  await expect(page.locator("#lang-toggle")).toHaveText("EN");
+  await expect(page.locator("#modal-title")).toHaveText("WISE 0855−0714");
+  // The coordinates line stays the loaded bundle's (Gaia), not the "position for today" of the trip
+  await expect(page.locator("#modal-coords")).toHaveText(/^Gaia DR3 \(.*campo/);
+  await expect(page.locator("#frame-count")).toHaveText("Foto 1 / 2");
+  await expect(page.locator("#m-det")).toHaveText("Banda 2");
+  await expect(page.getByRole("radio", { name: "Fotos sueltas" })).toBeVisible();
+  const stack = page.getByRole("radio", { name: /^Suma/ });
+  await expect(stack).toHaveText("Suma de 12");
+  await expect(page.locator("#summary")).toContainText("Gaia predice");
+  await expect(page.locator("#st-core")).toHaveText("✓ Sin saturar");
+  await expect(page.locator("#band-select option").first()).toContainText("Banda 2");
+  await expect(page.locator(".legend li").first()).toContainText("Predicha (Gaia DR3)");
+
+  await stack.click();
+  await expect(page.locator("#frame-count")).toHaveText("Suma de 12 exposiciones");
+  await expect(page.locator("#st-gaia")).toHaveText("✓ Detectado 10.2σ");
+  await expect(page.locator("#stack-headline")).toHaveText("Detectado en la suma: 10.2σ, a 0.8″ de la posición predicha.");
+
+  // Back to English, in place
+  await page.locator("#modal-lang-toggle").click();
+  await expect(page.locator("#frame-count")).toHaveText("Stack of 12 exposures");
+  await expect(page.locator("#stack-headline")).toHaveText("Detected in the stack: 10.2σ, 0.8″ from the predicted position.");
+
+  // The choice survives a reload
+  await page.locator("#modal-lang-toggle").click();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  await expect(page.locator("#search-title")).toHaveText("¿Hacia dónde quieres mirar?");
+
+  // A field error on screen is redrawn in the new language, not left behind
+  await page.locator("#search-form button[type=submit]").click();
+  await expect(page.locator("#object-err")).toHaveText("⚠ Elige un objeto de prueba, escribe un nombre o introduce AR y Dec.");
+  await page.locator("#lang-toggle").click();
+  await expect(page.locator("#object-err")).toHaveText("⚠ Choose a test object, type an object name, or enter RA and Dec.");
+  await page.locator("#lang-toggle").click();
+
+  // The sky guide follows the language too: its tab, greeting, quick questions and errors
+  await page.route("**/api/v1/assistant", (route) => route.fulfill({
+    status: 503, json: { detail: { code: "assistant_disabled", message: "off" } },
+  }));
+  await expect(page.locator("#tab-search")).toHaveText("01 / Tu trozo de cielo");
+  await page.locator("#tab-guide").click();
+  await expect(page.locator("#tab-guide")).toHaveText("02 / ¿No sabes por dónde empezar?");
+  await expect(page.locator("#guide-log .guide-msg-model").first()).toContainText("Soy Stacy, tu guía del cielo");
+  await page.locator(".guide-quick .chip").nth(2).click();
+  await expect(page.locator("#guide-input")).toHaveValue("¿Qué es la misión SPHEREx?");
+  await page.locator("#guide-send").click();
+  await expect(page.locator("#guide-log .guide-msg-user")).toHaveAttribute("data-who", "Tú");
+  await expect(page.locator("#guide-log .guide-msg-error")).toHaveText(/Todavía no estoy configurada/);
+  await page.locator("#lang-toggle").click();
+  await expect(page.locator("#guide-log .guide-msg-user")).toHaveAttribute("data-who", "You");
+  await expect(page.locator("#guide-log .guide-msg-error")).toHaveText(/I'm not set up on this server yet/);
+});
+
+test("the theme switch turns the frame light, keeps the image black and is remembered", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const bundle = makeBundle({ targetId: "barnards_star", name: "Barnard's Star", ra: 269.4485, dec: 4.7394 });
+  await serve(page, localOrigin, source, {
+    "/viewer-config.json": (route) => route.fulfill({ json: { liveQueries: true, apiBaseUrl: "" } }),
+    "/api/v1/jobs": (route) => route.fulfill({ json: { job_id: "job-1", status: "succeeded", result: bundle } }),
+  });
+  const bg = (selector) => page.locator(selector).evaluate((el) => getComputedStyle(el).backgroundColor);
+  // The page itself is the sky (black in both themes): the theme shows in the page-colour token
+  const cosmos = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bc-cosmos").trim());
+  // Dark by default, whatever the system prefers
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
+  expect(await cosmos()).toBe("#080c14");
+  expect(await bg("body")).toBe("rgb(4, 7, 11)");
+  await expect(page.locator("#theme-toggle")).toHaveAttribute("aria-label", "Switch to the light theme");
+
+  await page.locator("#theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await cosmos()).toBe("#eef3f9");
+  expect(await bg("body")).toBe("rgb(4, 7, 11)");
+  await expect(page.locator("#theme-toggle")).toHaveAttribute("aria-label", "Switch to the dark theme");
+
+  // The viewer: light frame, black image, its own switch, the HUD still light-on-dark
+  await pickTarget(page, "barnard");
+  await expect(page.locator("#viewer")).toBeVisible();
+  expect(await bg("#viewer-modal")).toBe("rgb(238, 243, 249)");
+  expect(await bg("#stage")).toBe("rgb(4, 7, 11)");
+  expect(await page.locator(".hud-tl").evaluate((el) => getComputedStyle(el).color)).toBe("rgb(200, 216, 236)");
+  // What is drawn over the black image keeps its dark-theme colour: the scale bar, the travel reticle
+  expect(await bg("#scalebar")).toBe("rgb(200, 216, 236)");
+  expect(await page.locator(".reticle-ring").evaluate((el) => getComputedStyle(el).stroke)).toBe("rgb(184, 212, 240)");
+  await page.locator("#modal-theme-toggle").click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
+  expect(await bg("#viewer-modal")).toBe("rgb(8, 12, 20)");
+  await page.locator("#modal-theme-toggle").click();
+
+  // Remembered, and applied before the first paint (no data-theme flip after load)
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await cosmos()).toBe("#eef3f9");
+  // The label follows the language
+  await page.locator("#lang-toggle").click();
+  await expect(page.locator("#theme-toggle")).toHaveAttribute("aria-label", "Cambiar al tema oscuro");
+
+  // The sky guide: its speech takes the light theme, the character's box stays dark like the image
+  await page.locator("#tab-guide").click();
+  expect(await bg("#guide-log")).toBe("rgb(248, 250, 253)");
+  expect(await bg("#guide-character")).toBe("rgb(13, 22, 37)");
+});

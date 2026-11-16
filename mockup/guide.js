@@ -36,6 +36,7 @@
   const TYPE_MAX_MS = 4000;
 
   const $ = (id) => document.getElementById(id);
+  const t = (window.i18n && window.i18n.t) || ((key) => key); // interface text (i18n.js)
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const loopback = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -54,11 +55,11 @@
 
   // ---------- Tabs ----------
   function selectTab(tab, focus = false) {
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-      $(t.getAttribute("aria-controls")).hidden = !on;
+    for (const el of tabs) {
+      const on = el === tab;
+      el.setAttribute("aria-selected", String(on));
+      el.tabIndex = on ? 0 : -1;
+      $(el.getAttribute("aria-controls")).hidden = !on;
     }
     if (focus) tab.focus();
     if (tab === tabs[1] && !busy) setMood("idle");
@@ -104,7 +105,9 @@
   function addMessage(role, text) {
     const p = document.createElement("p");
     p.className = `guide-msg guide-msg-${role}`;
-    p.textContent = text;
+    if (role === "user") p.dataset.who = t("guide.you"); // "You" before the visitor's words (sky.css)
+    if (role === "error") p.dataset.i18n = text;         // an i18n key: follows the language switch
+    p.textContent = role === "error" ? t(text) : text;
     log.append(p);
     log.scrollTop = log.scrollHeight;
     return p;
@@ -166,12 +169,13 @@
     throw error;
   }
 
+  // The i18n key of the kind sentence for each failure (texts in i18n.js)
   function errorText(error) {
-    if (error.code === "assistant_disabled") return "I'm not set up on this server yet, so I can't answer for now.";
-    if (error.code === "daily_limit") return "I've answered all the questions I can for today. Come back tomorrow!";
-    if (error.status === 429) return "That's a lot of questions! Give me a minute and try again.";
-    if (error.status === 422) return "That question is a bit long for me. Try it in fewer words (500 characters at most).";
-    return "I couldn't reach my notes right now. Please try again in a moment.";
+    if (error.code === "assistant_disabled") return "guide.err_disabled";
+    if (error.code === "daily_limit") return "guide.err_daily";
+    if (error.status === 429) return "guide.err_rate";
+    if (error.status === 422) return "guide.err_long";
+    return "guide.err_unreachable";
   }
 
   form.addEventListener("submit", async (e) => {
@@ -214,6 +218,12 @@
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
     });
+  });
+
+  // Language change: the static text is swapped by i18n.js; relabel the visitor's own messages.
+  // The guide's past answers stay as they were written: they are the conversation, not interface.
+  document.addEventListener("i18n:change", () => {
+    log.querySelectorAll(".guide-msg-user").forEach((p) => { p.dataset.who = t("guide.you"); });
   });
 
   setMood("idle");
