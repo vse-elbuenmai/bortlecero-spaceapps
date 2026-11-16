@@ -26,6 +26,64 @@ gate, SIGTERM handling, and restart. It runs in an isolated container without up
 access. The interactive server exposes `http://127.0.0.1:8080/api/v1/health` and
 `http://127.0.0.1:8080/docs`.
 
+## Sky guide (Gemini API key)
+
+The sky guide endpoint, `POST /api/v1/assistant`, reads its key on the server; the browser never
+receives it. It answers `503 assistant_disabled` while the key is missing, and the viewer explains
+that politely.
+
+| Variable | Required | Default |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | yes | none; create one in [Google AI Studio](https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | no | `gemini-3.5-flash-lite` |
+| `ASSISTANT_PER_CLIENT_PER_MINUTE` | no | `4` |
+| `ASSISTANT_GLOBAL_PER_MINUTE` | no | `10` per instance |
+| `ASSISTANT_DAILY_LIMIT` | no | `200` per instance and day (the day resets at midnight Pacific, like Google's daily quota) |
+
+**Free tier and cost.** A key from Google AI Studio without billing set up stays on the free tier:
+Google does not charge it, and when its quota runs out Gemini answers `429 RESOURCE_EXHAUSTED`
+until the quota resets. The endpoint turns that into a friendly "try again later". The caps above
+keep the demo below the free quota, so a busy day does not leave the guide answering only errors.
+Your account's exact limits for each model are at <https://aistudio.google.com/rate-limit>; lower
+the caps if they are below the defaults. On the free tier Google uses what is sent to improve its
+products, so the viewer asks visitors not to share personal information. Keep billing off on the
+key's Google Cloud project if it must never cost anything.
+
+**Locally**, put the key in a `.env` file at the repository root (copy `.env.example`). The API
+reads it on startup; a variable already set in the shell wins over the file. `.env` is git-ignored
+and `.dockerignore` keeps it out of the container image.
+
+```shell
+cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+# edit .env:  GEMINI_API_KEY=your-key
+uv run spherex-ingest serve --host 127.0.0.1 --port 8000
+```
+
+Then serve the viewer with `uv run python -m http.server 8765 --directory mockup` and open
+`http://localhost:8765/?api=http://localhost:8000`. The `api` parameter works only on a local
+page.
+
+On Cloud Run the key belongs in Secret Manager. The deployment replaces the whole service from
+`deploy/cloud-run/service.yaml`, so a key set by hand with `gcloud run services update` disappears
+on the next deploy. Create the secret first, then reference it in `service.yaml`:
+
+```shell
+printf '%s' "paste-your-key" | gcloud secrets create gemini-api-key --data-file=- --project "$PROJECT_ID"
+gcloud secrets add-iam-policy-binding gemini-api-key --project "$PROJECT_ID"   --member="serviceAccount:$RUNTIME_SA" --role=roles/secretmanager.secretAccessor
+```
+
+```yaml
+# deploy/cloud-run/service.yaml, under env: of the API container
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: latest
+```
+
+Add the YAML only after the secret exists: a reference to a missing secret makes the deployment
+fail.
+
 ## Durable staging setup
 
 Run the durable job bootstrap in Bash, Git Bash, or WSL after the base
