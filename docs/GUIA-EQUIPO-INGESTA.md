@@ -76,6 +76,7 @@ flowchart LR
 | Limpiar | Resta `ZODI` y estima el fondo residual con una mediana que rechaza valores extremos. Interpola píxeles marcados como defectuosos o afectados por transitorios y protege el halo de las estrellas saturadas. Conserva máscaras de saturación y defectos. Crea una versión con relleno estimado para mostrar los núcleos saturados. [Limpieza](../src/spherex_ingest/processors/cleaners.py). |
 | Alinear | Centra una cuadrícula celeste ICRS TAN en la posición calculada a la fecha media de las exposiciones. Corrige la orientación de cada toma usando su WCS y lleva todas las imágenes a la misma escala de 6,15″ por píxel, con norte arriba y este a la izquierda. Un campo solicitado de 180″ produce una cuadrícula de 31 × 31 píxeles. Remuestrea las máscaras por vecino más cercano. [Reproyección](../src/spherex_ingest/processors/reprojector.py). |
 | Medir | Predice la posición en la fecha de cada toma usando movimiento propio y paralaje geocéntrico cuando se conocen. Acepta un centroide subpíxel si la señal supera el umbral y la detección está cerca de la posición predicha. La fotometría de apertura estima flujo e incertidumbre y se omite cuando el núcleo está saturado. [Astrometría y fotometría](../src/spherex_ingest/processors/kinematics.py). |
+| Sumar | Suma las exposiciones útiles en una sola imagen, la «suma profunda», para encontrar fuentes demasiado débiles para una toma suelta. Desplaza cada exposición para que la posición predicha del objeto en su fecha caiga en el centro, igual que el modo cometa del apilado en astrofotografía. Promedia dando más peso a las tomas menos ruidosas y rechaza los valores discordantes, como un rayo cósmico. Deja fuera los píxeles marcados y las tomas donde el objeto satura. Mide el ruido en la propia suma y cuántas veces sobresale de él el píxel más brillante junto a la predicción; a partir de 5 lo cuenta como detección. Repite la suma sin seguir el movimiento como control. Necesita al menos tres tomas. [Suma profunda](../src/spherex_ingest/processors/stacker.py). |
 | Seleccionar y exportar | Descarta tomas con menos del 40 % de píxeles válidos. Usa una escala de brillo común por banda y aplica un estiramiento `asinh` a los PNG. Para cada banda con un par separado por al menos un día, selecciona el par más cercano en longitud de onda y resta la imagen temprana de la tardía. Incluye la diferencia de longitud de onda para interpretar el resultado. [Exportación del paquete](../src/spherex_ingest/exporters/bundle_exporter.py). |
 
 ## 4. Qué recibe y muestra el navegador
@@ -88,6 +89,15 @@ una imagen. El paquete también lleva las coordenadas de los marcadores,
 `difference_maps`, `dropped_frames`, avisos y citas. Las matrices exportadas
 usan la orientación de pantalla y pueden incluir valores estimados en los
 núcleos saturados. [Esquemas de datos](../src/spherex_ingest/domain/models.py).
+
+Desde la versión 1.1.0 del esquema el paquete lleva también `deep_stack`: la
+suma profunda como imagen y matriz, cuántas exposiciones entraron, su rango de
+longitudes de onda y fechas, la reducción de ruido y la detección medida. Si
+no se pudo construir, `deep_stack` es nulo y `deep_stack_skipped_reason` dice
+por qué: `too_few_frames` o `target_saturated`. La suma mezcla longitudes de
+onda, así que indica si hay una fuente y dónde está, no cuánto brilla; por eso
+no lleva flujo. Las estrellas de campo pueden verse corridas cuando el objeto
+se mueve, porque la imagen sigue al objeto.
 
 El filtro varía dentro del detector. Dos tomas de la misma banda pueden tener
 distintas longitudes de onda, de modo que un cambio de brillo en el parpadeo
