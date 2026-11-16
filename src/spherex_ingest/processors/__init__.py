@@ -10,13 +10,16 @@ from spherex_ingest.processors.reprojector import (
     NorthUpCommonReprojector,
     ReprojectedFrameResult,
 )
+from spherex_ingest.processors.stacker import DeepStackResult, TargetTrackedStacker
 
 __all__ = [
     "CleanedFrameResult",
+    "DeepStackResult",
     "KinematicsAndPhotometryAnalyzer",
     "KinematicsPhotometryResult",
     "NorthUpCommonReprojector",
     "ReprojectedFrameResult",
     "SPHERExFrameProcessor",
+    "TargetTrackedStacker",
     "ZodiAndFlagCleaner",
 ]

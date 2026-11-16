@@ -85,8 +85,15 @@
   <section id="search" class="journey glass" aria-labelledby="search-title">
     <div class="journey-head">
       <p class="eyebrow">01 / Your patch of sky</p>
-      <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
-        aria-controls="search-body">Hide</button>
+      <div class="journey-actions">
+        <!-- Shown while the frames viewer is minimized: reopens it as it was, with no trip and no new download -->
+        <button id="viewer-restore" class="pill-btn restore-btn" type="button" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5.5V3h10v10H3v-2.5"/><path d="M1.5 8h7M6 5.5L8.5 8 6 10.5"/></svg>
+          <span id="viewer-restore-label" class="restore-label"></span>
+        </button>
+        <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
+          aria-controls="search-body">Hide</button>
+      </div>
     </div>
     <div id="search-body">
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
@@ -130,7 +137,7 @@
     </div>
   </section>
 
-  <dialog id="viewer-modal" class="modal" aria-labelledby="modal-title" data-mode="basic">
+  <dialog id="viewer-modal" class="modal modal-full" aria-labelledby="modal-title" data-mode="basic">
     <div class="modal-head">
       <div>
         <p class="eyebrow">SPHEREx frames</p>
@@ -145,6 +152,11 @@
         </div>
         <button id="modal-tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
           title="Tour &amp; Help" data-tip="Guide">?</button>
+        <button id="modal-minimize" class="icon-btn" type="button"
+          aria-label="Minimize: back to the sky, keeping these frames ready" data-tip="Minimize"><svg viewBox="0 0 16 16"
+            aria-hidden="true">
+            <path d="M3.5 12.5h9" />
+          </svg></button>
         <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky"
           data-tip="Close"><svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M4 4l8 8M12 4l-8 8" />
@@ -258,6 +270,16 @@
           </div>
         </div>
 
+        <!-- Single frames or the deep stack (DESIGN §7.15). Hidden for bundles without a stack block -->
+        <div id="view-row" class="view-row" hidden>
+          <div id="view-switch" class="mode-switch view-switch" role="radiogroup" aria-label="Image"
+            aria-describedby="view-note">
+            <button type="button" role="radio" aria-checked="true" data-view="frames">Single frames</button>
+            <button id="view-stack" type="button" role="radio" aria-checked="false" data-view="stack">Stack</button>
+          </div>
+          <p id="view-note" class="view-note" hidden></p>
+        </div>
+
         <div class="controls" role="group" aria-label="Playback">
           <div class="transport">
             <button id="prev" class="icon-btn" type="button" aria-label="Previous frame" data-tip="Previous frame"><svg
@@ -302,6 +324,8 @@
         <div class="band-row">
           <label class="select-inline" for="band-select">Band</label>
           <span class="select"><select id="band-select"></select></span>
+          <!-- Where the chosen band sits in SPHEREx's 0.75–5.0 µm range; mockup.js fills it -->
+          <span id="band-spectrum" class="band-spectrum" aria-hidden="true"></span>
         </div>
 
         <div class="timeline-wrap">
@@ -406,6 +430,15 @@
           <p id="summary"></p>
         </div>
 
+        <!-- In the stack view this takes the place of "What moved" -->
+        <div class="panel-block stack-block" id="stack-block" hidden>
+          <p class="eyebrow">What the stack shows</p>
+          <p id="stack-headline" class="stack-headline"></p>
+          <ul id="stack-facts" class="stack-facts"></ul>
+          <p class="stack-caveat">The stack mixes wavelengths, so it shows that something is there and where,
+            not how bright it is. Field stars may look slightly smeared because the image follows the target.</p>
+        </div>
+
         <div class="panel-block adv">
           <p class="eyebrow">Object</p>
           <h2 id="obj-name" class="obj-name">Barnard's Star</h2>
@@ -425,16 +458,22 @@
       </section>
     </section>
 
-    <details class="modal-how">
+    <details class="modal-how disclosure">
       <summary>How these frames were made</summary>
       <ol>
-        <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover the star (DR1 + QR3).</li>
-        <li>Kept one image per visit, all seeing the star at nearly the same wavelength.</li>
-        <li>Removed the zodiacal light model and put every image on one grid with north up.
-          Two visits saw the sky rotated 180°; this undoes it.</li>
-        <li>Applied the same brightness stretch (asinh) to every frame, so blinking stays fair.</li>
+        <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover this position (DR1 + QR3).</li>
+        <li>SPHEREx photographs each patch of sky dozens of times during every visit, each image in a
+          slightly different colour. We keep up to 12 images per release, spread across the six bands
+          and across the dates.</li>
+        <li>Removed the zodiacal light model and put every image on one grid with north up. Between
+          visits the spacecraft sees the sky rotated 180°; this undoes it.</li>
+        <li>Applied the same brightness stretch to every image of a band, so blinking within a band
+          stays fair.</li>
         <li>Moved Gaia DR3's position to each date (proper motion + parallax) and compared it
-          with the measured center of the star.</li>
+          with the measured centre of the star.</li>
+        <li>The viewer opens on Band 6 (4.42–5.00 µm), or on the nearest band that has at least two
+          images to blink. Images in different bands see different colours, so to judge a change in
+          brightness, compare frames of one band.</li>
       </ol>
     </details>
   </dialog>
@@ -467,7 +506,7 @@
         <button id="tour-skip" class="tour-skip-btn" type="button" aria-label="Skip tour">Skip tour ×</button>
       </div>
       <h3 id="tour-title" class="tour-title"></h3>
-      <p id="tour-desc" class="tour-desc"></p>
+      <div id="tour-desc" class="tour-desc"></div>
       <div class="tour-card-foot">
         <button id="tour-prev" class="tour-btn-prev" type="button">Previous</button>
         <button id="tour-next" class="tour-btn-next" type="button">Next</button>
