@@ -3,7 +3,7 @@
 > **Spot what moves and changes in the infrared sky.**  
 > A public web blink comparator for multi-epoch **NASA SPHEREx** cutouts — built by **Team Bortle Cero** (Guadalajara) for the **NASA Space Apps Challenge 2026**.
 
-🌐 **[Live App — starphere.earth](https://starphere.earth/)** · 👥 **[Team Bortle Cero](https://www.spaceappschallenge.org/2026/find-a-team/bortle-cero/?tab=details)** · 🚀 **[NASA Challenge](https://www.spaceappschallenge.org/2026/challenges/planet-x-and-spherex/)**
+🌐 **[Live App — starphere.earth](https://starphere-earth-hosting.web.app/)** · 👥 **[Team Bortle Cero](https://www.spaceappschallenge.org/2026/find-a-team/bortle-cero/?tab=details)** · 🚀 **[NASA Challenge](https://www.spaceappschallenge.org/2026/challenges/planet-x-and-spherex/)**
 
 ![Bortle Cero SPHEREx Sky Viewer](demo.png)
 
