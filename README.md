@@ -1,3 +1,5 @@
+![alt text](demo.png "Title")
+
 # 🔭 Bortle Cero — Planet X & SPHEREx
 
 > **Spot what moves and changes in the infrared sky.**  
