@@ -511,6 +511,55 @@ se recuerda en el navegador (`localStorage`, clave `viewer-detail`).
 | Las cuatro comprobaciones (§7.4) | «Scientific Warnings & Notes» |
 | «What moved» y «How these frames were made» | «Data & Astrometry Citations» |
 
+
+### 7.14 Guía del cielo (pestaña «02 / Don't know where to start?»)
+
+Segunda pestaña del buscador del §7.11, decidida por el equipo el 15 nov: un personaje animado que
+responde preguntas con un modelo de IA (Google Gemini) para quien no sabe por dónde empezar. Es un
+recurso educativo, no la herramienta científica: no da medidas que el visor no compruebe.
+
+- **Pestañas:** las etiquetas pequeñas del buscador son las pestañas («01 / Your patch of sky» y
+  «02 / Don't know where to start?»), en `--bc-muted` y, la elegida, en `--bc-acento` con una
+  línea de 2 px debajo. `role="tablist"`; flechas izquierda y derecha, Inicio y Fin cambian de
+  pestaña. Plegado, el panel muestra sólo la pestaña que estaba abierta; elegir una lo despliega.
+- **Personaje:** una estrella con cara, generada con IA por el equipo y con la marca de agua
+  visible «AI-generated» grabada en cada imagen (regla 2). Seis caras recortadas de su hoja de
+  expresiones, en `mockup/guide/stacy-*.webp`. Cuadro de 168 × 168 px (96 px en móvil) arriba a la
+  izquierda, radio 10 px, borde `--bc-border-soft` y un brillo radial azul detrás de la estrella
+  sobre `--bc-noche`; el brillo sube con `happy` y `excited` y baja con `sorry`.
+
+  | Reacción | Quién la pone | Cara | Movimiento |
+  |---|---|---|---|
+  | `idle` | la página, al abrir la pestaña | sonrisa suave | flota 5 px dos veces (4.4 s) y se queda quieta |
+  | `thinking` | la página, mientras espera | boca «:3» | se balancea ±6° con tres puntos que saltan, hasta que llega la respuesta |
+  | `talking` | la página, mientras escribe | alterna boca abierta, sonrisa y «o» cada 150 ms | rebota 3 px mientras dura el texto (4 s como máximo) |
+  | `happy` | el modelo | sonrisa abierta | dos saltitos con un destello |
+  | `explaining` | el modelo | sonrisa pequeña | asiente una vez |
+  | `excited` | el modelo | ojos cerrados, risa | tres saltos con giro y tres destellos |
+  | `curious` | el modelo | boca «o» | ladea la cabeza 10° y se queda así |
+  | `sorry` | el modelo | sonrisa pequeña | se encoge, se inclina y pierde color, y se queda así |
+
+  Sólo `thinking` y `talking` se repiten en bucle, y duran lo que dura la espera o el texto; las
+  demás se mueven una vez y se quedan quietas (§6, WCAG 2.2.2). Con `prefers-reduced-motion` no se
+  mueve nada y la boca no alterna: sólo cambia la cara. La hoja no trae una cara triste, por eso
+  `sorry` usa la sonrisa pequeña con la postura caída.
+- **Globo:** a la derecha del personaje, un registro (`role="log"`, `aria-live="polite"`) de
+  168 px de alto como máximo que se desplaza, fondo `--bc-noche`, borde `--bc-border`. La guía en
+  `--bc-blanco`; lo que escribió la persona, alineado a la derecha, en `--bc-muted` con «You:» en
+  `--bc-acento`; los errores en `--bc-aviso`, siempre con una frase amable. La respuesta aparece
+  letra por letra en 4 s como máximo (de golpe con movimiento reducido).
+- **Preguntas rápidas:** tres chips (§7.7) bajo el personaje. **Sólo llenan el cuadro de texto**
+  para que la persona las edite antes de enviar; nunca envían solas. En móvil van en una fila que
+  se desplaza de lado.
+- **Cuadro de texto:** `textarea` de 2 líneas y 500 caracteres como máximo con el botón principal
+  «Ask». Enter envía y Mayús + Enter hace un salto de línea. El botón se apaga mientras se espera.
+- **Aviso fijo** bajo el cuadro, en 12 px y `--bc-muted`: «Answers are written by an AI agent and
+  can be wrong. Don't share personal information.» Lo primero es la regla 2 del hackatón (lo
+  generado con IA se declara); lo segundo, porque en el plan gratuito de Gemini Google usa lo que
+  se le manda para mejorar sus productos.
+- **Clave:** la página nunca lleva la clave de Gemini. Pregunta a `POST /api/v1/assistant` de la
+  API propia, que guarda la clave y limita las preguntas por minuto.
+
 ---
 
 ## 8. Accesibilidad

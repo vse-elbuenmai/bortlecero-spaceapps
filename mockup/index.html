@@ -84,11 +84,17 @@
 
   <section id="search" class="journey glass" aria-labelledby="search-title">
     <div class="journey-head">
-      <p class="eyebrow">01 / Your patch of sky</p>
+      <div class="journey-tabs" role="tablist" aria-label="Search the sky or ask the guide">
+        <button id="tab-search" class="journey-tab eyebrow" type="button" role="tab" aria-selected="true"
+          aria-controls="panel-search">01 / Your patch of sky</button>
+        <button id="tab-guide" class="journey-tab eyebrow" type="button" role="tab" aria-selected="false"
+          aria-controls="panel-guide" tabindex="-1">02 / Don't know where to start?</button>
+      </div>
       <button id="search-toggle" class="pill-btn" type="button" aria-expanded="true"
         aria-controls="search-body">Hide</button>
     </div>
     <div id="search-body">
+     <div id="panel-search" class="journey-panel" role="tabpanel" aria-labelledby="tab-search">
       <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
       <form id="search-form" class="journey-form" novalidate>
         <div class="field field-object">
@@ -127,6 +133,40 @@
       <p id="ra-err" class="field-error" hidden></p>
       <p id="dec-err" class="field-error" hidden></p>
       <p id="search-msg" class="search-msg" role="status" hidden></p>
+     </div>
+
+     <div id="panel-guide" class="journey-panel guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+      <div class="guide-stage">
+        <!-- The animated character: guide.js picks the face for each mood (FACES, MOODS);
+             sky.css moves the body by data-mood. AI-generated art, watermarked. -->
+        <div id="guide-character" class="guide-character" data-mood="idle" aria-hidden="true">
+          <span class="guide-sparkles"><i></i><i></i><i></i></span>
+          <div class="guide-body">
+            <img id="guide-face" class="guide-face" src="guide/stacy-smile.webp" alt="" width="204" height="204"
+              decoding="async">
+          </div>
+          <span class="guide-dots"><i></i><i></i><i></i></span>
+        </div>
+        <div id="guide-log" class="guide-log" role="log" aria-live="polite" aria-label="Conversation with the guide">
+          <p class="guide-msg guide-msg-model">Hi! I'm Stacy your sky guide. Ask me about the sky, the SPHEREx mission, or how to use this tool.</p>
+        </div>
+      </div>
+      <div class="guide-quick" role="group" aria-label="Quick questions">
+        <button class="chip" type="button" data-prompt="What are the coordinates of ">What are the coordinates
+          of …</button>
+        <button class="chip" type="button" data-prompt="What are right ascension and declination?">What are
+          right ascension and declination?</button>
+        <button class="chip" type="button" data-prompt="What is the SPHEREx mission?">What is the SPHEREx
+          mission?</button>
+      </div>
+      <form id="guide-form" class="guide-form" novalidate>
+        <label for="guide-input" class="visually-hidden">Your question for the guide</label>
+        <textarea id="guide-input" name="message" rows="2" maxlength="500" enterkeyhint="send"
+          placeholder="Ask the guide anything about the sky…"></textarea>
+        <button id="guide-send" class="btn btn-primary" type="submit">Ask</button>
+      </form>
+      <p class="guide-note">Answers are written by an AI agent and can be wrong. Don't share personal information.</p>
+     </div>
     </div>
   </section>
 
@@ -478,6 +518,7 @@
   <script src="viewer-data.js"></script>
   <script src="mockup.js"></script>
   <script type="module" src="sky.js"></script>
+  <script src="guide.js"></script>
 </body>
 
 </html>
