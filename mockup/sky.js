@@ -30,6 +30,7 @@ const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-
 const NOTE_SECONDS = 5; // how long the note about the layer shows by itself on phones
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
+const t = (window.i18n && window.i18n.t) || ((key) => key); // interface text (i18n.js)
 const canvas = $("sky-canvas"), modal = $("viewer-modal"), viewer = $("viewer"), msg = $("search-msg");
 const RAD = Math.PI / 180;
 const pointerReadout = $("pointer-coords");
@@ -283,9 +284,9 @@ function updatePointerReadout() {
   const position = activePointer ? skyAtPointer(activePointer, axes()) : lastTouch;
   let text = "";
   if (position) {
-    const label = !activePointer ? "Last touch" : activePointer.type === "touch" ? "Touch" : "Pointer";
+    const label = t(!activePointer ? "sky.last_touch" : activePointer.type === "touch" ? "sky.touch" : "sky.pointer");
     const ra = position.ra === null ? "—" : fmtRa(position.ra);
-    text = `${label}: RA ${ra}, Dec ${fmtDec(position.dec)}`;
+    text = t("sky.pointer_readout", { label, ra, dec: fmtDec(position.dec) });
   }
   if (pointerReadout.textContent !== text) pointerReadout.textContent = text;
   pointerReadout.hidden = !text;
@@ -294,7 +295,7 @@ function updatePointerReadout() {
 function updateOverlay() {
   const closest = state.fov <= minFov() + 0.05;
   $("sky-coords").textContent =
-    `${fmtRa(state.ra)}, ${fmtDec(state.dec)} · FOV ${state.fov.toFixed(0)}°${closest ? " · closest view" : ""}`;
+    t("sky.readout", { ra: fmtRa(state.ra), dec: fmtDec(state.dec), fov: state.fov.toFixed(0) }) + (closest ? t("sky.closest") : "");
   // A button that would change nothing is shown disabled
   $("zoom-sky-in").disabled = closest;
   $("zoom-sky-out").disabled = state.fov >= MAX_FOV - 0.05;
@@ -309,8 +310,8 @@ function setSpinning(on) {
   if (state.inertia) state.inertia.resume = state.spinning; // a glide in progress ends the way the button says
   const btn = $("spin-toggle");
   btn.setAttribute("aria-pressed", String(state.spinning));
-  btn.setAttribute("aria-label", state.spinning ? "Pause rotation" : "Rotate the sky");
-  btn.dataset.tip = state.spinning ? "Pause rotation" : "Rotate the sky";
+  btn.setAttribute("aria-label", t(state.spinning ? "sky.pause_rotation" : "sky.rotate"));
+  btn.dataset.tip = t(state.spinning ? "sky.pause_rotation" : "sky.rotate");
   btn.innerHTML = state.spinning ? ICON_PAUSE : ICON_PLAY;
 }
 
@@ -324,11 +325,11 @@ function caption(key) {
   const L = state.meta && state.meta.layers;
   if (!L) return "";
   const s = L["spherex-477"], c = L["spherex-rgb"], w = (v) => v.toFixed(2);
-  const span = `${s.average_of[0]} to ${s.average_of[1]}`;
+  const span = t("sky.span", { from: s.average_of[0], to: s.average_of[1] });
   return {
-    visible: "Visible sky, drawn from the Gaia, Hipparcos and Tycho star catalogues (NASA SVS). Not a photograph.",
-    spherex: `SPHEREx all-sky average at ${w(s.wavelength_um)} µm, ${span} (IRSA). A backdrop: the dated frames open in the viewer. Blank near the two ecliptic poles.`,
-    colour: `SPHEREx all-sky average, ${span} (IRSA). False colour: ${w(c.wavelengths_um.red)} µm red, ${w(c.wavelengths_um.green)} µm green, ${w(c.wavelengths_um.blue)} µm blue. Blank near the two ecliptic poles.`,
+    visible: t("sky.cap_visible"),
+    spherex: t("sky.cap_spherex", { w: w(s.wavelength_um), span }),
+    colour: t("sky.cap_colour", { span, r: w(c.wavelengths_um.red), g: w(c.wavelengths_um.green), b: w(c.wavelengths_um.blue) }),
   }[key];
 }
 
@@ -340,7 +341,7 @@ async function setLayer(key) {
   try {
     await loadLayer(key);
   } catch (err) {
-    $("sky-credit").textContent = "This sky layer could not be loaded. Check the connection and try again.";
+    $("sky-credit").textContent = t("sky.layer_error");
     return;
   }
   state.fade = { from: state.layer, start: performance.now() };
@@ -463,7 +464,7 @@ function travel(target) {
   $("ra").value = target.ra.toFixed(4);
   $("dec").value = (target.dec >= 0 ? "+" : "") + target.dec.toFixed(4);
   $("reticle-label").textContent = target.name || `${fmtRa(target.ra)}, ${fmtDec(target.dec)}`;
-  say(`Travelling to ${target.name ? target.name + ", " : ""}${fmtRa(target.ra)}, ${fmtDec(target.dec)}…`);
+  say(t("search.travelling", { name: target.name ? target.name + ", " : "", ra: fmtRa(target.ra), dec: fmtDec(target.dec) }));
   const arrivalFov = minFov();
   if (reduceMotion || !state.gl) {
     Object.assign(state, { ra: target.ra, dec: target.dec, fov: arrivalFov, dirty: true });
@@ -544,8 +545,8 @@ function setRestore(entry, { loading = false } = {}) {
   const btn = $("viewer-restore");
   btn.hidden = !entry;
   if (!entry) return;
-  $("viewer-restore-label").textContent = loading ? `${entry.name} · loading…` : entry.name;
-  btn.setAttribute("aria-label", `Reopen the SPHEREx frames of ${entry.name}${loading ? ", still loading" : ""}`);
+  $("viewer-restore-label").textContent = loading ? t("restore.loading", { name: entry.name }) : entry.name;
+  btn.setAttribute("aria-label", t("restore.aria", { name: entry.name, loading: loading ? t("restore.still_loading") : "" }));
 }
 
 function minimizeViewer() {
@@ -577,12 +578,12 @@ function openModal(target) {
 
   const bench = findPreparedBenchmark(target);
   const targetId = bench ? bench.key : (target.target_id || null);
-  const targetName = bench ? bench.name : (target.name || "Your position");
+  const targetName = bench ? bench.name : (target.name || t("viewer.your_position"));
   target.viewerName = targetName;
 
   $("modal-title").textContent = targetName;
-  $("modal-coords").textContent = `${fmtRa(target.ra)}, ${fmtDec(target.dec)} · position for today` +
-    (target.simbad ? ` · SIMBAD: ${target.simbad}` : "");
+  $("modal-coords").textContent = t("viewer.coords_today", { ra: fmtRa(target.ra), dec: fmtDec(target.dec) }) +
+    (target.simbad ? t("viewer.coords_simbad", { name: target.simbad }) : "");
 
   modal.showModal();
 
@@ -621,10 +622,26 @@ function setSearchOpen(open) {
   $("search-body").hidden = !open;
   $("search").classList.toggle("is-collapsed", !open);
   const btn = $("search-toggle");
-  btn.textContent = open ? "Hide" : "Search";
+  btn.textContent = t(open ? "search.hide" : "search.show");
   btn.setAttribute("aria-expanded", String(open));
   resize();
 }
+
+// Language change: the static text is already swapped by i18n.js; redraw what was built here
+document.addEventListener("i18n:change", () => {
+  $("sky-credit").textContent = caption(state.layer);
+  setSpinning(state.spinning);
+  const toggle = $("search-toggle");
+  toggle.textContent = t(toggle.getAttribute("aria-expanded") === "true" ? "search.hide" : "search.show");
+  if (parked) setRestore(parked, { loading: $("viewer-restore-label").textContent !== parked.name });
+  if (viewerTarget && modal.open) {
+    const target = viewerTarget;
+    $("modal-coords").textContent = t("viewer.coords_today", { ra: fmtRa(target.ra), dec: fmtDec(target.dec) }) +
+      (target.simbad ? t("viewer.coords_simbad", { name: target.simbad }) : "");
+  }
+  state.dirty = true;
+  updateOverlay();
+});
 
 // ---------- events ----------
 function bindEvents() {
@@ -636,19 +653,19 @@ function bindEvents() {
     fields.forEach((id) => fieldError(id, ""));
     const name = $("name").value.trim();
     if (name) {
-      say(`Looking up “${name}”…`);
+      say(t("search.looking_up", { name }));
       let found;
       try {
         found = await resolveName(name);
       } catch {
         if (search !== searches) return;
         say("");
-        return fieldError("name", "The name service (SIMBAD at Harvard) is not responding. Try again, or enter RA and Dec.");
+        return fieldError("name", t("search.name_down"));
       }
       if (search !== searches) return;
       if (!found) {
         say("");
-        return fieldError("name", `The name service (SIMBAD at Harvard) did not find “${name}”. Try another name, or enter RA and Dec.`);
+        return fieldError("name", t("search.name_not_found", { name }));
       }
       const bench = findPreparedBenchmark(found);
       setObject(bench ? bench.chipKey : null);
@@ -658,9 +675,9 @@ function bindEvents() {
     if (objectKey) return travel(today(OBJECTS[objectKey]));
     const ra = parseAngle($("ra").value, true), dec = parseAngle($("dec").value, false);
     const raBad = Number.isNaN(ra) || ra < 0 || ra >= 360, decBad = Number.isNaN(dec) || dec < -90 || dec > 90;
-    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", "Choose a test object, type an object name, or enter RA and Dec.");
-    fieldError("ra", raBad ? "RA must be between 0° and 360° (or 0h and 24h)" : "");
-    fieldError("dec", decBad ? "Dec must be between −90° and +90°" : "");
+    if (!$("ra").value.trim() && !$("dec").value.trim()) return fieldError("object", t("search.need_input"));
+    fieldError("ra", raBad ? t("search.ra_range") : "");
+    fieldError("dec", decBad ? t("search.dec_range") : "");
     if (raBad || decBad) return (raBad ? $("ra") : $("dec")).focus();
     const target = { ra, dec };
     const bench = findPreparedBenchmark(target);
@@ -724,7 +741,7 @@ function bindEvents() {
     if (minimizing) {
       minimizing = false;
       const target = viewerTarget;
-      parked = target ? { target, name: target.viewerName || target.name || "Your position" } : null;
+      parked = target ? { target, name: target.viewerName || target.name || t("viewer.your_position") } : null;
       document.dispatchEvent(new CustomEvent("viewer:minimize"));
       const stillLoading = !window.viewerState || !window.viewerState.bundle;
       setRestore(parked, { loading: stillLoading });
@@ -848,7 +865,7 @@ async function start() {
   } catch (err) {
     console.error(err);
     state.gl = null;
-    skyFallback.textContent = "The sky map could not start on this device (it needs WebGL 2). Search still works.";
+    skyFallback.textContent = t("sky.webgl_error");
   }
   resize();
   requestAnimationFrame(frame);

@@ -16,6 +16,11 @@ the same page but skips persistent caching because it shares an origin with othe
   a search panel (one of the five test objects, an object name, or RA and Dec) that travels to the
   position, and the blink viewer in a dialog on arrival. Plain HTML/CSS/JS and one WebGL 2 shader; no libraries, no build step.
 - `prepare_sky.py` — builds the three all-sky maps the sky view paints (`sky/*.webp`, `sky/sky.json`).
+- `i18n.js` — the interface text in English (default) and Spanish, the `t()` function and the
+  language switch in the header (`data-i18n` marks in the HTML; the scripts redraw their own text on
+  `i18n:change`). Object names, units, dates and numbers are data and are never translated.
+- `theme.js` — the dark/light switch (`DESIGN.md` §2.7): dark by default, light remembered in
+  `html[data-theme="light"]`; the light tokens live at the top of `mockup.css`.
 - `mockup.css`, `mockup.js`, `viewer-data.js`, `viewer-config.json` — the blink viewer, following `DESIGN.md` §7, configured to call `POST /api/v1/jobs` (with `GET /api/v1/blink` fallback for local sync servers).
 - `aladin.html`, `sky-aladin.js` — **plan B**: the earlier version of the sky, drawn by Aladin Lite
   with sky maps streamed from IRSA. Kept because it can zoom all the way in. See "Plan B" below.

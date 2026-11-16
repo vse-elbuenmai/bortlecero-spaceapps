@@ -8,6 +8,8 @@
   const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>';
   const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z"/></svg>';
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Interface text (i18n.js); the key itself if the script is missing, so nothing crashes
+  const t = (window.i18n && window.i18n.t) || ((key) => key);
 
   const BENCHMARK_MAP = {
     barnard: "barnards_star",
@@ -37,15 +39,15 @@
   ];
 
   // The six SPHEREx bands (µm), as IRSA gives them for the instrument in flight (Bock et al. 2026).
-  // "shows" is what each one is good for in this tool; it feeds the band table of the guided tour.
   const SPECTRUM_UM = [0.75, 5.0];
+  // "shows" is the i18n key of what each one is good for in this tool (texts in i18n.js).
   const BANDS = {
-    1: { lo: 0.75, hi: 1.09, shows: "Just past visible red. Ordinary stars shine brightest here." },
-    2: { lo: 1.10, hi: 1.62, shows: "Near infrared. Cool red dwarfs such as Barnard's Star stand out." },
-    3: { lo: 1.63, hi: 2.41, shows: "Sees through interstellar dust far better than visible light." },
-    4: { lo: 2.42, hi: 3.82, shows: "Water ice in cold clouds; methane absorbs here in brown dwarfs." },
-    5: { lo: 3.83, hi: 4.41, shows: "Ices (CO₂). The coldest brown dwarfs start to show: WISE 0855 only appears in Bands 5 and 6." },
-    6: { lo: 4.42, hi: 5.00, shows: "Ices (CO). Closest to WISE's W2, the band Backyard Worlds uses to find brown dwarfs." },
+    1: { lo: 0.75, hi: 1.09, shows: "bands.1" },
+    2: { lo: 1.10, hi: 1.62, shows: "bands.2" },
+    3: { lo: 1.63, hi: 2.41, shows: "bands.3" },
+    4: { lo: 2.42, hi: 3.82, shows: "bands.4" },
+    5: { lo: 3.83, hi: 4.41, shows: "bands.5" },
+    6: { lo: 4.42, hi: 5.00, shows: "bands.6" },
   };
   // The viewer opens on Band 6: the one WISE and Backyard Worlds use to find cold, moving objects, the
   // one where WISE 0855 is visible, and the colour of the "SPHEREx 4.77 µm" sky behind the dialog.
@@ -110,10 +112,7 @@
 
   // ---------- deep stack: every usable exposure co-added along the predicted motion ----------
   // Optional block of schema 1.1.0. Old bundles have neither field and the viewer behaves as before.
-  const STACK_SKIPPED = {
-    too_few_frames: "too few usable exposures",
-    target_saturated: "the star saturates the detector, so stacking cannot help",
-  };
+  const STACK_SKIPPED = { too_few_frames: "stack.skip_too_few", target_saturated: "stack.skip_saturated" };
   const STACK_CAVEAT_TRACK_SIGMA = 1;    // σ the motion-following stack must gain to say it matters
   const STACK_CAVEAT_TRACK_SHIFT_PX = 0.3;
   const stackOf = (bundle) => {
@@ -126,9 +125,9 @@
     const list = [...new Set((Array.isArray(bands) ? bands : []).map(Number).filter(Number.isFinite))]
       .sort((a, b) => a - b);
     if (!list.length) return null;
-    if (list.length === 1) return `band ${list[0]}`;
+    if (list.length === 1) return t("stack.band_one", { b: list[0] });
     const contiguous = list.every((b, k) => !k || b === list[k - 1] + 1);
-    return `bands ${contiguous ? `${list[0]}–${list[list.length - 1]}` : list.join(", ")}`;
+    return t("stack.band_many", { list: contiguous ? `${list[0]}–${list[list.length - 1]}` : list.join(", ") });
   }
 
   function stackWave(s) {
@@ -144,17 +143,19 @@
     if (s.detected === true) {
       return {
         detected: true,
-        short: "✓ Detected" + (peak !== null ? " " + peak.toFixed(1) + "σ" : ""),
-        long: "Detected in the stack" + (peak !== null ? `: ${peak.toFixed(1)}σ` : "") +
-          (off !== null ? `, ${off.toFixed(1)}″ from the predicted position` : "") + ".",
+        short: t("stack.detected_short") + (peak !== null ? " " + peak.toFixed(1) + "σ" : ""),
+        long: t("stack.detected_long", {
+          peak: peak !== null ? t("stack.detected_peak", { v: peak.toFixed(1) }) : "",
+          off: off !== null ? t("stack.detected_off", { v: off.toFixed(1) }) : "",
+        }),
       };
     }
     return {
       detected: false,
-      short: "— Not detected" + (peak !== null ? ", " + peak.toFixed(1) + "σ" : ""),
+      short: t("stack.not_detected_short") + (peak !== null ? ", " + peak.toFixed(1) + "σ" : ""),
       long: peak !== null
-        ? `Not detected in the stack (peak ${peak.toFixed(1)}σ, below the ${sigma(threshold)} threshold).`
-        : "Not detected in the stack.",
+        ? t("stack.not_detected_peak", { peak: peak.toFixed(1), thr: sigma(threshold) })
+        : t("stack.not_detected"),
     };
   }
 
@@ -314,37 +315,34 @@
     if (state.diffMode && state.activeDiffMap) {
       const diffMap = state.activeDiffMap;
       img.src = diffMap.png_base64 || "";
-      img.alt = `SPHEREx difference map for ${state.bundle.target.name}, Band ${diffMap.detector_band}, baseline ${diffMap.baseline_days.toFixed(1)} days`;
+      img.alt = t("diff.alt", { name: state.bundle.target.name, b: diffMap.detector_band, d: diffMap.baseline_days.toFixed(1) });
       flagsImg.hidden = true;
 
       live.setAttribute("aria-live", announce ? "polite" : "off");
-      $("frame-count").textContent = `Difference Map · Band ${diffMap.detector_band}`;
-      $("m-date").textContent = `${diffMap.baseline_days.toFixed(1)} days baseline`;
+      $("frame-count").textContent = t("diff.frame_count", { b: diffMap.detector_band });
+      $("m-date").textContent = t("diff.baseline", { d: diffMap.baseline_days.toFixed(1) });
       const dLambda = diffMap.delta_wavelength_um != null ? Number(diffMap.delta_wavelength_um) : 0;
       $("m-wave").textContent = `${diffMap.mean_wavelength_um.toFixed(3)} µm`;
-      $("m-det").textContent = `Band ${diffMap.detector_band}`;
+      $("m-det").textContent = t("common.band_n", { b: diffMap.detector_band });
       $("m-rel").textContent = "SPHEREx ΔI";
-      $("m-pa").textContent = "Aligned (0°)";
-      $("m-off").textContent = "Dipole signature";
+      $("m-pa").textContent = t("diff.aligned");
+      $("m-off").textContent = t("diff.dipole");
       $("hud-date").textContent = `Δt = ${diffMap.baseline_days.toFixed(1)} d`;
 
       setStatus("st-roll", "acento", "↻ Aligned (0°)");
       setStatus("st-core", "off", "— Not applicable");
-      setStatus("st-gaia", "acento", "± Dipole ΔI", `Dipole signature of proper motion in Band ${diffMap.detector_band}`);
+      setStatus("st-gaia", "acento", "± Dipole ΔI", t("diff.dipole_title", { b: diffMap.detector_band }));
       if (diffMap.delta_wavelength_um != null) {
         setStatus("st-wave", dLambda > 0.05 ? "aviso" : "ok", `${dLambda > 0.05 ? "⚠" : "✓"} Δλ ${dLambda.toFixed(3)} µm`,
-          "Wavelength difference between the two epochs");
+          t("diff.wave_title"));
       } else {
         setStatus("st-wave", "off", "— Unknown Δλ");
       }
 
       const dLamStr = diffMap.delta_wavelength_um != null
-        ? ` with spectral shift Δλ = ${dLambda.toFixed(3)} µm across epochs`
+        ? t("diff.shift", { v: dLambda.toFixed(3) })
         : "";
-      $("summary").innerHTML =
-        `Difference map (<strong>ΔI = I<sub>t2</sub> − I<sub>t1</sub></strong>) shows the ` +
-        `<strong>dipole signature of proper motion</strong> over ${diffMap.baseline_days.toFixed(1)} days in Band ${diffMap.detector_band}${dLamStr}: ` +
-        `negative flux where the object was, and positive flux where it moved.`;
+      $("summary").innerHTML = t("diff.summary", { d: diffMap.baseline_days.toFixed(1), b: diffMap.detector_band, dl: dLamStr });
 
       drawOverlay();
       return;
@@ -364,7 +362,7 @@
     }
 
     const dateStr = f.obs_time_iso || f.date_utc || "";
-    img.alt = `SPHEREx image of ${state.bundle.target.name}, ${dateStr.slice(0, 10)}, ${f.wavelength_um.toFixed(2)} µm`;
+    img.alt = t("frame.alt", { name: state.bundle.target.name, date: dateStr.slice(0, 10), wave: f.wavelength_um.toFixed(2) });
 
     state.legacyFlags = Boolean(f.flags);
     if (f.flags) {
@@ -373,7 +371,7 @@
     flagsImg.hidden = !(state.overlays.flags && state.legacyFlags);
 
     live.setAttribute("aria-live", announce ? "polite" : "off");
-    $("frame-count").textContent = `Frame ${state.i + 1} / ${frames.length}`;
+    $("frame-count").textContent = t("panel.frame_of", { i: state.i + 1, n: frames.length });
     $("m-date").textContent = fmtDate(dateStr);
     // The half-width of the filter is a number for the advanced level only
     $("m-wave").replaceChildren(document.createTextNode(f.wavelength_um.toFixed(3)));
@@ -384,42 +382,42 @@
       $("m-wave").append(span);
     }
     $("m-wave").append(document.createTextNode(" µm"));
-    $("m-det").textContent = `Band ${f.detector_band || f.detector || "?"}`;
+    $("m-det").textContent = t("common.band_n", { b: f.detector_band || f.detector || "?" });
     $("m-rel").textContent = f.collection || f.release || "SPHEREx";
     const pa = f.sps_epa_deg ?? f.pa_deg ?? null;
-    $("m-pa").textContent = pa !== null ? Math.round(pa) + "°" : "N/A";
+    $("m-pa").textContent = pa !== null ? Math.round(pa) + "°" : t("common.na");
 
     const off = f.centroid_offset_arcsec ?? f.offset_arcsec ?? null;
-    $("m-off").textContent = off !== null ? off.toFixed(2) + "″" : "N/A";
+    $("m-off").textContent = off !== null ? off.toFixed(2) + "″" : t("common.na");
     $("hud-date").textContent = dateStr.slice(0, 10);
 
     // Roll: the spacecraft saw this frame upside down and it was re-aligned north-up
     const rotated = pa !== null && (Math.abs(pa - 180) < 45 || f.rotated);
-    setStatus("st-roll", rotated ? "acento" : "ok", rotated ? "↻ 180°, aligned" : "✓ 0°, as taken",
-      rotated ? "Taken with the spacecraft rolled 180° and turned back north-up" : "Taken north-up");
+    setStatus("st-roll", rotated ? "acento" : "ok", t(rotated ? "check.rolled" : "check.as_taken"),
+      t(rotated ? "check.rolled_title" : "check.as_taken_title"));
 
     // Core saturation
     const saturated = Boolean(f.is_saturated_core || f.saturated);
-    setStatus("st-core", saturated ? "aviso" : "ok", saturated ? "⚠ Saturated" : "✓ Not saturated",
-      saturated ? "The core of the star is saturated: the centroid comes from its halo" : "");
+    setStatus("st-core", saturated ? "aviso" : "ok", t(saturated ? "check.saturated" : "check.not_saturated"),
+      saturated ? t("check.saturated_title") : "");
 
     // Centroid against Gaia's prediction
     if (off !== null) {
-      setStatus("st-gaia", off <= 0.5 ? "ok" : "aviso", `${off <= 0.5 ? "✓" : "⚠"} ${off.toFixed(2)}″ off`,
-        `Measured centre ${off.toFixed(2)}″ from where Gaia DR3 predicts the star`);
+      setStatus("st-gaia", off <= 0.5 ? "ok" : "aviso", t("check.off", { mark: off <= 0.5 ? "✓" : "⚠", v: off.toFixed(2) }),
+        t("check.off_title", { v: off.toFixed(2) }));
     } else {
-      setStatus("st-gaia", "off", "— Unmeasured", "No centroid: the star is diffuse or saturated here");
+      setStatus("st-gaia", "off", t("check.unmeasured"), t("check.unmeasured_title"));
     }
 
     // Wavelength against the previous frame: a change in brightness between two colours proves nothing
     const prev = frames[state.i - 1];
     if (!prev) {
-      setStatus("st-wave", "off", "— First frame");
+      setStatus("st-wave", "off", t("check.first_frame"));
     } else if (Math.abs(prev.wavelength_um - f.wavelength_um) > 0.05) {
-      setStatus("st-wave", "aviso", `⚠ ${prev.wavelength_um.toFixed(2)}→${f.wavelength_um.toFixed(2)} µm`,
-        "Different wavelength than the previous frame: a change in brightness is not variability");
+      setStatus("st-wave", "aviso", t("check.wave_differs", { a: prev.wavelength_um.toFixed(2), b: f.wavelength_um.toFixed(2) }),
+        t("check.wave_differs_title"));
     } else {
-      setStatus("st-wave", "ok", "✓ Same as before", "Same wavelength as the previous frame: brightness can be compared");
+      setStatus("st-wave", "ok", t("check.wave_same"), t("check.wave_same_title"));
     }
 
     document.querySelectorAll(".tl-dot").forEach((b, k) => b.setAttribute("aria-current", k === state.i ? "true" : "false"));
@@ -435,27 +433,26 @@
     const span = d0 && d1 ? (d0 === d1 ? d0 : `${d0} → ${d1}`) : d0 || d1 || "";
 
     img.src = s.png_base64;
-    img.alt = `SPHEREx stack of ${n ?? "several"} exposures of ${state.bundle.target.name}` +
-      (wave ? `, ${wave}` : "") + ", shifted to follow its predicted motion";
+    img.alt = t("stack.alt", { n: n ?? t("stack.several"), name: state.bundle.target.name, wave: wave ? `, ${wave}` : "" });
     state.legacyFlags = false;
     flagsImg.hidden = true;
 
     live.setAttribute("aria-live", announce ? "polite" : "off");
-    $("frame-count").textContent = n !== null ? `Stack of ${n} exposures` : "Stack";
-    $("m-date").textContent = span || "N/A";
-    $("m-wave").textContent = wave || "N/A";
-    $("m-det").textContent = bands ? bands[0].toUpperCase() + bands.slice(1) : "N/A";
-    $("m-rel").textContent = "Target-tracked stack";
-    $("m-pa").textContent = "All north-up";
+    $("frame-count").textContent = n !== null ? t("stack.of_n_exposures", { n }) : t("viewer.stack");
+    $("m-date").textContent = span || t("common.na");
+    $("m-wave").textContent = wave || t("common.na");
+    $("m-det").textContent = bands ? bands[0].toUpperCase() + bands.slice(1) : t("common.na");
+    $("m-rel").textContent = t("stack.tracked");
+    $("m-pa").textContent = t("stack.all_north");
     const off = finite(s.centroid_offset_arcsec);
-    $("m-off").textContent = off !== null ? off.toFixed(2) + "″" : "N/A";
-    $("hud-date").textContent = span || "Stack";
+    $("m-off").textContent = off !== null ? off.toFixed(2) + "″" : t("common.na");
+    $("hud-date").textContent = span || t("viewer.stack");
 
     const verdict = stackVerdict(s);
-    setStatus("st-roll", "acento", "↻ All north-up", "Every exposure was turned north-up before stacking");
-    setStatus("st-core", "off", "— Not applicable");
+    setStatus("st-roll", "acento", t("stack.all_north_check"), t("stack.all_north_title"));
+    setStatus("st-core", "off", t("stack.not_applicable"));
     setStatus("st-gaia", verdict.detected ? "ok" : "off", verdict.short, verdict.long);
-    setStatus("st-wave", "aviso", "⚠ Mixed", "The stack mixes wavelengths: it shows where the object is, not how bright");
+    setStatus("st-wave", "aviso", t("stack.mixed"), t("stack.mixed_title"));
 
     const headline = $("stack-headline"), facts = $("stack-facts");
     if (headline) headline.textContent = verdict.long;
@@ -463,24 +460,25 @@
       const items = [];
       const fact = (text, adv = false) => items.push([text, adv]);
       const factor = finite(s.noise_reduction_factor);
-      if (factor !== null) fact(`Noise ${factor.toFixed(1)}× lower than in a single frame`);
+      if (factor !== null) fact(t("stack.fact_noise", { f: factor.toFixed(1) }));
       const peak = finite(s.peak_snr), fixed = finite(s.sky_fixed_peak_snr);
       const shift = finite(s.max_tracking_shift_px);
       if (peak !== null && fixed !== null && shift !== null &&
           peak - fixed > STACK_CAVEAT_TRACK_SIGMA && shift > STACK_CAVEAT_TRACK_SHIFT_PX) {
-        fact(`Without following the predicted motion: ${fixed.toFixed(1)}σ`);
+        fact(t("stack.fact_fixed", { v: fixed.toFixed(1) }));
       }
-      if (n !== null && n > 1) fact(`Expected from √${n}: ${Math.sqrt(n).toFixed(1)}× lower`, true);
+      if (n !== null && n > 1) fact(t("stack.fact_expected", { n, v: Math.sqrt(n).toFixed(1) }), true);
       const noise = finite(s.noise_mjy_sr), single = finite(s.single_frame_noise_mjy_sr);
       if (noise !== null) {
-        fact(`Stack noise ${noise.toPrecision(2)} MJy/sr` + (single !== null ? ` (one frame ${single.toPrecision(2)})` : ""), true);
+        fact(t("stack.fact_noise_abs", { v: noise.toPrecision(2) }) +
+          (single !== null ? t("stack.fact_noise_single", { v: single.toPrecision(2) }) : ""), true);
       }
       if (shift !== null) {
         const scale = state.bundle.grid.pixel_scale_arcsec || 6.15;
-        fact(`Largest shift to follow the motion: ${shift.toFixed(2)} px (${(shift * scale).toFixed(1)}″)`, true);
+        fact(t("stack.fact_shift", { px: shift.toFixed(2), arc: (shift * scale).toFixed(1) }), true);
       }
       const rejected = finite(s.rejected_pixel_count);
-      if (rejected !== null) fact(`Pixels rejected as outliers: ${rejected}`, true);
+      if (rejected !== null) fact(t("stack.fact_rejected", { n: rejected }), true);
       facts.replaceChildren(...items.map(([text, adv]) => {
         const li = document.createElement("li");
         li.textContent = text;
@@ -534,10 +532,10 @@
     row.hidden = !(s || bundle.deep_stack || reason);
     const n = s ? finite(s.frame_count) : null;
     const btn = $("view-stack"), note = $("view-note");
-    btn.textContent = n !== null ? `Stack of ${n}` : "Stack";
+    btn.textContent = n !== null ? t("stack.of_n", { n }) : t("viewer.stack");
     btn.disabled = !s;
     note.hidden = Boolean(s);
-    note.textContent = s ? "" : `Stack unavailable: ${STACK_SKIPPED[reason] || "no stack image for this target"}.`;
+    note.textContent = s ? "" : t("stack.unavailable", { reason: t(STACK_SKIPPED[reason] || "stack.skip_none") });
   }
 
   // ---------- playback ----------
@@ -547,7 +545,7 @@
     clearInterval(state.timer);
     const btn = $("play");
     btn.setAttribute("aria-pressed", String(on));
-    btn.setAttribute("aria-label", on ? "Pause" : "Play");
+    btn.setAttribute("aria-label", t(on ? "viewer.pause" : "viewer.play"));
     btn.innerHTML = on ? ICON_PAUSE : ICON_PLAY;
     if (on) {
       if (state.diffMode) setDiffMode(false);
@@ -577,11 +575,11 @@
     const diffMap = getDiffMapForCurrentBand();
     if (diffMap) {
       diffBtn.disabled = false;
-      const dLStr = diffMap.delta_wavelength_um != null ? `, Δλ=${diffMap.delta_wavelength_um.toFixed(3)} µm` : "";
-      diffBtn.title = `Toggle difference map for Band ${diffMap.detector_band} (${diffMap.baseline_days.toFixed(1)} d baseline${dLStr})`;
+      const dLStr = diffMap.delta_wavelength_um != null ? t("diff.toggle_dl", { v: diffMap.delta_wavelength_um.toFixed(3) }) : "";
+      diffBtn.title = t("diff.toggle_for", { b: diffMap.detector_band, d: diffMap.baseline_days.toFixed(1), dl: dLStr });
     } else {
       diffBtn.disabled = true;
-      diffBtn.title = "No difference map available for this band (requires 2+ epochs)";
+      diffBtn.title = t("diff.none");
       if (state.diffMode) setDiffMode(false);
     }
   }
@@ -617,7 +615,7 @@
       const b = document.createElement("button");
       b.type = "button";
       b.className = "tl-dot";
-      b.setAttribute("aria-label", `Frame ${k + 1}, ${frameDay(f)}`);
+      b.setAttribute("aria-label", t("tl.frame_aria", { k: k + 1, day: frameDay(f) }));
       b.addEventListener("click", () => {
         if (state.stackMode) return; // the timeline is inert in the stack view
         if (state.diffMode) setDiffMode(false);
@@ -678,7 +676,7 @@
     select.replaceChildren();
 
     const bands = bundle.available_bands || [];
-    const count = (n) => `${n} frame${n === 1 ? "" : "s"}`;
+    const count = (n) => t(n === 1 ? "common.frame_one" : "common.frame_many", { n });
     const option = (value, label) => {
       const o = document.createElement("option");
       o.value = value;
@@ -688,9 +686,9 @@
     // Each band says its range; "All bands" warns that it mixes colours (AGENTS.md, trap 2)
     bands.forEach((b) => {
       const range = BANDS[b] ? ` · ${fmtRange(b)}` : "";
-      select.append(option(String(b), `Band ${b}${range} · ${count(framesOfBand(bundle, b).length)}`));
+      select.append(option(String(b), t("band.option", { b, range, count: count(framesOfBand(bundle, b).length) })));
     });
-    select.append(option("", `All bands, mixed colours · ${count(bundle.frames_chronological.length)}`));
+    select.append(option("", t("band.all", { count: count(bundle.frames_chronological.length) })));
     select.value = state.activeBand === null ? "" : String(state.activeBand);
     select.closest(".band-row").hidden = bands.length === 0;
     showBandSpectrum(state.activeBand);
@@ -724,7 +722,7 @@
     bar.append(seg);
     const label = document.createElement("span");
     label.className = "spec-label mono";
-    label.textContent = `Stack · ${lo.toFixed(2)}–${hi.toFixed(2)} µm`;
+    label.textContent = t("stack.spectrum", { lo: lo.toFixed(2), hi: hi.toFixed(2) });
     holder.replaceChildren(bar, label);
   }
 
@@ -762,9 +760,9 @@
 
   // Display coordinates have East to the left (dx < 0) and North up (dy < 0).
   function compassBearing(dx, dy) {
-    if (dx === 0 && dy === 0) return "north";
+    if (dx === 0 && dy === 0) return t("dir.north");
     const angleDeg = (Math.atan2(-dx, -dy) * (180 / Math.PI) + 360) % 360;
-    return COMPASS_DIRS[Math.round(angleDeg / 45) % 8];
+    return t("dir." + COMPASS_DIRS[Math.round(angleDeg / 45) % 8]);
   }
 
   function summary() {
@@ -779,15 +777,15 @@
       const dx = (last.predicted_pixel_x ?? last.predicted.x) - (first.predicted_pixel_x ?? first.predicted.x);
       const dy = (last.predicted_pixel_y ?? last.predicted.y) - (first.predicted_pixel_y ?? first.predicted.y);
       const dir = compassBearing(dx, dy);
-      $("summary").innerHTML =
-        `The object moved <strong>${s.measured_motion_arcsec.toFixed(1)}″ ${dir}</strong> in ${Math.round(s.days)} days ` +
-        `(${(s.measured_motion_arcsec / pixScale).toFixed(1)} pixels). ` +
-        `Gaia predicts <strong>${s.predicted_motion_arcsec.toFixed(1)}″</strong>.`;
+      $("summary").innerHTML = t("summary.moved", {
+        arc: s.measured_motion_arcsec.toFixed(1), dir, days: Math.round(s.days),
+        px: (s.measured_motion_arcsec / pixScale).toFixed(1), pred: s.predicted_motion_arcsec.toFixed(1),
+      });
       return;
     }
 
     if (!frames || frames.length < 2) {
-      $("summary").innerHTML = `Target sequence has ${frames ? frames.length : 0} frame(s).`;
+      $("summary").innerHTML = t("summary.frames", { n: frames ? frames.length : 0 });
       return;
     }
 
@@ -818,19 +816,15 @@
     const measDispArcsec = measDispPx !== null ? measDispPx * pixScale : null;
 
     if (predDispArcsec < 0.5 && measDispPx !== null && measDispPx < 0.35) {
-      $("summary").innerHTML =
-        `Position is stationary within the ${pixScale.toFixed(2)}″ pixel scale over ${days} days ` +
-        `(centroid offset ${measDispArcsec.toFixed(1)}″, ${measDispPx.toFixed(2)} pixels; ` +
-        `Gaia predicts <strong>${predDispArcsec.toFixed(1)}″</strong>).`;
+      $("summary").innerHTML = t("summary.stationary", {
+        scale: pixScale.toFixed(2), days, arc: measDispArcsec.toFixed(1), px: measDispPx.toFixed(2), pred: predDispArcsec.toFixed(1),
+      });
     } else if (measDispPx !== null) {
-      $("summary").innerHTML =
-        `The object moved <strong>${measDispArcsec.toFixed(1)}″ ${dir}</strong> in ${days} days ` +
-        `(${measDispPx.toFixed(1)} pixels). ` +
-        `Gaia astrometry predicts <strong>${predDispArcsec.toFixed(1)}″</strong>.`;
+      $("summary").innerHTML = t("summary.moved_astrometry", {
+        arc: measDispArcsec.toFixed(1), dir, days, px: measDispPx.toFixed(1), pred: predDispArcsec.toFixed(1),
+      });
     } else {
-      $("summary").innerHTML =
-        `Gaia astrometry predicts <strong>${predDispArcsec.toFixed(1)}″ ${dir}</strong> displacement in ${days} days ` +
-        `(${predDispPx.toFixed(1)} pixels). Photometric center is diffuse or saturated.`;
+      $("summary").innerHTML = t("summary.diffuse", { pred: predDispArcsec.toFixed(1), dir, days, px: predDispPx.toFixed(1) });
     }
   }
 
@@ -945,13 +939,14 @@
   }
 
   // ---------- target loader ----------
+  // i18n keys per status of the data service (texts in i18n.js)
   const messages = {
-    "live-disabled": "Live SPHEREx IRSA queries are currently disabled in the viewer configuration.",
-    "no-observations": "No SPHEREx observations cover this position in the requested collections.",
-    "job-lost": "This search is no longer available. Search again to reload the frames.",
-    "upstream-unavailable": "The SPHEREx archive is temporarily unavailable. Please try again later.",
-    "search-timeout": "This search is taking longer than expected. Search again to check for frames.",
-    unavailable: "The SPHEREx frames could not be loaded. Please try again later.",
+    "live-disabled": "err.live_disabled",
+    "no-observations": "err.no_observations",
+    "job-lost": "err.job_lost",
+    "upstream-unavailable": "err.upstream_unavailable",
+    "search-timeout": "err.search_timeout",
+    unavailable: "err.unavailable",
   };
   let targetRequest;
 
@@ -986,12 +981,16 @@
     };
   }
 
-  function setTargetStatus(message) {
+  let targetStatusKey = ""; // i18n key of the message shown, so a language change can redraw it
+  let targetStatusVars = null;
+  function setTargetStatus(key, vars) {
     const status = $("modal-empty");
     if (!status) return;
-    status.hidden = !message;
-    $("modal-empty-msg").textContent = message || "";
-    $("open-barnard").hidden = message === "Loading SPHEREx frames…";
+    targetStatusKey = key || "";
+    targetStatusVars = vars || null;
+    status.hidden = !key;
+    $("modal-empty-msg").textContent = key ? t(key, vars) : "";
+    $("open-barnard").hidden = key === "viewer.loading_spherex";
   }
 
   async function loadTarget(targetInput) {
@@ -1024,7 +1023,7 @@
     if (help) help.hidden = true;
     if ($("modal-empty")) {
       $("viewer").hidden = true;
-      setTargetStatus("Loading SPHEREx frames…");
+      setTargetStatus("viewer.loading_spherex");
     }
     $("loading").hidden = false;
     const loading = beginLoading();
@@ -1041,10 +1040,8 @@
     $("loading").hidden = true;
 
     if (result.status !== "ready") {
-      const message = result.status === "queue-busy"
-        ? `The search queue is busy. Try again in ${result.retryAfter} seconds.`
-        : messages[result.status] || messages.unavailable;
-      setTargetStatus(message);
+      if (result.status === "queue-busy") setTargetStatus("err.queue_busy", { s: result.retryAfter });
+      else setTargetStatus(messages[result.status] || messages.unavailable);
       document.dispatchEvent(new CustomEvent("viewer:ready", { detail: { status: result.status } }));
       return;
     }
@@ -1072,10 +1069,13 @@
     const tgt = bundle.target;
     if ($("modal-title")) {
       $("modal-title").textContent = tgt.name;
-      $("modal-coords").textContent = `Gaia DR3 (${tgt.ref_epoch_jyear?.toFixed(1) || "2016.0"}) ${tgt.ra_deg.toFixed(4)}°, ${fmtDeg(tgt.dec_deg)} · FOV ${((grid.width_px || 31) * (grid.pixel_scale_arcsec || 6.15) / 60).toFixed(1)}′`;
+      $("modal-coords").textContent = t("viewer.coords_gaia", {
+        epoch: tgt.ref_epoch_jyear?.toFixed(1) || "2016.0", ra: tgt.ra_deg.toFixed(4), dec: fmtDeg(tgt.dec_deg),
+        fov: ((grid.width_px || 31) * (grid.pixel_scale_arcsec || 6.15) / 60).toFixed(1),
+      });
     }
     $("obj-name").textContent = bundle.target.name;
-    $("obj-coords").textContent = `RA ${tgt.ra_deg.toFixed(4)}°, Dec ${fmtDeg(tgt.dec_deg)}`;
+    $("obj-coords").textContent = t("viewer.coords_radec", { ra: tgt.ra_deg.toFixed(4), dec: fmtDeg(tgt.dec_deg) });
 
     renderWarningsAndCitations(bundle);
     buildViewSwitch(bundle);
@@ -1112,7 +1112,7 @@
 
   $("speed").addEventListener("input", (e) => {
     state.fps = Math.min(3, Number(e.target.value));
-    $("speed-out").textContent = state.fps + " fps";
+    $("speed-out").textContent = t("viewer.fps", { n: state.fps });
     if (state.playing) setPlaying(true);
   });
 
@@ -1261,67 +1261,81 @@
   new ResizeObserver(() => placeTimeline()).observe($("timeline-dots"));
   $("band-select").addEventListener("change", (e) => selectBand(e.target.value === "" ? null : Number(e.target.value)));
 
+  // Language change: the static text is already swapped by i18n.js; redraw what was built here
+  document.addEventListener("i18n:change", () => {
+    $("speed-out").textContent = t("viewer.fps", { n: state.fps });
+    $("play").setAttribute("aria-label", t(state.playing ? "viewer.pause" : "viewer.play"));
+    if (targetStatusKey) setTargetStatus(targetStatusKey, targetStatusVars);
+    if (!state.bundle) return;
+    const tgt = state.bundle.target, grid = state.bundle.grid;
+    if ($("modal-coords")) {
+      $("modal-coords").textContent = t("viewer.coords_gaia", {
+        epoch: tgt.ref_epoch_jyear?.toFixed(1) || "2016.0", ra: tgt.ra_deg.toFixed(4), dec: fmtDeg(tgt.dec_deg),
+        fov: ((grid.width_px || 31) * (grid.pixel_scale_arcsec || 6.15) / 60).toFixed(1),
+      });
+    }
+    $("obj-coords").textContent = t("viewer.coords_radec", { ra: tgt.ra_deg.toFixed(4), dec: fmtDeg(tgt.dec_deg) });
+    buildViewSwitch(state.bundle);
+    buildBandOptions(state.bundle);
+    if (state.stackMode) showStackSpectrum(stackOf(state.bundle));
+    buildTimeline();
+    updateDiffToggleAvailability();
+    if (!state.stackMode) summary();
+    show(state.i);
+  });
+
   // Expose loadTarget globally for router and testing
   window.loadTarget = loadTarget;
   window.viewerState = state;
 
   // ---------- Interactive Guided Tour (DESIGN.md / Noir Cósmico v2) ----------
+  // `key` names the step's title and text in i18n.js (`<key>.title`, `<key>.desc`).
   const SKY_TOUR_STEPS = [
     {
       target: "#sky-canvas",
       isCanvas: true,
-      title: "Explore the Sky in 3D",
-      desc: "The whole sky seen from inside. Click and drag with mouse or touch to turn the celestial sphere in any direction (360°). Scroll or pinch to zoom into constellations and deep space.",
+      key: "tour.sky1",
     },
     {
       target: ".sky-layers",
-      title: "Wavelength & Spectral Layers",
-      desc: "Switch the celestial sphere between Visible optical light (NASA SVS) and SPHEREx infrared all-sky surveys (4.77 µm and false-colour). The live readout displays the exact celestial coordinates (RA/Dec) where you are looking.",
+      key: "tour.sky2",
     },
     {
       target: ".sky-tools",
-      title: "Camera & Rotation Controls",
-      desc: "Convenient controls to zoom in (+), zoom out (-), pause or resume background sky rotation, and instantly reset your camera back to the full celestial view.",
+      key: "tour.sky3",
     },
     {
       target: "#search",
-      title: "Target Search & Discovery",
-      desc: "The core launchpad: select one of the 5 NASA benchmark objects (e.g., Barnard's Star or WISE 0855), search any star or galaxy via SIMBAD, or input custom RA/Dec. Click 'Go there' to travel across the sky and open the SPHEREx Blink Viewer.",
+      key: "tour.sky4",
     },
     {
       target: ".header-actions",
-      title: "Attribution & Tour Help",
-      desc: "Review mission credits and scientific data citations (NASA IRSA, Gaia DR3, SIMBAD), or click the '?' button anytime to replay this interactive guide.",
+      key: "tour.sky5",
     },
   ];
 
   const VIEWER_TOUR_STEPS = [
     {
       target: "#stage",
-      title: "SPHEREx Multi-Epoch Stage",
-      desc: "Reprojected, north-up SPHEREx image cutouts across observation epochs. Overlays highlight Gaia DR3 predicted position (teal dashed circle), measured centroid (amber cross), and trajectory over time.",
+      key: "tour.v1",
     },
     {
       target: ".controls",
-      title: "Playback & Difference Map",
-      desc: "Play or pause the blink sequence, step through epochs, adjust playback speed, and toggle Difference Map (ΔI) to immediately expose fast-moving or variable infrared sources.",
+      key: "tour.v2",
     },
     {
       target: ".band-row",
-      title: "Spectral Band Filter",
-      desc: "SPHEREx sees the sky through six detectors, each one a band of infrared colours. Compare frames of one band, so a change in brightness is not just a change of colour. The viewer opens on Band 6, or on the nearest band with two images or more.",
+      key: "tour.v3",
       wide: true,
       build: buildBandTable,
     },
     {
       target: ".timeline-wrap",
-      title: "Observation Timeline",
-      desc: "Interactive timeline tracking each observation visit and UTC date. Click any dot to directly jump to a specific observation epoch.",
+      key: "tour.v4",
     },
     {
       target: ".panel",
-      title: "Astrometry & Scientific Data",
-      desc: "Detailed object metadata, proper motion displacement, astrometric offset against Gaia DR3, and scientific flags (e.g. saturated pixels or non-linear regimes).",
+      key: "tour.v5",
     },
   ];
 
@@ -1331,12 +1345,12 @@
     table.className = "band-table";
     const caption = document.createElement("caption");
     caption.className = "visually-hidden";
-    caption.textContent = "The six SPHEREx bands, their wavelength range and what each one shows";
+    caption.textContent = t("bands.caption");
     const head = table.createTHead().insertRow();
-    ["Band", "Range", "What it shows"].forEach((t) => {
+    ["bands.col_band", "bands.col_range", "bands.col_shows"].forEach((key) => {
       const th = document.createElement("th");
       th.scope = "col";
-      th.textContent = t;
+      th.textContent = t(key);
       head.append(th);
     });
     const body = table.createTBody();
@@ -1353,17 +1367,17 @@
       text.className = "mono";
       text.textContent = fmtRange(b);
       range.append(text, bandSpectrumBar(Number(b)));
-      row.insertCell().textContent = BANDS[b].shows;
+      row.insertCell().textContent = t(BANDS[b].shows);
     });
     const scale = document.createElement("p");
     scale.className = "band-table-note";
-    scale.textContent = "Each bar is SPHEREx's whole range, 0.75 to 5.0 µm; the lit part is the band. Visible light ends at about 0.75 µm.";
+    scale.textContent = t("bands.note");
     // Folded on a phone, so the card stays short enough to leave the band select in view
     const details = document.createElement("details");
     details.className = "band-details disclosure";
     details.open = window.innerWidth > 760;
     const summary = document.createElement("summary");
-    summary.textContent = "The six bands";
+    summary.textContent = t("bands.summary");
     details.append(summary, table, scale);
     // Opening or closing it changes the card's height: place the card again
     details.addEventListener("toggle", () => window.dispatchEvent(new Event("resize")));
@@ -1402,7 +1416,7 @@
         journey.classList.remove("is-collapsed");
         const toggle = $("search-toggle");
         if (toggle) {
-          toggle.textContent = "Hide";
+          toggle.textContent = t("search.hide");
           toggle.setAttribute("aria-expanded", "true");
         }
       }
@@ -1434,11 +1448,11 @@
       const title = $("tour-title");
       const desc = $("tour-desc");
 
-      if (counter) counter.textContent = `${currentTourIndex + 1} / ${currentTourSteps.length} · GUIDED TOUR`;
-      if (title) title.textContent = step.title;
+      if (counter) counter.textContent = t("tour.counter", { i: currentTourIndex + 1, n: currentTourSteps.length });
+      if (title) title.textContent = t(step.key + ".title");
       if (desc) {
         const intro = document.createElement("p");
-        intro.textContent = step.desc;
+        intro.textContent = t(step.key + ".desc");
         desc.replaceChildren(intro);
         if (step.build) desc.append(step.build());
       }
@@ -1446,7 +1460,7 @@
 
       if (prevBtn) prevBtn.disabled = currentTourIndex === 0;
       if (nextBtn) {
-        nextBtn.textContent = currentTourIndex === currentTourSteps.length - 1 ? "Finish" : "Next";
+        nextBtn.textContent = t(currentTourIndex === currentTourSteps.length - 1 ? "tour.finish" : "tour.next");
         nextBtn.focus();
       }
 
@@ -1471,7 +1485,7 @@
         width = window.innerWidth;
         height = window.innerHeight;
         radius = "0px";
-        spotlight.style.border = "2px solid rgba(184, 212, 240, 0.45)";
+        spotlight.style.border = "2px solid color-mix(in srgb, var(--bc-estrella) 45%, transparent)";
       } else if (!targetEl) {
         const w = Math.min(window.innerWidth * 0.9, 640);
         const h = 200;
@@ -1480,7 +1494,7 @@
         width = w;
         height = h;
         radius = "16px";
-        spotlight.style.border = "1.5px solid rgba(184, 212, 240, 0.75)";
+        spotlight.style.border = "1.5px solid color-mix(in srgb, var(--bc-estrella) 75%, transparent)";
       } else {
         const rect = targetEl.getBoundingClientRect();
         const pad = 8;
@@ -1494,7 +1508,7 @@
         } else {
           radius = "16px";
         }
-        spotlight.style.border = "1.5px solid rgba(184, 212, 240, 0.75)";
+        spotlight.style.border = "1.5px solid color-mix(in srgb, var(--bc-estrella) 75%, transparent)";
       }
 
       spotlight.style.top = `${top}px`;
@@ -1586,6 +1600,8 @@
         updateSpotlightAndCard(currentTourSteps[currentTourIndex]);
       }
     });
+
+    document.addEventListener("i18n:change", () => { if (isTourActive) renderTourStep(); });
 
     dialog.addEventListener("keydown", (e) => {
       if (!isTourActive) return;

@@ -9,14 +9,16 @@
     content="The whole sky seen from inside, a search that travels to any position, and a blink viewer for the SPHEREx frames of that patch of sky.">
   <link rel="stylesheet" href="mockup.css">
   <link rel="stylesheet" href="sky.css">
+  <!-- The remembered theme, before the first paint, so a light-theme visitor sees no dark flash (theme.js) -->
+  <script>try { if (localStorage.getItem("viewer-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) { /* private window */ }</script>
 </head>
 
 <body class="sky-app">
-  <a class="skip" href="#search-form">Skip to search</a>
+  <a class="skip" href="#search-form" data-i18n="a11y.skip">Skip to search</a>
 
-  <canvas id="sky-canvas" class="sky-canvas" tabindex="0"
+  <canvas id="sky-canvas" class="sky-canvas" tabindex="0" data-i18n-attr="aria-label:sky.canvas_label"
     aria-label="The whole sky seen from inside. Drag to look around, scroll or pinch to zoom. Arrow keys turn the view, plus and minus zoom."></canvas>
-  <p id="sky-fallback" class="sky-fallback" role="status">Loading the sky…</p>
+  <p id="sky-fallback" class="sky-fallback" role="status" data-i18n="sky.loading">Loading the sky…</p>
 
   <div id="reticle" class="reticle" hidden aria-hidden="true">
     <svg viewBox="0 0 64 64">
@@ -35,36 +37,43 @@
         <span class="brand-project">STARPHERE</span>
       </div>
       <div class="header-actions">
-        <button id="credits-open" class="link-btn" type="button">Credits</button>
+        <!-- Interface language: English by default; the button names the other language (i18n.js) -->
+        <button id="lang-toggle" class="link-btn lang-btn" type="button" lang="es" data-lang-toggle
+          aria-label="Cambiar a español" title="Cambiar a español">ES</button>
+        <button id="theme-toggle" class="icon-btn" type="button" data-theme-toggle aria-pressed="false"
+          aria-label="Switch to the light theme" data-tip="Switch to the light theme"></button>
+        <button id="credits-open" class="link-btn" type="button" data-i18n="header.credits">Credits</button>
         <button id="tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
-          title="Tour &amp; Help">?</button>
+          title="Tour &amp; Help" data-i18n-attr="aria-label:tour.help_label,title:tour.help_title">?</button>
       </div>
     </div>
   </header>
 
-  <section class="sky-layers" aria-label="Sky layer">
+  <section class="sky-layers" aria-label="Sky layer" data-i18n-attr="aria-label:sky.layer">
     <div class="layer-row">
       <span class="select">
-        <select id="layer-select" aria-label="Sky layer">
-          <option value="visible">Visible light</option>
-          <option value="spherex">SPHEREx 4.77 µm</option>
-          <option value="colour">SPHEREx false colour</option>
+        <select id="layer-select" aria-label="Sky layer" data-i18n-attr="aria-label:sky.layer">
+          <option value="visible" data-i18n="sky.layer_visible">Visible light</option>
+          <option value="spherex" data-i18n="sky.layer_spherex">SPHEREx 4.77 µm</option>
+          <option value="colour" data-i18n="sky.layer_colour">SPHEREx false colour</option>
         </select>
       </span>
       <button id="info-toggle" class="icon-btn info-toggle" type="button" aria-expanded="false"
-        aria-controls="sky-credit" aria-label="About this sky layer">i</button>
+        aria-controls="sky-credit" aria-label="About this sky layer" data-i18n-attr="aria-label:sky.about_layer">i</button>
     </div>
     <p id="pointer-coords" class="sky-pointer mono" hidden></p>
     <p class="sky-readout mono" aria-hidden="true"><span id="sky-coords"></span></p>
     <p id="sky-credit" class="sky-caption"></p>
   </section>
 
-  <div class="sky-tools" role="group" aria-label="Sky controls">
-    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"><svg
+  <div class="sky-tools" role="group" aria-label="Sky controls" data-i18n-attr="aria-label:sky.controls">
+    <button id="zoom-sky-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"
+      data-i18n-attr="aria-label:common.zoom_in,data-tip:common.zoom_in"><svg
         viewBox="0 0 16 16" aria-hidden="true">
         <path d="M8 3v10M3 8h10" />
       </svg></button>
-    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg
+    <button id="zoom-sky-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"
+      data-i18n-attr="aria-label:common.zoom_out,data-tip:common.zoom_out"><svg
         viewBox="0 0 16 16" aria-hidden="true">
         <path d="M3 8h10" />
       </svg></button>
@@ -72,19 +81,21 @@
       aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M5.5 3.5v9M10.5 3.5v9" />
       </svg></button>
-    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky" data-tip="Whole sky"><svg
+    <button id="whole-sky" class="icon-btn" type="button" aria-label="Back to the whole sky" data-tip="Whole sky"
+      data-i18n-attr="aria-label:sky.whole_label,data-tip:sky.whole_tip"><svg
         viewBox="0 0 16 16" aria-hidden="true">
         <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />
       </svg></button>
     <button id="grid-toggle" class="icon-btn" type="button" aria-label="Coordinate grid"
-      data-tip="Coordinate grid (RA and Dec)" aria-pressed="false" disabled><svg viewBox="0 0 16 16" aria-hidden="true">
+      data-tip="Coordinate grid (RA and Dec)" aria-pressed="false" disabled
+      data-i18n-attr="aria-label:sky.grid_label,data-tip:sky.grid_tip"><svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12" />
       </svg></button>
   </div>
 
   <section id="search" class="journey glass" aria-labelledby="search-title">
     <div class="journey-head">
-      <p class="eyebrow">01 / Your patch of sky</p>
+      <p class="eyebrow" data-i18n="search.eyebrow">01 / Your patch of sky</p>
       <div class="journey-actions">
         <!-- Shown while the frames viewer is minimized: reopens it as it was, with no trip and no new download -->
         <button id="viewer-restore" class="pill-btn restore-btn" type="button" hidden>
@@ -96,13 +107,13 @@
       </div>
     </div>
     <div id="search-body">
-      <h1 id="search-title" class="journey-title">Where do you want to look?</h1>
+      <h1 id="search-title" class="journey-title" data-i18n="search.title">Where do you want to look?</h1>
       <form id="search-form" class="journey-form" novalidate>
         <div class="field field-object">
-          <label for="object">Test object</label>
+          <label for="object" data-i18n="search.object">Test object</label>
           <span class="select">
             <select id="object" name="object" aria-describedby="object-err">
-              <option value="">Choose one</option>
+              <option value="" data-i18n="search.choose_one">Choose one</option>
               <option value="barnard">Barnard's Star</option>
               <option value="epsindib">Epsilon Indi B</option>
               <option value="wise0855">WISE 0855−0714</option>
@@ -111,23 +122,23 @@
             </select>
           </span>
         </div>
-        <span class="journey-or" aria-hidden="true">or</span>
+        <span class="journey-or" aria-hidden="true" data-i18n="search.or">or</span>
         <div class="field field-name">
-          <label for="name">Object name</label>
+          <label for="name" data-i18n="search.name">Object name</label>
           <input id="name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"
             placeholder="Vega, M31" aria-describedby="name-err">
         </div>
         <div class="field">
-          <label for="ra">RA</label>
+          <label for="ra" data-i18n="search.ra">RA</label>
           <input id="ra" name="ra" inputmode="decimal" autocomplete="off" placeholder="269.4485 or 17h57m48.5s"
-            aria-describedby="ra-err">
+            aria-describedby="ra-err" data-i18n-attr="placeholder:search.ra_ph">
         </div>
         <div class="field field-dec">
-          <label for="dec">Dec</label>
+          <label for="dec" data-i18n="search.dec">Dec</label>
           <input id="dec" name="dec" inputmode="decimal" autocomplete="off" placeholder="+4.7394 or +04°44′22″"
-            aria-describedby="dec-err">
+            aria-describedby="dec-err" data-i18n-attr="placeholder:search.dec_ph">
         </div>
-        <button class="btn btn-primary journey-go" type="submit">Go there</button>
+        <button class="btn btn-primary journey-go" type="submit" data-i18n="search.go">Go there</button>
       </form>
       <p id="object-err" class="field-error" hidden></p>
       <p id="name-err" class="field-error" hidden></p>
@@ -140,25 +151,33 @@
   <dialog id="viewer-modal" class="modal modal-full" aria-labelledby="modal-title" data-mode="basic">
     <div class="modal-head">
       <div>
-        <p class="eyebrow">SPHEREx frames</p>
+        <p class="eyebrow" data-i18n="viewer.eyebrow">SPHEREx frames</p>
         <h2 id="modal-title" class="modal-title"></h2>
         <p id="modal-coords" class="mono"></p>
       </div>
       <div class="modal-actions">
         <!-- Detail level: the thumb slides between the two options; the choice is remembered -->
-        <div id="mode-switch" class="mode-switch" role="radiogroup" aria-label="Detail level">
-          <button type="button" role="radio" aria-checked="true" data-mode="basic">Basic</button>
-          <button type="button" role="radio" aria-checked="false" data-mode="advanced">Advanced</button>
+        <div id="mode-switch" class="mode-switch" role="radiogroup" aria-label="Detail level"
+          data-i18n-attr="aria-label:viewer.detail_level">
+          <button type="button" role="radio" aria-checked="true" data-mode="basic" data-i18n="viewer.basic">Basic</button>
+          <button type="button" role="radio" aria-checked="false" data-mode="advanced" data-i18n="viewer.advanced">Advanced</button>
         </div>
+        <!-- The dialog covers the header, so the language switch is repeated here -->
+        <button id="modal-lang-toggle" class="link-btn lang-btn" type="button" lang="es" data-lang-toggle
+          aria-label="Cambiar a español" title="Cambiar a español">ES</button>
+        <button id="modal-theme-toggle" class="icon-btn" type="button" data-theme-toggle aria-pressed="false"
+          aria-label="Switch to the light theme" data-tip="Switch to the light theme"></button>
         <button id="modal-tour-open" class="tour-help-btn" type="button" aria-label="Interactive guide and help"
-          title="Tour &amp; Help" data-tip="Guide">?</button>
+          title="Tour &amp; Help" data-tip="Guide"
+          data-i18n-attr="aria-label:tour.help_label,title:tour.help_title,data-tip:tour.guide_tip">?</button>
         <button id="modal-minimize" class="icon-btn" type="button"
-          aria-label="Minimize: back to the sky, keeping these frames ready" data-tip="Minimize"><svg viewBox="0 0 16 16"
+          aria-label="Minimize: back to the sky, keeping these frames ready" data-tip="Minimize"
+          data-i18n-attr="aria-label:viewer.minimize_label,data-tip:viewer.minimize_tip"><svg viewBox="0 0 16 16"
             aria-hidden="true">
             <path d="M3.5 12.5h9" />
           </svg></button>
         <button id="modal-close" class="icon-btn" type="button" aria-label="Close and go back to the sky"
-          data-tip="Close"><svg viewBox="0 0 16 16" aria-hidden="true">
+          data-tip="Close" data-i18n-attr="aria-label:viewer.close_label,data-tip:common.close"><svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M4 4l8 8M12 4l-8 8" />
           </svg></button>
       </div>
@@ -166,12 +185,13 @@
 
     <div id="modal-empty" class="modal-empty" hidden>
       <p id="modal-empty-msg" role="status"></p>
-      <button id="open-barnard" class="btn btn-secondary" type="button">Go to Barnard's Star</button>
+      <button id="open-barnard" class="btn btn-secondary" type="button" data-i18n="viewer.go_barnard">Go to Barnard's Star</button>
     </div>
 
     <!-- While the server works: the journey of the data, in three stations that follow the job's
          real phases (queued, running, result). Shown only when the answer takes more than a moment. -->
-    <section id="modal-loading" class="modal-loading" data-step="1" aria-label="Fetching the frames" hidden>
+    <section id="modal-loading" class="modal-loading" data-step="1" aria-label="Fetching the frames" hidden
+      data-i18n-attr="aria-label:loading.label">
       <svg class="ld-scene" viewBox="0 0 640 240" aria-hidden="true">
         <!-- light from a star to the telescope -->
         <path class="ld-line" d="M70 52 L150 142" />
@@ -217,7 +237,7 @@
             <rect class="ld-tile" x="332" y="182" width="16" height="16" style="--i: 18" />
             <rect class="ld-tile" x="352" y="182" width="16" height="16" style="--i: 19" />
           </g>
-          <text class="ld-label" x="320" y="226">IRSA archive</text>
+          <text class="ld-label" x="320" y="226" data-i18n="loading.archive">IRSA archive</text>
         </g>
         <path class="ld-line" d="M376 160 L484 160" />
         <!-- cutouts on their way: one of them arrives upside down and is turned north-up -->
@@ -233,26 +253,26 @@
             <path class="ld-frame ld-frame-top" d="M524 142h40v40h-40z M526 144l12 0 0 12" />
           </g>
           <circle class="ld-ring" cx="544" cy="162" r="11" />
-          <text class="ld-label" x="540" y="226">Your screen</text>
+          <text class="ld-label" x="540" y="226" data-i18n="loading.screen">Your screen</text>
         </g>
       </svg>
       <ol class="ld-steps">
-        <li data-step="1" aria-current="step"><span class="ld-num" aria-hidden="true">1</span><span>Asking IRSA which
+        <li data-step="1" aria-current="step"><span class="ld-num" aria-hidden="true">1</span><span data-i18n="loading.step1">Asking IRSA which
             SPHEREx images saw this patch of sky.</span></li>
-        <li data-step="2"><span class="ld-num" aria-hidden="true">2</span><span>Downloading a cutout of every visit
+        <li data-step="2"><span class="ld-num" aria-hidden="true">2</span><span data-i18n="loading.step2">Downloading a cutout of every visit
             (about 4 MB each) and turning them all north up.</span></li>
-        <li data-step="3"><span class="ld-num" aria-hidden="true">3</span><span>Placing Gaia's predicted position on
+        <li data-step="3"><span class="ld-num" aria-hidden="true">3</span><span data-i18n="loading.step3">Placing Gaia's predicted position on
             every date.</span></li>
       </ol>
-      <p class="ld-note"><span id="loading-note">The first time for a patch of sky this takes a few minutes. Next time
+      <p class="ld-note"><span id="loading-note" data-i18n="loading.note">The first time for a patch of sky this takes a few minutes. Next time
           it opens in seconds.</span>
-        <span class="ld-elapsed">Elapsed <output id="loading-elapsed" class="mono">0:00</output></span>
+        <span class="ld-elapsed"><span data-i18n="loading.elapsed">Elapsed</span> <output id="loading-elapsed" class="mono">0:00</output></span>
       </p>
     </section>
 
-    <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden>
+    <section id="viewer" class="viewer" tabindex="-1" aria-label="Blink viewer" hidden data-i18n-attr="aria-label:viewer.label">
       <div class="viewer-main">
-        <div id="stage" class="stage" tabindex="0"
+        <div id="stage" class="stage" tabindex="0" data-i18n-attr="aria-label:viewer.stage_label"
           aria-label="Image area. Space plays or pauses, arrows change frame, plus and minus zoom, 0 resets.">
           <div id="plate" class="plate">
             <img id="frame-img" alt="" draggable="false">
@@ -266,70 +286,75 @@
           <div class="hud hud-tr" aria-hidden="true"><span id="hud-date"></span></div>
           <div id="loading" class="loading" role="status">
             <div class="progress"><span></span></div>
-            <p>Loading frames…</p>
+            <p data-i18n="viewer.loading_frames">Loading frames…</p>
           </div>
         </div>
 
         <!-- Single frames or the deep stack (DESIGN §7.15). Hidden for bundles without a stack block -->
         <div id="view-row" class="view-row" hidden>
           <div id="view-switch" class="mode-switch view-switch" role="radiogroup" aria-label="Image"
-            aria-describedby="view-note">
-            <button type="button" role="radio" aria-checked="true" data-view="frames">Single frames</button>
+            aria-describedby="view-note" data-i18n-attr="aria-label:viewer.image">
+            <button type="button" role="radio" aria-checked="true" data-view="frames" data-i18n="viewer.single_frames">Single frames</button>
             <button id="view-stack" type="button" role="radio" aria-checked="false" data-view="stack">Stack</button>
           </div>
           <p id="view-note" class="view-note" hidden></p>
         </div>
 
-        <div class="controls" role="group" aria-label="Playback">
+        <div class="controls" role="group" aria-label="Playback" data-i18n-attr="aria-label:viewer.playback">
           <div class="transport">
-            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame" data-tip="Previous frame"><svg
+            <button id="prev" class="icon-btn" type="button" aria-label="Previous frame" data-tip="Previous frame"
+              data-i18n-attr="aria-label:viewer.prev,data-tip:viewer.prev"><svg
                 viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3.6 3.6v8.8" />
                 <path class="ico-fill" d="M12.4 3.6L6.2 8l6.2 4.4z" />
               </svg></button>
-            <button id="play" class="icon-btn" type="button" aria-label="Play" data-tip="Play" aria-pressed="false"><svg
+            <button id="play" class="icon-btn" type="button" aria-label="Play" data-tip="Play" aria-pressed="false"
+              data-i18n-attr="data-tip:viewer.play"><svg
                 viewBox="0 0 16 16" aria-hidden="true">
                 <path class="ico-fill" d="M5.2 3.4l6.9 4.6-6.9 4.6z" />
               </svg></button>
-            <button id="next" class="icon-btn" type="button" aria-label="Next frame" data-tip="Next frame"><svg
+            <button id="next" class="icon-btn" type="button" aria-label="Next frame" data-tip="Next frame"
+              data-i18n-attr="aria-label:viewer.next,data-tip:viewer.next"><svg
                 viewBox="0 0 16 16" aria-hidden="true">
                 <path class="ico-fill" d="M3.6 3.6L9.8 8l-6.2 4.4z" />
                 <path d="M12.4 3.6v8.8" />
               </svg></button>
           </div>
           <label class="speed">
-            <span class="speed-label">Speed</span>
+            <span class="speed-label" data-i18n="viewer.speed">Speed</span>
             <input id="speed" type="range" min="0.5" max="3" step="0.5" value="1">
             <output id="speed-out" for="speed">1 fps</output>
           </label>
           <button id="diff-toggle" class="chip diff-toggle adv" type="button" aria-pressed="false"
-            title="Toggle difference map between epochs">Difference Map</button>
+            title="Toggle difference map between epochs" data-i18n="diff.button">Difference Map</button>
           <div class="zoom-group">
-            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"><svg
+            <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out" data-tip="Zoom out"
+              data-i18n-attr="aria-label:common.zoom_out,data-tip:common.zoom_out"><svg
                 viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3 8h10" />
               </svg></button>
             <output id="zoom-out-label" class="zoom-label" aria-live="off">1×</output>
-            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"><svg
+            <button id="zoom-in" class="icon-btn" type="button" aria-label="Zoom in" data-tip="Zoom in"
+              data-i18n-attr="aria-label:common.zoom_in,data-tip:common.zoom_in"><svg
                 viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 3v10M3 8h10" />
               </svg></button>
             <button id="zoom-reset" class="icon-btn" type="button" aria-label="Reset zoom"
-              data-tip="Whole image (1×)"><svg viewBox="0 0 16 16" aria-hidden="true">
+              data-tip="Whole image (1×)" data-i18n-attr="aria-label:viewer.zoom_reset,data-tip:viewer.zoom_reset_tip"><svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />
               </svg></button>
           </div>
         </div>
 
         <div class="band-row">
-          <label class="select-inline" for="band-select">Band</label>
+          <label class="select-inline" for="band-select" data-i18n="viewer.band">Band</label>
           <span class="select"><select id="band-select"></select></span>
           <!-- Where the chosen band sits in SPHEREx's 0.75–5.0 µm range; mockup.js fills it -->
           <span id="band-spectrum" class="band-spectrum" aria-hidden="true"></span>
         </div>
 
         <div class="timeline-wrap">
-          <div class="timeline" role="group" aria-label="Dates">
+          <div class="timeline" role="group" aria-label="Dates" data-i18n-attr="aria-label:viewer.dates">
             <div class="timeline-track"></div>
             <div id="timeline-dots"></div>
             <div class="tl-labels" aria-hidden="true">
@@ -341,14 +366,14 @@
         </div>
       </div>
 
-      <aside class="panel" aria-label="Frame details">
+      <aside class="panel" aria-label="Frame details" data-i18n-attr="aria-label:panel.label">
         <div class="panel-block panel-legend">
           <div class="legend-head">
-            <p class="eyebrow">Legend</p>
+            <p class="eyebrow" data-i18n="panel.legend">Legend</p>
             <p class="legend-all">
-              <button id="legend-all" class="text-btn" type="button">All</button>
+              <button id="legend-all" class="text-btn" type="button" data-i18n="common.all">All</button>
               <span aria-hidden="true">·</span>
-              <button id="legend-none" class="text-btn" type="button">None</button>
+              <button id="legend-none" class="text-btn" type="button" data-i18n="common.none">None</button>
             </p>
           </div>
           <ul class="legend">
@@ -358,7 +383,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="7" class="mk-pred-halo" />
                   <circle cx="12" cy="12" r="7" class="mk-pred" />
-                </svg>Predicted (Gaia DR3)</label>
+                </svg><span data-i18n="legend.predicted">Predicted (Gaia DR3)</span></label>
             </li>
             <li style="--lg: var(--viz-medida)">
               <label class="lg"><input type="checkbox" data-overlay="measured" checked><span class="lg-box"
@@ -366,7 +391,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas-halo" />
                   <path d="M12 3v6M12 15v6M3 12h6M15 12h6" class="mk-meas" />
-                </svg>Measured centroid</label>
+                </svg><span data-i18n="legend.measured">Measured centroid</span></label>
             </li>
             <li style="--lg: var(--viz-trayectoria)">
               <label class="lg"><input type="checkbox" data-overlay="path" checked><span class="lg-box"
@@ -375,7 +400,7 @@
                   <path d="M3 18L21 6" class="mk-traj" />
                   <circle cx="3" cy="18" r="2" class="mk-dot" />
                   <circle cx="21" cy="6" r="2" class="mk-dot" />
-                </svg>Path between dates</label>
+                </svg><span data-i18n="legend.path">Path between dates</span></label>
             </li>
             <li style="--lg: var(--bc-error)">
               <label class="lg"><input id="flags-toggle" type="checkbox" data-overlay="flags"><span class="lg-box"
@@ -383,7 +408,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <rect x="4" y="4" width="7" height="7" class="mk-flag-bad" />
                   <rect x="13" y="13" width="7" height="7" class="mk-flag-sat" />
-                </svg>Flagged pixels</label>
+                </svg><span data-i18n="legend.flags">Flagged pixels</span></label>
             </li>
           </ul>
         </div>
@@ -392,86 +417,87 @@
           <p class="eyebrow" id="frame-count">Frame</p>
           <dl class="meta">
             <div>
-              <dt>Date</dt>
+              <dt data-i18n="meta.date">Date</dt>
               <dd id="m-date"></dd>
             </div>
             <div>
-              <dt>Wavelength</dt>
+              <dt data-i18n="meta.wavelength">Wavelength</dt>
               <dd id="m-wave"></dd>
             </div>
             <div>
-              <dt>Detector</dt>
+              <dt data-i18n="meta.detector">Detector</dt>
               <dd id="m-det"></dd>
             </div>
             <div class="adv">
-              <dt>Release</dt>
+              <dt data-i18n="meta.release">Release</dt>
               <dd id="m-rel"></dd>
             </div>
             <div class="adv">
-              <dt>Position angle</dt>
+              <dt data-i18n="meta.pa">Position angle</dt>
               <dd id="m-pa"></dd>
             </div>
             <div class="adv">
-              <dt>Measured vs Gaia</dt>
+              <dt data-i18n="meta.offset">Measured vs Gaia</dt>
               <dd id="m-off"></dd>
             </div>
           </dl>
           <!-- Four fixed cells, so the panel keeps its height from one frame to the next -->
-          <ul id="status" class="status" aria-label="Frame checks">
-            <li><span class="status-k">Roll</span><span class="status-v" id="st-roll"></span></li>
-            <li><span class="status-k">Core</span><span class="status-v" id="st-core"></span></li>
-            <li><span class="status-k">vs Gaia</span><span class="status-v" id="st-gaia"></span></li>
-            <li><span class="status-k">Wavelength</span><span class="status-v" id="st-wave"></span></li>
+          <ul id="status" class="status" aria-label="Frame checks" data-i18n-attr="aria-label:panel.checks">
+            <li><span class="status-k" data-i18n="status.roll">Roll</span><span class="status-v" id="st-roll"></span></li>
+            <li><span class="status-k" data-i18n="status.core">Core</span><span class="status-v" id="st-core"></span></li>
+            <li><span class="status-k" data-i18n="status.gaia">vs Gaia</span><span class="status-v" id="st-gaia"></span></li>
+            <li><span class="status-k" data-i18n="status.wave">Wavelength</span><span class="status-v" id="st-wave"></span></li>
           </ul>
         </div>
 
         <div class="panel-block result">
-          <p class="eyebrow">What moved</p>
+          <p class="eyebrow" data-i18n="panel.what_moved">What moved</p>
           <p id="summary"></p>
         </div>
 
         <!-- In the stack view this takes the place of "What moved" -->
         <div class="panel-block stack-block" id="stack-block" hidden>
-          <p class="eyebrow">What the stack shows</p>
+          <p class="eyebrow" data-i18n="stack.eyebrow">What the stack shows</p>
           <p id="stack-headline" class="stack-headline"></p>
           <ul id="stack-facts" class="stack-facts"></ul>
-          <p class="stack-caveat">The stack mixes wavelengths, so it shows that something is there and where,
+          <p class="stack-caveat" data-i18n="stack.caveat">The stack mixes wavelengths, so it shows that something is there and where,
             not how bright it is. Field stars may look slightly smeared because the image follows the target.</p>
         </div>
 
         <div class="panel-block adv">
-          <p class="eyebrow">Object</p>
+          <p class="eyebrow" data-i18n="panel.object">Object</p>
           <h2 id="obj-name" class="obj-name">Barnard's Star</h2>
           <p id="obj-coords" class="mono"></p>
         </div>
 
         <div class="panel-block adv" id="panel-citations" hidden>
-          <p class="eyebrow">Data &amp; Astrometry Citations</p>
+          <p class="eyebrow" data-i18n="panel.citations">Data &amp; Astrometry Citations</p>
           <ul id="citations-list" class="citations-list"></ul>
         </div>
       </aside>
 
       <!-- On a wide screen this sits under the timeline; on a narrow one, after the panel -->
-      <section class="viewer-notes adv" id="panel-warnings" aria-label="Scientific warnings and notes" hidden>
-        <p class="eyebrow">Scientific Warnings &amp; Notes</p>
+      <section class="viewer-notes adv" id="panel-warnings" aria-label="Scientific warnings and notes" hidden
+        data-i18n-attr="aria-label:panel.warnings_label">
+        <p class="eyebrow" data-i18n="panel.warnings">Scientific Warnings &amp; Notes</p>
         <ul id="warnings-list" class="warnings-list"></ul>
       </section>
     </section>
 
     <details class="modal-how disclosure">
-      <summary>How these frames were made</summary>
+      <summary data-i18n="how.summary">How these frames were made</summary>
       <ol>
-        <li>Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover this position (DR1 + QR3).</li>
-        <li>SPHEREx photographs each patch of sky dozens of times during every visit, each image in a
+        <li data-i18n="how.step1">Asked the NASA/IPAC archive (IRSA) which SPHEREx images cover this position (DR1 + QR3).</li>
+        <li data-i18n="how.step2">SPHEREx photographs each patch of sky dozens of times during every visit, each image in a
           slightly different colour. We keep up to 12 images per release, spread across the six bands
           and across the dates.</li>
-        <li>Removed the zodiacal light model and put every image on one grid with north up. Between
+        <li data-i18n="how.step3">Removed the zodiacal light model and put every image on one grid with north up. Between
           visits the spacecraft sees the sky rotated 180°; this undoes it.</li>
-        <li>Applied the same brightness stretch to every image of a band, so blinking within a band
+        <li data-i18n="how.step4">Applied the same brightness stretch to every image of a band, so blinking within a band
           stays fair.</li>
-        <li>Moved Gaia DR3's position to each date (proper motion + parallax) and compared it
+        <li data-i18n="how.step5">Moved Gaia DR3's position to each date (proper motion + parallax) and compared it
           with the measured centre of the star.</li>
-        <li>The viewer opens on Band 6 (4.42–5.00 µm), or on the nearest band that has at least two
+        <li data-i18n="how.step6">The viewer opens on Band 6 (4.42–5.00 µm), or on the nearest band that has at least two
           images to blink. Images in different bands see different colours, so to judge a change in
           brightness, compare frames of one band.</li>
       </ol>
@@ -480,21 +506,22 @@
 
   <dialog id="credits" class="modal modal-small" aria-labelledby="credits-title">
     <div class="modal-head">
-      <h2 id="credits-title" class="modal-title">Credits</h2>
-      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"><svg viewBox="0 0 16 16"
+      <h2 id="credits-title" class="modal-title" data-i18n="header.credits">Credits</h2>
+      <button id="credits-close" class="icon-btn" type="button" aria-label="Close credits"
+        data-i18n-attr="aria-label:credits.close"><svg viewBox="0 0 16 16"
           aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" />
         </svg></button>
     </div>
     <div class="credits-body">
-      <p>SPHEREx data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
+      <p data-i18n="credits.p1">SPHEREx data: NASA/JPL-Caltech/SPHEREx, via NASA/IPAC Infrared Science Archive (IRSA).
         SPHEREx DR1: doi:10.26131/IRSA678. The sky layers "SPHEREx 4.77 µm" and "SPHEREx false
         colour" come from IRSA's SPHEREx DR1 all-sky data cube, an average of 24 April 2025 to
         14 May 2026.</p>
-      <p>Visible sky: NASA/Goddard Space Flight Center Scientific Visualization Studio, "Deep Star
+      <p data-i18n="credits.p2">Visible sky: NASA/Goddard Space Flight Center Scientific Visualization Studio, "Deep Star
         Maps 2020". Gaia DR2: ESA/Gaia/DPAC.</p>
-      <p>Astrometry: ESA Gaia DR3. Object names and their positions: SIMBAD (CDS), through its mirror at Harvard.</p>
-      <p>Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0.</p>
+      <p data-i18n="credits.p3">Astrometry: ESA Gaia DR3. Object names and their positions: SIMBAD (CDS), through its mirror at Harvard.</p>
+      <p data-i18n="credits.p4">Built by team Bortle Cero for the NASA Space Apps Challenge 2026 · Apache 2.0.</p>
     </div>
   </dialog>
 
@@ -503,17 +530,20 @@
     <div id="tour-card" class="tour-card glass" role="region" aria-labelledby="tour-title">
       <div class="tour-card-head">
         <span id="tour-counter" class="eyebrow tour-counter">1 / 5 · GUIDED TOUR</span>
-        <button id="tour-skip" class="tour-skip-btn" type="button" aria-label="Skip tour">Skip tour ×</button>
+        <button id="tour-skip" class="tour-skip-btn" type="button" aria-label="Skip tour"
+          data-i18n="tour.skip" data-i18n-attr="aria-label:tour.skip_label">Skip tour ×</button>
       </div>
       <h3 id="tour-title" class="tour-title"></h3>
       <div id="tour-desc" class="tour-desc"></div>
       <div class="tour-card-foot">
-        <button id="tour-prev" class="tour-btn-prev" type="button">Previous</button>
+        <button id="tour-prev" class="tour-btn-prev" type="button" data-i18n="tour.prev">Previous</button>
         <button id="tour-next" class="tour-btn-next" type="button">Next</button>
       </div>
     </div>
   </dialog>
 
+  <script src="i18n.js"></script>
+  <script src="theme.js"></script>
   <script src="viewer-data.js"></script>
   <script src="mockup.js"></script>
   <script type="module" src="sky.js"></script>

@@ -13,6 +13,8 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_FILES = (
     "index.html",
+    "i18n.js",
+    "theme.js",
     "mockup.css",
     "mockup.js",
     "viewer-data.js",
